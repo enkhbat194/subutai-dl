@@ -9,6 +9,7 @@
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "lint": "pnpm -r lint",
+    "test:native-engine": "cargo test --manifest-path engines/native/Cargo.toml && cargo run --quiet --manifest-path engines/native/Cargo.toml -- self-test",
     "test:direct": "node scripts/direct-download-smoke.mjs",
     "test:media": "node scripts/media-smoke.mjs",
     "test:queue": "node --experimental-strip-types scripts/queue-policy-test.mts",
