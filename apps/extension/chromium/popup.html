@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="mn">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Subutai</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <main>
+    <header><span class="mark">S</span><div><strong>SUBUTAI</strong><small>Browser Integration</small></div></header>
+    <label class="row"><span>Таталтыг автоматаар авах</span><input id="enabled" type="checkbox"></label>
+    <label class="field"><span>Холболтын тоо</span><select id="connections"><option>4</option><option>8</option><option selected>16</option></select></label>
+    <label class="row"><span>Мэдэгдэл харуулах</span><input id="notifications" type="checkbox"></label>
+    <button id="download">Идэвхтэй хуудсыг татах</button>
+    <button id="ping" class="secondary">Desktop app шалгах</button>
+    <p id="status">Шалгаж байна…</p>
+  </main>
+  <script src="popup.js"></script>
+</body>
+</html>
