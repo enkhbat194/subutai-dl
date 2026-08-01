@@ -3,6 +3,8 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
+import type { TransferSettings } from '@subutai/shared';
+import { ariaSpeed, DEFAULT_TRANSFER_SETTINGS, resolveProxyUrl } from '../network/transfer-policy';
 
 export interface Aria2FileStatus {
   path: string;
@@ -58,6 +60,15 @@ export class Aria2Service {
   private executable = '';
   private version = '';
   private lastError = '';
+  private transferSettings: TransferSettings = { ...DEFAULT_TRANSFER_SETTINGS };
+  private proxyPassword = '';
+
+  async configure(settings: TransferSettings, proxyPassword: string): Promise<void> {
+    this.transferSettings = { ...settings };
+    this.proxyPassword = proxyPassword;
+    if (!this.child || !this.version) return;
+    await this.call<string>('aria2.changeGlobalOption', [this.globalOptions()]);
+  }
 
   async ensureStarted(): Promise<void> {
     if (this.child && this.version) return;
@@ -101,7 +112,7 @@ export class Aria2Service {
         `--rpc-listen-port=${this.port}`,
         `--rpc-secret=${this.secret}`,
         '--continue=true',
-        '--max-concurrent-downloads=5',
+        '--max-concurrent-downloads=32',
         '--summary-interval=0',
         '--console-log-level=warn',
         '--download-result=hide',
@@ -146,6 +157,7 @@ export class Aria2Service {
       try {
         const version = await this.call<Aria2Version>('aria2.getVersion');
         this.version = version.version;
+        await this.call<string>('aria2.changeGlobalOption', [this.globalOptions()]);
         this.lastError = '';
         return;
       } catch {
@@ -164,11 +176,13 @@ export class Aria2Service {
       filename?: string;
       connections: number;
       headers?: Record<string, string>;
+      speedLimitBytesPerSecond?: number;
     },
   ): Promise<string> {
     await this.ensureStarted();
 
     const connections = Math.max(1, Math.min(16, Math.trunc(options.connections)));
+    const speedLimit = options.speedLimitBytesPerSecond ?? this.transferSettings.defaultDownloadSpeedLimitBytesPerSecond;
     const ariaOptions: Aria2Options = {
       dir: options.destination,
       continue: 'true',
@@ -177,8 +191,15 @@ export class Aria2Service {
       'min-split-size': '1M',
       'auto-file-renaming': 'true',
       'allow-overwrite': 'false',
+      'max-download-limit': ariaSpeed(speedLimit),
+      'max-tries': String(this.transferSettings.retryMaxAttempts),
+      'retry-wait': String(this.transferSettings.retryBaseDelaySeconds),
+      'connect-timeout': String(this.transferSettings.connectTimeoutSeconds),
+      timeout: String(this.transferSettings.transferTimeoutSeconds),
     };
 
+    const proxy = resolveProxyUrl(this.transferSettings, this.proxyPassword);
+    if (proxy) ariaOptions['all-proxy'] = proxy;
     if (options.filename?.trim()) ariaOptions.out = options.filename.trim();
     if (options.headers) {
       const forwardedHeaders = Object.entries(options.headers)
@@ -258,6 +279,19 @@ export class Aria2Service {
     if (this.version) health.version = this.version;
     if (this.lastError) health.error = this.lastError;
     return health;
+  }
+
+  private globalOptions(): Record<string, string> {
+    const options: Record<string, string> = {
+      'max-overall-download-limit': ariaSpeed(this.transferSettings.globalSpeedLimitBytesPerSecond),
+      'max-tries': String(this.transferSettings.retryMaxAttempts),
+      'retry-wait': String(this.transferSettings.retryBaseDelaySeconds),
+      'connect-timeout': String(this.transferSettings.connectTimeoutSeconds),
+      timeout: String(this.transferSettings.transferTimeoutSeconds),
+    };
+    const proxy = resolveProxyUrl(this.transferSettings, this.proxyPassword);
+    options['all-proxy'] = proxy ?? '';
+    return options;
   }
 
   private async call<T>(method: string, params: unknown[] = []): Promise<T> {
