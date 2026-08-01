@@ -4,6 +4,8 @@ import type {
   BatchCreateResult,
   BatchPreviewRequest,
   BatchPreviewResult,
+  ClipboardSettingsUpdate,
+  ClipboardSnapshot,
   DownloadCreateRequest,
   DownloadJob,
   DownloadScheduleInput,
@@ -14,6 +16,10 @@ import type {
   QueuePriority,
   QueueSettings,
   QueueSnapshot,
+  SiteGrabberEnqueueRequest,
+  SiteGrabberEnqueueResult,
+  SiteGrabberJob,
+  SiteGrabberStartRequest,
   SubutaiDesktopApi,
   TransferSettings,
   TransferSettingsUpdate,
@@ -25,6 +31,16 @@ const api: SubutaiDesktopApi = {
   previewBatch: (request: BatchPreviewRequest): Promise<BatchPreviewResult> => ipcRenderer.invoke('batch:preview', request),
   createBatchDownloads: (request: BatchCreateRequest): Promise<BatchCreateResult> => ipcRenderer.invoke('batch:create', request),
   probeMedia: (request: MediaProbeRequest): Promise<MediaProbeResult> => ipcRenderer.invoke('media:probe', request),
+  getClipboardSnapshot: (): Promise<ClipboardSnapshot> => ipcRenderer.invoke('clipboard:get'),
+  updateClipboardSettings: (settings: ClipboardSettingsUpdate): Promise<ClipboardSnapshot> => ipcRenderer.invoke('clipboard:update-settings', settings),
+  enqueueClipboardCapture: (id: string): Promise<ClipboardSnapshot> => ipcRenderer.invoke('clipboard:enqueue', id),
+  dismissClipboardCapture: (id: string): Promise<ClipboardSnapshot> => ipcRenderer.invoke('clipboard:dismiss', id),
+  clearClipboardHistory: (): Promise<ClipboardSnapshot> => ipcRenderer.invoke('clipboard:clear'),
+  startSiteGrabber: (request: SiteGrabberStartRequest): Promise<SiteGrabberJob> => ipcRenderer.invoke('site-grabber:start', request),
+  listSiteGrabberJobs: (): Promise<SiteGrabberJob[]> => ipcRenderer.invoke('site-grabber:list'),
+  getSiteGrabberJob: (id: string): Promise<SiteGrabberJob> => ipcRenderer.invoke('site-grabber:get', id),
+  cancelSiteGrabber: (id: string): Promise<SiteGrabberJob> => ipcRenderer.invoke('site-grabber:cancel', id),
+  enqueueSiteGrabberResources: (request: SiteGrabberEnqueueRequest): Promise<SiteGrabberEnqueueResult> => ipcRenderer.invoke('site-grabber:enqueue', request),
   pauseDownload: (id: string): Promise<DownloadJob> => ipcRenderer.invoke('downloads:pause', id),
   resumeDownload: (id: string): Promise<DownloadJob> => ipcRenderer.invoke('downloads:resume', id),
   cancelDownload: (id: string): Promise<DownloadJob> => ipcRenderer.invoke('downloads:cancel', id),
@@ -61,6 +77,16 @@ const api: SubutaiDesktopApi = {
     const handler = (_event: Electron.IpcRendererEvent, state: NetworkResilienceState): void => listener(state);
     ipcRenderer.on('network-resilience:changed', handler);
     return () => ipcRenderer.removeListener('network-resilience:changed', handler);
+  },
+  onClipboardChanged: (listener: (snapshot: ClipboardSnapshot) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, snapshot: ClipboardSnapshot): void => listener(snapshot);
+    ipcRenderer.on('clipboard:changed', handler);
+    return () => ipcRenderer.removeListener('clipboard:changed', handler);
+  },
+  onSiteGrabberChanged: (listener: (job: SiteGrabberJob) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, job: SiteGrabberJob): void => listener(job);
+    ipcRenderer.on('site-grabber:changed', handler);
+    return () => ipcRenderer.removeListener('site-grabber:changed', handler);
   },
   minimizeWindow: (): Promise<void> => ipcRenderer.invoke('window:minimize'),
   toggleMaximizeWindow: (): Promise<void> => ipcRenderer.invoke('window:toggle-maximize'),
