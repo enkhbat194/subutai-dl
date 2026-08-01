@@ -27,14 +27,28 @@ interface InternalJob {
 }
 
 function cloneJob(job: SiteGrabberJob): SiteGrabberJob {
-  return {
+  const clone: SiteGrabberJob = {
     ...job,
     includeExtensions: [...job.includeExtensions],
     excludePatterns: [...job.excludePatterns],
-    headers: job.headers ? { ...job.headers } : undefined,
     resources: job.resources.map((resource) => ({ ...resource })),
     errors: job.errors.map((error) => ({ ...error })),
   };
+  if (job.headers) clone.headers = { ...job.headers };
+  return clone;
+}
+
+function makeInternal(snapshot: SiteGrabberJob, completed: boolean): InternalJob {
+  let resolveCompletion = (): void => undefined;
+  const completion = new Promise<void>((resolve) => { resolveCompletion = resolve; });
+  const internal: InternalJob = {
+    snapshot,
+    controller: new AbortController(),
+    completion,
+    resolveCompletion,
+  };
+  if (completed) resolveCompletion();
+  return internal;
 }
 
 function normalizedRequest(request: SiteGrabberStartRequest): SiteGrabberJob {
@@ -75,16 +89,23 @@ export class SiteGrabberService {
     this.onChanged = onChanged;
   }
 
+  restore(snapshots: SiteGrabberJob[]): void {
+    for (const original of snapshots.slice(0, 20)) {
+      const snapshot = cloneJob(original);
+      if (snapshot.status === 'queued' || snapshot.status === 'running') {
+        snapshot.status = 'failed';
+        snapshot.error = 'Апп хаагдсан тул өмнөх crawl тасалдсан.';
+        snapshot.pendingPages = 0;
+        snapshot.updatedAt = new Date().toISOString();
+        snapshot.completedAt = snapshot.updatedAt;
+      }
+      this.jobs.set(snapshot.id, makeInternal(snapshot, true));
+    }
+  }
+
   start(request: SiteGrabberStartRequest): SiteGrabberJob {
     const snapshot = normalizedRequest(request);
-    let resolveCompletion = (): void => undefined;
-    const completion = new Promise<void>((resolve) => { resolveCompletion = resolve; });
-    const internal: InternalJob = {
-      snapshot,
-      controller: new AbortController(),
-      completion,
-      resolveCompletion,
-    };
+    const internal = makeInternal(snapshot, false);
     this.jobs.set(snapshot.id, internal);
     void this.crawl(internal);
     return cloneJob(snapshot);
@@ -182,7 +203,7 @@ export class SiteGrabberService {
           const extension = extensionOf(page.url);
           if (extension && allowedExtensions.has(extension) && resourceUrls.size < snapshot.maxResources) {
             resourceUrls.add(page.url);
-            snapshot.resources.push(this.resource(snapshot.id, page.url, page.url, page.depth));
+            snapshot.resources.push(this.resource(page.url, page.url, page.depth));
           }
           continue;
         }
@@ -198,7 +219,7 @@ export class SiteGrabberService {
           if (extension && allowedExtensions.has(extension)) {
             if (!resourceUrls.has(link) && resourceUrls.size < snapshot.maxResources) {
               resourceUrls.add(link);
-              snapshot.resources.push(this.resource(snapshot.id, link, page.url, page.depth));
+              snapshot.resources.push(this.resource(link, page.url, page.depth));
             }
             continue;
           }
@@ -229,7 +250,7 @@ export class SiteGrabberService {
     }
   }
 
-  private resource(jobId: string, url: string, sourcePageUrl: string, depth: number): SiteGrabberResource {
+  private resource(url: string, sourcePageUrl: string, depth: number): SiteGrabberResource {
     const extension = extensionOf(url);
     return {
       id: crypto.randomUUID(),
