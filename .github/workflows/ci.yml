@@ -32,6 +32,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
 
+      - name: Brand and public-string policy
+        run: pnpm test:brand
+
       - name: Typecheck
         run: pnpm typecheck
 
@@ -63,7 +66,7 @@ jobs:
         run: pnpm build
 
       - name: Real segmented-download smoke test
-        run: pnpm test:aria2
+        run: pnpm test:direct
 
       - name: Real HLS media smoke test
         run: pnpm test:media
