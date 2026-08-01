@@ -6,11 +6,14 @@ const jobs = new Map<string, DownloadJob>();
 
 function createWindow(): void {
   const window = new BrowserWindow({
-    width: 1280,
-    height: 820,
-    minWidth: 980,
-    minHeight: 640,
+    width: 1440,
+    height: 960,
+    minWidth: 1120,
+    minHeight: 720,
     show: false,
+    frame: false,
+    autoHideMenuBar: true,
+    backgroundColor: '#07111f',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -49,6 +52,21 @@ ipcMain.handle('downloads:create', (_event, request: DownloadCreateRequest): Dow
 
   jobs.set(id, job);
   return job;
+});
+
+ipcMain.handle('window:minimize', (event): void => {
+  BrowserWindow.fromWebContents(event.sender)?.minimize();
+});
+
+ipcMain.handle('window:toggle-maximize', (event): void => {
+  const window = BrowserWindow.fromWebContents(event.sender);
+  if (!window) return;
+  if (window.isMaximized()) window.unmaximize();
+  else window.maximize();
+});
+
+ipcMain.handle('window:close', (event): void => {
+  BrowserWindow.fromWebContents(event.sender)?.close();
 });
 
 app.whenReady().then(() => {
