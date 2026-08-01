@@ -7,6 +7,7 @@ import './media.css';
 import './queue.css';
 import './transfer.css';
 import './batch.css';
+import './resilience.css';
 
 const root = document.getElementById('root');
 

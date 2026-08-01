@@ -44,6 +44,9 @@ jobs:
       - name: Batch and numbered URL tests
         run: pnpm test:batch
 
+      - name: Failure and recovery policy tests
+        run: pnpm test:failure-policy
+
       - name: Build desktop
         run: pnpm build
 
