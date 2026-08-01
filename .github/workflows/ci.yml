@@ -1,8 +1,8 @@
-name: SubutaiDL CI
+name: Subutai CI
 
 on:
   push:
-    branches: [main, feat/bootstrap]
+    branches: [main, "agent/**"]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -26,7 +26,7 @@ jobs:
       - name: Enable pnpm
         run: corepack enable
 
-      - name: Install aria2
+      - name: Install direct-download backend
         run: sudo apt-get update && sudo apt-get install -y aria2
 
       - name: Install dependencies
@@ -38,5 +38,5 @@ jobs:
       - name: Build desktop
         run: pnpm build
 
-      - name: Real aria2 range-download smoke test
+      - name: Real segmented-download smoke test
         run: pnpm test:aria2
