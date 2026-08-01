@@ -1,5 +1,6 @@
 import type { ReactElement } from 'react';
 import { BatchDownloadLauncher } from './BatchDownloadLauncher';
+import { ClipboardSiteToolsLauncher } from './ClipboardSiteToolsLauncher';
 import { MediaLauncher } from './MediaLauncher';
 import { ResilienceLauncher } from './ResilienceLauncher';
 import { QueueSchedulerLauncher } from './QueueSchedulerLauncher';
@@ -11,6 +12,7 @@ export function RootApp(): ReactElement {
     <>
       <SubutaiApp />
       <ResilienceLauncher />
+      <ClipboardSiteToolsLauncher />
       <BatchDownloadLauncher />
       <TransferSettingsLauncher />
       <QueueSchedulerLauncher />
