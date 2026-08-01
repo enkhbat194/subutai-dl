@@ -17,13 +17,17 @@ function matchRange(value: string): RangeMatch | null {
   const brace = BRACE_RANGE.exec(value);
   const match = !bracket ? brace : !brace ? bracket : bracket.index <= brace.index ? bracket : brace;
   if (!match) return null;
-  return {
+  const startText = match[1];
+  const endText = match[2];
+  if (startText === undefined || endText === undefined) return null;
+  const result: RangeMatch = {
     index: match.index,
     length: match[0].length,
-    startText: match[1],
-    endText: match[2],
-    stepText: match[3],
+    startText,
+    endText,
   };
+  if (match[3] !== undefined) result.stepText = match[3];
+  return result;
 }
 
 function digitWidth(value: string): number {
