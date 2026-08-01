@@ -37,10 +37,10 @@ All 12 requested capability groups are implemented on `main` and have automated 
 ### P0 — Identity and repository cleanup
 
 1. User-visible branding must be only **Subutai** or **Subutai Download Manager**.
-2. Remove stale `SubutaiDL`, `SUBUTAI IDM`, bootstrap and demo wording.
+2. Remove all obsolete aliases, bootstrap wording and demo wording.
 3. Keep third-party names only where technically or legally required: dependency resolution, binary lookup, licenses and third-party notices.
-4. Add an automated brand-string gate for renderer, extension, installer and public error messages.
-5. Replace stale README/status text with this audited status model.
+4. Enforce an automated brand-string gate for renderer, extension, installer and public errors.
+5. Maintain README and this status file as current source-of-truth documents.
 
 ### P0 — Real acceptance gate
 
@@ -51,7 +51,7 @@ All 12 requested capability groups are implemented on `main` and have automated 
 5. Test sleep/wake, Wi-Fi disconnect/reconnect, VPN change, proxy change, app kill and Windows restart.
 6. Verify update check, update download, restart-to-install and rollback/recovery behavior.
 
-### P1 — IDM-level direct-download parity still missing or incomplete
+### P1 — Commercial-grade direct-download parity still missing or incomplete
 
 1. File-conflict policy: rename, overwrite, skip, resume and ask-each-time.
 2. Disk-space preflight and destination writability checks.
@@ -89,7 +89,7 @@ All 12 requested capability groups are implemented on `main` and have automated 
 ## Ordered next execution packages
 
 1. **Product cleanup gate** — branding, README, public errors, navigation consolidation baseline and automated forbidden-string scan.
-2. **Windows acceptance harness** — reproducible test server, clean-install checklist, browser E2E and packaged-app diagnostics.
+2. **Windows acceptance harness** — reproducible test server, clean-install checklist, browser end-to-end checks and packaged-app diagnostics.
 3. **Direct-download correctness** — conflict policy, disk checks, checksum, validators, authentication and per-site rules.
 4. **Browser production delivery** — extension install/update lifecycle, exclusions and real-browser regression tests.
 5. **Media production hardening** — real-site matrix, format selection, playlist item control and recoverable post-processing.
