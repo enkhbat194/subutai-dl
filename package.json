@@ -13,6 +13,8 @@
     "test:media": "node scripts/media-smoke.mjs",
     "test:queue": "node --experimental-strip-types scripts/queue-policy-test.mts",
     "test:transfer": "node --experimental-strip-types scripts/transfer-policy-test.mts",
-    "test:batch": "node --experimental-strip-types scripts/batch-expander-test.mts"
+    "test:batch": "node --experimental-strip-types scripts/batch-expander-test.mts",
+    "test:clipboard": "node --experimental-strip-types scripts/clipboard-policy-test.mts",
+    "test:site-grabber": "node --experimental-strip-types scripts/site-grabber-test.mts"
   }
 }
