@@ -1,0 +1,13 @@
+{
+  "name": "subutai-dl",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SubutaiDL desktop download manager monorepo",
+  "packageManager": "pnpm@10.15.0",
+  "scripts": {
+    "dev": "pnpm --filter @subutai/desktop dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm -r lint"
+  }
+}
