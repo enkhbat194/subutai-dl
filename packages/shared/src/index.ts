@@ -1,4 +1,4 @@
-export type DownloadEngine = 'auto' | 'aria2' | 'yt-dlp';
+export type DownloadEngine = 'auto' | 'subutai' | 'media';
 
 export type DownloadStatus =
   | 'queued'
@@ -36,16 +36,15 @@ export interface DownloadJob {
   error?: string;
 }
 
-export interface Aria2EngineHealth {
+export interface SubutaiEngineHealth {
   available: boolean;
   running: boolean;
-  executable: string;
   version?: string;
   error?: string;
 }
 
 export interface EngineHealth {
-  aria2: Aria2EngineHealth;
+  subutai: SubutaiEngineHealth;
 }
 
 export interface SubutaiDesktopApi {

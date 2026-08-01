@@ -1,1 +1,1 @@
-import './app-runtime';
+import './subutai-runtime';

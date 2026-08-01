@@ -1,6 +1,6 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { LiveApp } from './LiveApp';
+import { SubutaiApp } from './SubutaiApp';
 import './styles.css';
 import './live.css';
 
@@ -12,6 +12,6 @@ if (!root) {
 
 createRoot(root).render(
   <StrictMode>
-    <LiveApp />
+    <SubutaiApp />
   </StrictMode>,
 );
