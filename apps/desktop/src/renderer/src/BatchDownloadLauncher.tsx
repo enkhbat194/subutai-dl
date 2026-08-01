@@ -62,7 +62,7 @@ function BatchDialog({ onClose }: { onClose: () => void }): ReactElement {
 
         <label className="batch-input-label">URL жагсаалт эсвэл numbered pattern
           <textarea value={input} onChange={(event) => { setInput(event.target.value); setPreview(null); setCreated(null); }} spellCheck={false} />
-          <small>Жишээ: file_[001-100].zip · image_{01..50}.jpg · {10..1..2}</small>
+          <small>{'Жишээ: file_[001-100].zip · image_{01..50}.jpg · {10..1..2}'}</small>
         </label>
 
         <div className="batch-options-grid">
