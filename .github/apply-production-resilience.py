@@ -106,7 +106,6 @@ function markJobFailed(job: DownloadJob, error: unknown): void {
 """
 if "function markJobFailed" not in text:
     text = replace_once(text, "function statusFromEngine", helper + "function statusFromEngine", "failure helper")
-# Replace common failure assignments while preserving surrounding save/broadcast code.
 text = re.sub(
     r"job\.status = 'failed';\n(?P<i>\s*)job\.error = error instanceof Error \? error\.message : String\(error\);\n(?P=i)job\.speedBytesPerSecond = 0;\n(?P=i)job\.etaSeconds = null;\n(?P=i)job\.updatedAt = new Date\(\)\.toISOString\(\);",
     "markJobFailed(job, error);",
@@ -122,7 +121,6 @@ text = re.sub(
     "markJobFailed(job, message);",
     text,
 )
-# Clear failure state whenever a task is successfully assigned or restarted.
 if "delete job.failureKind;" not in text[text.find("async function assignTask"):text.find("async function startQueuedJob")]:
     text = replace_once(
         text,
@@ -130,13 +128,11 @@ if "delete job.failureKind;" not in text[text.find("async function assignTask"):
         "  job.engineTaskId = await engine.addDownload(options);\n  delete job.error;\n  delete job.failureKind;\n  job.status = 'queued';",
         "assign success cleanup",
     )
-# Ensure newly-created/restored jobs have retry metadata.
 job_object_anchor = "    queueOrder: nextQueueOrder(),"
 if "retryCount: 0," not in text[text.find("export async function createDownload"):text.find("jobs.set(id, job)")]:
     text = replace_once(text, job_object_anchor, job_object_anchor + "\n    retryCount: 0,", "new retry count")
 if "restored.retryCount ??= 0;" not in text:
     text = replace_once(text, "    restored.queueOrder ??= order;", "    restored.queueOrder ??= order;\n    restored.retryCount ??= 0;", "restored retry count")
-# Track engine-reported failures and clear stale classification on success.
 old_status_error = """  if (status.errorMessage) job.error = status.errorMessage;
   else if (job.status !== 'failed') delete job.error;"""
 new_status_error = """  if (status.errorMessage) {
@@ -148,8 +144,11 @@ new_status_error = """  if (status.errorMessage) {
   }"""
 if old_status_error in text:
     text = text.replace(old_status_error, new_status_error, 1)
-# Export a bounded transient-network recovery operation.
 recovery = """
+export function getDownloadSnapshot(): DownloadJob[] {
+  return snapshot();
+}
+
 export async function recoverNetworkInterruptedDownloads(maxRetries = 5): Promise<number> {
   let recovered = 0;
   for (const job of jobs.values()) {
@@ -179,20 +178,16 @@ export async function recoverNetworkInterruptedDownloads(maxRetries = 5): Promis
 }
 
 """
-if "export async function recoverNetworkInterruptedDownloads" not in text:
-    text = replace_once(text, "function updateJobFromStatus", recovery + "function updateJobFromStatus", "network recovery export")
+if "export function getDownloadSnapshot" not in text:
+    text = replace_once(text, "function updateJobFromStatus", recovery + "function updateJobFromStatus", "network recovery exports")
 write(path, text)
 
 # Load resilience runtime in the main process.
 path = "apps/desktop/src/main/index.ts"
 text = read(path)
 if "./resilience/resilience-runtime" not in text:
-    system_anchor = "      void import('./system/system-runtime');"
-    if system_anchor in text:
-        text = text.replace(system_anchor, system_anchor + "\n      void import('./resilience/resilience-runtime');", 1)
-    else:
-        tools_anchor = "      void import('./tools/utility-runtime');"
-        text = replace_once(text, tools_anchor, tools_anchor + "\n      void import('./resilience/resilience-runtime');", "resilience runtime import")
+    batch_anchor = "      void import('./batch/batch-runtime');"
+    text = replace_once(text, batch_anchor, batch_anchor + "\n      void import('./resilience/resilience-runtime');", "resilience runtime import")
 write(path, text)
 
 # Preload API.
