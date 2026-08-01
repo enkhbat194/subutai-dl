@@ -13,7 +13,7 @@ permissions:
 jobs:
   desktop:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -43,6 +43,12 @@ jobs:
 
       - name: Batch and numbered URL tests
         run: pnpm test:batch
+
+      - name: Clipboard URL policy tests
+        run: pnpm test:clipboard
+
+      - name: Bounded site grabber tests
+        run: pnpm test:site-grabber
 
       - name: Build desktop
         run: pnpm build
