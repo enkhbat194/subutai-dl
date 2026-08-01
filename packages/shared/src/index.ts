@@ -13,6 +13,7 @@ export type DownloadStatus =
 export type DownloadSource = 'desktop' | 'chrome' | 'edge' | 'firefox' | 'clipboard' | 'batch' | 'site-grabber';
 export type QueuePriority = 'low' | 'normal' | 'high';
 export type ProxyMode = 'off' | 'system' | 'manual';
+export type DownloadFailureKind = 'network' | 'server' | 'authentication' | 'disk' | 'cancelled' | 'unknown';
 
 export interface DownloadRequestHeaders {
   [name: string]: string;
@@ -138,6 +139,9 @@ export interface DownloadJob {
   scheduleId?: string;
   pausedByScheduler?: boolean;
   speedLimitBytesPerSecond?: number;
+  failureKind?: DownloadFailureKind;
+  retryCount?: number;
+  lastRetryAt?: string;
   engineTaskId?: string;
   error?: string;
 }
@@ -207,6 +211,17 @@ export interface TransferSettingsUpdate {
   transferTimeoutSeconds?: number;
 }
 
+export interface NetworkResilienceState {
+  online: boolean;
+  recoveredFromCrash: boolean;
+  sessionStartedAt: string;
+  lastOnlineAt?: string;
+  lastOfflineAt?: string;
+  lastRecoveryAt?: string;
+  recoveredJobs: number;
+  pendingNetworkFailures: number;
+}
+
 export interface SubutaiEngineHealth {
   available: boolean;
   running: boolean;
@@ -242,10 +257,13 @@ export interface SubutaiDesktopApi {
   runQueueNow(): Promise<QueueSnapshot>;
   getTransferSettings(): Promise<TransferSettings>;
   updateTransferSettings(settings: TransferSettingsUpdate): Promise<TransferSettings>;
+  getNetworkResilienceState(): Promise<NetworkResilienceState>;
+  retryNetworkDownloads(): Promise<NetworkResilienceState>;
   getEngineHealth(): Promise<EngineHealth>;
   onDownloadsChanged(listener: (jobs: DownloadJob[]) => void): () => void;
   onQueueChanged(listener: (snapshot: QueueSnapshot) => void): () => void;
   onTransferSettingsChanged(listener: (settings: TransferSettings) => void): () => void;
+  onNetworkResilienceChanged(listener: (state: NetworkResilienceState) => void): () => void;
   minimizeWindow(): Promise<void>;
   toggleMaximizeWindow(): Promise<void>;
   closeWindow(): Promise<void>;
