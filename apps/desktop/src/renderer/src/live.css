@@ -1,0 +1,150 @@
+.engine-health {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: auto;
+  padding: 10px 8px;
+  border: 1px solid rgba(124, 159, 199, 0.18);
+  border-radius: 8px;
+  background: rgba(4, 15, 28, 0.55);
+  font-size: 10px;
+}
+
+.engine-health .health-dot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  margin-top: 3px;
+  border-radius: 50%;
+  background: #7d8fa5;
+  box-shadow: 0 0 8px rgba(125, 143, 165, 0.55);
+}
+
+.engine-health.good .health-dot {
+  background: #65b95f;
+  box-shadow: 0 0 10px rgba(101, 185, 95, 0.75);
+}
+
+.engine-health.bad .health-dot {
+  background: #ef5a59;
+  box-shadow: 0 0 10px rgba(239, 90, 89, 0.72);
+}
+
+.engine-health b,
+.engine-health small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.engine-health b {
+  color: #dce8f6;
+  line-height: 1.3;
+}
+
+.engine-health small {
+  margin-top: 4px;
+  color: #7f94ad;
+  white-space: nowrap;
+}
+
+.tool-button:disabled,
+.button:disabled {
+  cursor: not-allowed;
+  opacity: 0.38;
+  filter: grayscale(0.55);
+}
+
+.empty-downloads,
+.empty-detail,
+.empty-mini {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 8px;
+  min-height: 180px;
+  padding: 24px;
+  color: #8ba0b9;
+  text-align: center;
+}
+
+.empty-downloads b,
+.empty-detail b {
+  color: #dce8f6;
+  font-size: 14px;
+}
+
+.empty-detail {
+  min-height: 365px;
+}
+
+.empty-mini {
+  min-height: 230px;
+}
+
+.action-error {
+  padding: 9px 11px;
+  border: 1px solid rgba(239, 90, 89, 0.35);
+  border-radius: 7px;
+  background: rgba(115, 25, 32, 0.27);
+  color: #ffaaa8;
+  font-size: 11px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.app-error {
+  margin: 0 12px 8px;
+}
+
+.detail-error {
+  margin: 9px 12px 0;
+}
+
+.status-text.status-failed,
+.status-text.status-cancelled {
+  color: #ff7773;
+}
+
+.status-text.status-paused {
+  color: #f1bd5a;
+}
+
+.status-text.status-completed {
+  color: #75c86f;
+}
+
+.download-row {
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.download-row:hover {
+  background: rgba(41, 113, 195, 0.11);
+}
+
+.download-name b,
+.selected-file-title span,
+.file-info-title b {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 1260px) {
+  .primary-grid {
+    grid-template-columns: 128px minmax(520px, 1.45fr) minmax(340px, .95fr);
+  }
+
+  .right-sidebar {
+    display: none;
+  }
+
+  .secondary-grid {
+    grid-template-columns: 1.3fr .7fr .7fr;
+  }
+
+  .settings-panel {
+    display: none;
+  }
+}
