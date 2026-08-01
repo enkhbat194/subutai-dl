@@ -101,9 +101,22 @@ function getJob(id: string): DownloadJob {
   return job;
 }
 
-function getTaskId(job: DownloadJob): string {
-  if (!job.engineTaskId) throw new Error('Таталтын даалгавар хараахан үүсээгүй байна.');
-  return job.engineTaskId;
+async function assignTask(job: DownloadJob): Promise<void> {
+  job.status = 'resolving';
+  job.updatedAt = new Date().toISOString();
+  saveJob(job);
+  broadcastJobs();
+
+  job.engineTaskId = await engine.addDownload({
+    url: job.url,
+    destination: job.destination,
+    filename: job.filename,
+    connections: job.connections,
+  });
+  job.status = 'queued';
+  job.updatedAt = new Date().toISOString();
+  saveJob(job);
+  broadcastJobs();
 }
 
 async function createDownload(request: DownloadCreateRequest): Promise<DownloadJob> {
@@ -121,7 +134,7 @@ async function createDownload(request: DownloadCreateRequest): Promise<DownloadJ
     filename,
     destination,
     engine: 'subutai',
-    status: 'resolving',
+    status: 'queued',
     downloadedBytes: 0,
     totalBytes: null,
     speedBytesPerSecond: 0,
@@ -136,35 +149,23 @@ async function createDownload(request: DownloadCreateRequest): Promise<DownloadJ
   broadcastJobs();
 
   try {
-    const options: {
-      url: string;
-      destination: string;
-      connections: number;
-      filename?: string;
-    } = {
-      url: job.url,
-      destination,
-      connections,
-    };
-    if (requestedFilename) options.filename = requestedFilename;
-
-    job.engineTaskId = await engine.addDownload(options);
-    job.status = 'queued';
-    job.updatedAt = new Date().toISOString();
+    await assignTask(job);
   } catch (error) {
     job.status = 'failed';
     job.error = error instanceof Error ? error.message : String(error);
     job.updatedAt = new Date().toISOString();
+    saveJob(job);
+    broadcastJobs();
   }
 
-  saveJob(job);
-  broadcastJobs();
   return { ...job };
 }
 
 async function pauseDownload(id: string): Promise<DownloadJob> {
   const job = getJob(id);
-  await engine.pause(getTaskId(job));
+  if (!job.engineTaskId) await assignTask(job);
+  if (!job.engineTaskId) throw new Error('Таталтын даалгавар үүссэнгүй.');
+  await engine.pause(job.engineTaskId);
   job.status = 'paused';
   job.speedBytesPerSecond = 0;
   job.etaSeconds = null;
@@ -176,12 +177,16 @@ async function pauseDownload(id: string): Promise<DownloadJob> {
 
 async function resumeDownload(id: string): Promise<DownloadJob> {
   const job = getJob(id);
-  await engine.resume(getTaskId(job));
-  job.status = 'queued';
+  if (!job.engineTaskId) {
+    await assignTask(job);
+  } else {
+    await engine.resume(job.engineTaskId);
+    job.status = 'queued';
+    job.updatedAt = new Date().toISOString();
+    saveJob(job);
+    broadcastJobs();
+  }
   delete job.error;
-  job.updatedAt = new Date().toISOString();
-  saveJob(job);
-  broadcastJobs();
   return { ...job };
 }
 
@@ -190,6 +195,7 @@ async function cancelDownload(id: string): Promise<DownloadJob> {
   if (job.engineTaskId && !['completed', 'failed', 'cancelled'].includes(job.status)) {
     await engine.cancel(job.engineTaskId);
   }
+  delete job.engineTaskId;
   job.status = 'cancelled';
   job.speedBytesPerSecond = 0;
   job.etaSeconds = null;
@@ -286,11 +292,27 @@ function restoreJobs(): void {
     restored.engine = 'subutai';
     restored.speedBytesPerSecond = 0;
     restored.etaSeconds = null;
-    if (restored.status === 'downloading' || restored.status === 'resolving') {
-      restored.status = 'queued';
+    if (!['completed', 'failed', 'cancelled'].includes(restored.status)) {
+      delete restored.engineTaskId;
+      if (restored.status !== 'paused') restored.status = 'queued';
     }
     jobs.set(restored.id, restored);
   }
+}
+
+async function recoverInterruptedJobs(): Promise<void> {
+  for (const job of jobs.values()) {
+    if (job.status !== 'queued' || job.engineTaskId) continue;
+    try {
+      await assignTask(job);
+    } catch (error) {
+      job.status = 'failed';
+      job.error = error instanceof Error ? error.message : String(error);
+      job.updatedAt = new Date().toISOString();
+      saveJob(job);
+    }
+  }
+  broadcastJobs();
 }
 
 ipcMain.handle('downloads:list', (): DownloadJob[] => snapshot());
@@ -314,6 +336,7 @@ app.whenReady().then(() => {
   store = new JobStore(join(app.getPath('userData'), 'data', 'subutai.db'));
   restoreJobs();
   createWindow();
+  void recoverInterruptedJobs();
   syncTimer = setInterval(() => void synchronizeJobs(), 750);
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
