@@ -1,5 +1,5 @@
 import { app } from 'electron';
-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import type { DownloadRequestHeaders, MediaDownloadOptions, MediaProbeResult } from '@subutai/shared';
@@ -29,7 +29,7 @@ interface MediaTask {
   headers?: DownloadRequestHeaders;
   sourcePageUrl?: string;
   options: MediaDownloadOptions;
-  process: ChildProcessWithoutNullStreams | null;
+  process: ChildProcess | null;
   status: MediaTaskStatus;
   stderr: string[];
 }
@@ -83,8 +83,8 @@ export class MediaService {
     const result: MediaProbeResult = {
       title: typeof payload.title === 'string' && payload.title.trim() ? payload.title : 'Media',
       isPlaylist: entries.length > 0 || payload._type === 'playlist',
-      entryCount: entries.length || undefined,
     };
+    if (entries.length > 0) result.entryCount = entries.length;
     if (typeof payload.uploader === 'string') result.uploader = payload.uploader;
     if (typeof payload.duration === 'number') result.durationSeconds = payload.duration;
     if (typeof payload.thumbnail === 'string') result.thumbnail = payload.thumbnail;
@@ -201,16 +201,16 @@ export class MediaService {
     task.status.phase = 'resolving';
     this.lastError = '';
 
-    child.stdout.setEncoding('utf8');
-    child.stderr.setEncoding('utf8');
+    child.stdout?.setEncoding('utf8');
+    child.stderr?.setEncoding('utf8');
     let stdoutBuffer = '';
-    child.stdout.on('data', (chunk: string) => {
+    child.stdout?.on('data', (chunk: string) => {
       stdoutBuffer += chunk;
       const lines = stdoutBuffer.split(/\r?\n/);
       stdoutBuffer = lines.pop() ?? '';
       for (const line of lines) this.consumeOutputLine(task, line.trim());
     });
-    child.stderr.on('data', (chunk: string) => {
+    child.stderr?.on('data', (chunk: string) => {
       for (const line of chunk.split(/\r?\n/)) {
         const trimmed = line.trim();
         if (!trimmed) continue;
@@ -261,11 +261,11 @@ export class MediaService {
       '--retry-sleep', 'http:linear=1:5:2',
       '--retry-sleep', 'fragment:linear=1:5:2',
       '--concurrent-fragments', '8',
-      '--ffmpeg-location', dirname(ffmpegPath),
       '--paths', task.destination,
       '--progress-template', 'download:SUBUTAI_PROGRESS|%(progress.downloaded_bytes)s|%(progress.total_bytes_estimate)s|%(progress.speed)s|%(progress.eta)s|%(progress.status)s|%(info.title)s|%(info.playlist_index)s|%(info.playlist_count)s',
       '--print', 'after_move:SUBUTAI_FILE|%(filepath)s',
     ];
+    this.appendFfmpegLocation(args, ffmpegPath);
 
     if (task.filename?.trim()) {
       const stem = task.filename.replace(/\.[^.]+$/, '');
@@ -297,6 +297,12 @@ export class MediaService {
     this.appendRequestArguments(args, task.headers, task.sourcePageUrl);
     args.push(task.url);
     return args;
+  }
+
+  private appendFfmpegLocation(args: string[], ffmpegPath: string): void {
+    if (ffmpegPath !== basename(ffmpegPath) || existsSync(ffmpegPath)) {
+      args.push('--ffmpeg-location', dirname(ffmpegPath));
+    }
   }
 
   private appendRequestArguments(args: string[], headers?: DownloadRequestHeaders, sourcePageUrl?: string): void {
@@ -344,10 +350,10 @@ export class MediaService {
       const child = spawn(executable, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
       let stdout = '';
       let stderr = '';
-      child.stdout.setEncoding('utf8');
-      child.stderr.setEncoding('utf8');
-      child.stdout.on('data', (chunk: string) => { stdout += chunk; });
-      child.stderr.on('data', (chunk: string) => { stderr += chunk; });
+      child.stdout?.setEncoding('utf8');
+      child.stderr?.setEncoding('utf8');
+      child.stdout?.on('data', (chunk: string) => { stdout += chunk; });
+      child.stderr?.on('data', (chunk: string) => { stderr += chunk; });
       child.once('error', (error) => reject(new Error(this.publicError(error.message))));
       child.once('exit', (code) => {
         if (code !== 0) {
@@ -398,10 +404,10 @@ export class MediaService {
     return new Promise((resolvePromise) => {
       const child = spawn(executable, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
       let output = '';
-      child.stdout.setEncoding('utf8');
-      child.stderr.setEncoding('utf8');
-      child.stdout.on('data', (chunk: string) => { output += chunk; });
-      child.stderr.on('data', (chunk: string) => { output += chunk; });
+      child.stdout?.setEncoding('utf8');
+      child.stderr?.setEncoding('utf8');
+      child.stdout?.on('data', (chunk: string) => { output += chunk; });
+      child.stderr?.on('data', (chunk: string) => { output += chunk; });
       child.once('error', () => resolvePromise(''));
       child.once('exit', () => resolvePromise(output.split(/\r?\n/)[0]?.trim() ?? ''));
     });
