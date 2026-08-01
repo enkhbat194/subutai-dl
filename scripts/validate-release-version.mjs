@@ -3,7 +3,8 @@ import { readFile } from 'node:fs/promises';
 
 const rootPackage = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
 const desktopPackage = JSON.parse(await readFile(new URL('../apps/desktop/package.json', import.meta.url), 'utf8'));
-const requestedTag = process.argv[2] || process.env.RELEASE_TAG || process.env.GITHUB_REF_NAME || '';
+const githubTag = process.env.GITHUB_REF_TYPE === 'tag' ? process.env.GITHUB_REF_NAME ?? '' : '';
+const requestedTag = process.argv[2] || process.env.RELEASE_TAG || githubTag;
 
 assert.match(rootPackage.version, /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/, 'Root package version must be valid semver.');
 assert.equal(desktopPackage.version, rootPackage.version, 'Root and desktop package versions must match.');
