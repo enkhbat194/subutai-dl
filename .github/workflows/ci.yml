@@ -26,6 +26,9 @@ jobs:
       - name: Enable pnpm
         run: corepack enable
 
+      - name: Install aria2
+        run: sudo apt-get update && sudo apt-get install -y aria2
+
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
 
@@ -34,3 +37,6 @@ jobs:
 
       - name: Build desktop
         run: pnpm build
+
+      - name: Real aria2 range-download smoke test
+        run: pnpm test:aria2
