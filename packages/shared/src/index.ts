@@ -11,6 +11,7 @@ export type DownloadStatus =
   | 'cancelled';
 
 export type DownloadSource = 'desktop' | 'chrome' | 'edge' | 'firefox' | 'clipboard' | 'batch' | 'site-grabber';
+export type QueuePriority = 'low' | 'normal' | 'high';
 
 export interface DownloadRequestHeaders {
   [name: string]: string;
@@ -56,6 +57,8 @@ export interface DownloadCreateRequest {
   source?: DownloadSource;
   sourcePageUrl?: string;
   media?: MediaDownloadOptions;
+  priority?: QueuePriority;
+  scheduleId?: string;
 }
 
 export interface BrowserEnqueueMessage {
@@ -103,8 +106,50 @@ export interface DownloadJob {
   media?: MediaDownloadOptions;
   playlistIndex?: number;
   playlistCount?: number;
+  priority?: QueuePriority;
+  queueOrder?: number;
+  scheduleId?: string;
+  pausedByScheduler?: boolean;
   engineTaskId?: string;
   error?: string;
+}
+
+export interface QueueSettings {
+  maxConcurrentDownloads: number;
+  schedulingEnabled: boolean;
+  pauseOutsideSchedule: boolean;
+}
+
+export interface DownloadSchedule {
+  id: string;
+  name: string;
+  enabled: boolean;
+  days: number[];
+  startTime: string;
+  endTime: string;
+  maxConcurrentDownloads?: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DownloadScheduleInput {
+  id?: string;
+  name: string;
+  enabled: boolean;
+  days: number[];
+  startTime: string;
+  endTime: string;
+  maxConcurrentDownloads?: number;
+}
+
+export interface QueueSnapshot {
+  settings: QueueSettings;
+  schedules: DownloadSchedule[];
+  activeScheduleIds: string[];
+  allowedNow: boolean;
+  runningCount: number;
+  queuedCount: number;
+  pausedCount: number;
 }
 
 export interface SubutaiEngineHealth {
@@ -131,8 +176,16 @@ export interface SubutaiDesktopApi {
   cancelDownload(id: string): Promise<DownloadJob>;
   removeDownload(id: string, deleteFile?: boolean): Promise<void>;
   openDownloadFolder(id: string): Promise<void>;
+  setDownloadPriority(id: string, priority: QueuePriority): Promise<DownloadJob>;
+  moveDownload(id: string, direction: 'up' | 'down' | 'top' | 'bottom'): Promise<DownloadJob[]>;
+  getQueueSnapshot(): Promise<QueueSnapshot>;
+  updateQueueSettings(settings: Partial<QueueSettings>): Promise<QueueSnapshot>;
+  saveSchedule(schedule: DownloadScheduleInput): Promise<QueueSnapshot>;
+  deleteSchedule(id: string): Promise<QueueSnapshot>;
+  runQueueNow(): Promise<QueueSnapshot>;
   getEngineHealth(): Promise<EngineHealth>;
   onDownloadsChanged(listener: (jobs: DownloadJob[]) => void): () => void;
+  onQueueChanged(listener: (snapshot: QueueSnapshot) => void): () => void;
   minimizeWindow(): Promise<void>;
   toggleMaximizeWindow(): Promise<void>;
   closeWindow(): Promise<void>;
