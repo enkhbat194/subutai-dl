@@ -1,0 +1,170 @@
+.transfer-launch-button {
+  position: fixed;
+  right: 28px;
+  bottom: 156px;
+  z-index: 40;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 48px;
+  padding: 0 15px;
+  border: 1px solid rgba(92, 218, 174, .35);
+  border-radius: 14px;
+  background: linear-gradient(135deg, #0f6751, #179773);
+  color: #fff;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, .32);
+  cursor: pointer;
+}
+
+.transfer-launch-button span { font-size: 20px; }
+
+.transfer-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(1, 7, 16, .86);
+  backdrop-filter: blur(12px);
+}
+
+.transfer-modal {
+  width: min(820px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  padding: 24px;
+  border: 1px solid rgba(74, 205, 159, .25);
+  border-radius: 20px;
+  background: linear-gradient(180deg, #0d1b2e, #091321);
+  color: #eaf4ff;
+  box-shadow: 0 30px 90px rgba(0, 0, 0, .58);
+}
+
+.transfer-modal-header,
+.transfer-actions,
+.proxy-mode-switch {
+  display: flex;
+  align-items: center;
+}
+
+.transfer-modal-header {
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+
+.transfer-modal-header span {
+  font-size: 11px;
+  letter-spacing: .2em;
+  color: #49d0a1;
+}
+
+.transfer-modal-header h2 { margin: 5px 0 0; font-size: 24px; }
+.transfer-modal-header > button {
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 10px;
+  background: rgba(255,255,255,.08);
+  color: #fff;
+  font-size: 24px;
+  cursor: pointer;
+}
+
+.transfer-card {
+  margin-top: 14px;
+  padding: 16px;
+  border: 1px solid rgba(101, 151, 202, .17);
+  border-radius: 14px;
+  background: rgba(8, 22, 39, .75);
+}
+
+.transfer-card h3 { margin: 0 0 13px; }
+.transfer-grid { display: grid; gap: 12px; }
+.transfer-grid.two { grid-template-columns: 1fr 1fr; }
+.transfer-grid.four { grid-template-columns: repeat(4, 1fr); }
+.transfer-grid .transfer-wide { grid-column: 1 / -1; }
+
+.transfer-modal label {
+  display: grid;
+  gap: 6px;
+  color: #9bb0c9;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.transfer-modal label small { color: #7189a4; font-weight: 400; }
+.transfer-modal input,
+.transfer-modal select {
+  min-height: 42px;
+  padding: 0 11px;
+  border: 1px solid rgba(110, 153, 203, .24);
+  border-radius: 9px;
+  outline: none;
+  background: #07111f;
+  color: #edf7ff;
+}
+
+.transfer-modal input:focus { border-color: #42c99b; box-shadow: 0 0 0 3px rgba(66,201,155,.11); }
+.proxy-mode-switch { gap: 8px; margin-bottom: 13px; }
+.proxy-mode-switch button {
+  flex: 1;
+  min-height: 39px;
+  border: 1px solid rgba(110, 153, 203, .2);
+  border-radius: 9px;
+  background: #102139;
+  color: #a9bed5;
+  cursor: pointer;
+}
+
+.proxy-mode-switch button.active {
+  border-color: #3dcc9a;
+  background: rgba(31, 154, 111, .23);
+  color: #fff;
+}
+
+.clear-proxy-password {
+  min-height: 38px;
+  border: 1px solid rgba(255,112,122,.28);
+  border-radius: 9px;
+  background: rgba(126,36,46,.2);
+  color: #ffbcc2;
+  cursor: pointer;
+}
+
+.transfer-error,
+.transfer-saved {
+  margin-top: 14px;
+  padding: 11px 12px;
+  border-radius: 10px;
+}
+
+.transfer-error {
+  border: 1px solid rgba(255,100,110,.35);
+  background: rgba(143,28,39,.2);
+  color: #ffb8bf;
+}
+
+.transfer-saved {
+  border: 1px solid rgba(74,213,148,.3);
+  background: rgba(25,119,80,.2);
+  color: #9af0c5;
+}
+
+.transfer-actions { justify-content: flex-end; gap: 10px; margin-top: 18px; }
+.transfer-actions button {
+  min-height: 42px;
+  padding: 0 16px;
+  border: 1px solid rgba(110,153,203,.23);
+  border-radius: 9px;
+  background: #12243b;
+  color: #eaf4ff;
+  cursor: pointer;
+}
+.transfer-actions .primary { border-color: #3dcc9a; background: linear-gradient(135deg,#137155,#1ba779); }
+.transfer-loading { padding: 30px; text-align: center; color: #829ab5; }
+
+@media (max-width: 760px) {
+  .transfer-grid.two,
+  .transfer-grid.four { grid-template-columns: 1fr; }
+}
