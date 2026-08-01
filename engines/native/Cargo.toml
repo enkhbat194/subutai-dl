@@ -6,7 +6,7 @@ publish = false
 
 [lib]
 name = "subutai_native_engine"
-path = "src/core.rs"
+path = "src/lib.rs"
 
 [[bin]]
 name = "subutai-engine"
