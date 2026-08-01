@@ -6,6 +6,7 @@ import './live.css';
 import './media.css';
 import './queue.css';
 import './transfer.css';
+import './batch.css';
 
 const root = document.getElementById('root');
 

@@ -63,6 +63,31 @@ export interface DownloadCreateRequest {
   speedLimitBytesPerSecond?: number;
 }
 
+export interface BatchPreviewRequest {
+  input: string;
+  maxItems?: number;
+}
+
+export interface BatchPreviewResult {
+  urls: string[];
+  total: number;
+  duplicateCount: number;
+  invalidLines: string[];
+  truncated: boolean;
+}
+
+export interface BatchCreateRequest extends BatchPreviewRequest {
+  destination: string;
+  connections?: number;
+  priority?: QueuePriority;
+  speedLimitBytesPerSecond?: number;
+}
+
+export interface BatchCreateResult {
+  jobs: DownloadJob[];
+  rejected: Array<{ url: string; error: string }>;
+}
+
 export interface BrowserEnqueueMessage {
   type: 'enqueue';
   requestId: string;
@@ -200,6 +225,8 @@ export interface EngineHealth {
 export interface SubutaiDesktopApi {
   listDownloads(): Promise<DownloadJob[]>;
   createDownload(request: DownloadCreateRequest): Promise<DownloadJob>;
+  previewBatch(request: BatchPreviewRequest): Promise<BatchPreviewResult>;
+  createBatchDownloads(request: BatchCreateRequest): Promise<BatchCreateResult>;
   probeMedia(request: MediaProbeRequest): Promise<MediaProbeResult>;
   pauseDownload(id: string): Promise<DownloadJob>;
   resumeDownload(id: string): Promise<DownloadJob>;

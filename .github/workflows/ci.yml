@@ -41,6 +41,9 @@ jobs:
       - name: Transfer control policy tests
         run: pnpm test:transfer
 
+      - name: Batch and numbered URL tests
+        run: pnpm test:batch
+
       - name: Build desktop
         run: pnpm build
 

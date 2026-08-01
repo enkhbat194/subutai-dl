@@ -1,5 +1,9 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type {
+  BatchCreateRequest,
+  BatchCreateResult,
+  BatchPreviewRequest,
+  BatchPreviewResult,
   DownloadCreateRequest,
   DownloadJob,
   DownloadScheduleInput,
@@ -17,6 +21,8 @@ import type {
 const api: SubutaiDesktopApi = {
   listDownloads: (): Promise<DownloadJob[]> => ipcRenderer.invoke('downloads:list'),
   createDownload: (request: DownloadCreateRequest): Promise<DownloadJob> => ipcRenderer.invoke('downloads:create', request),
+  previewBatch: (request: BatchPreviewRequest): Promise<BatchPreviewResult> => ipcRenderer.invoke('batch:preview', request),
+  createBatchDownloads: (request: BatchCreateRequest): Promise<BatchCreateResult> => ipcRenderer.invoke('batch:create', request),
   probeMedia: (request: MediaProbeRequest): Promise<MediaProbeResult> => ipcRenderer.invoke('media:probe', request),
   pauseDownload: (id: string): Promise<DownloadJob> => ipcRenderer.invoke('downloads:pause', id),
   resumeDownload: (id: string): Promise<DownloadJob> => ipcRenderer.invoke('downloads:resume', id),
