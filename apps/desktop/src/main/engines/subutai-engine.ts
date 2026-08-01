@@ -11,11 +11,16 @@ export class SubutaiEngine {
     filename?: string;
     connections: number;
   }): Promise<string> {
-    return this.directEngine.addUri(options.url, {
+    const directOptions: {
+      destination: string;
+      filename?: string;
+      connections: number;
+    } = {
       destination: options.destination,
-      filename: options.filename,
       connections: options.connections,
-    });
+    };
+    if (options.filename) directOptions.filename = options.filename;
+    return this.directEngine.addUri(options.url, directOptions);
   }
 
   async getStatus(taskId: string): Promise<SubutaiTaskStatus> {
