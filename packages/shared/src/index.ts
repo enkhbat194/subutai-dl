@@ -10,12 +10,46 @@ export type DownloadStatus =
   | 'failed'
   | 'cancelled';
 
+export type DownloadSource = 'desktop' | 'chrome' | 'edge' | 'firefox' | 'clipboard' | 'batch' | 'site-grabber';
+
+export interface DownloadRequestHeaders {
+  [name: string]: string;
+}
+
 export interface DownloadCreateRequest {
   url: string;
   filename?: string;
   destination: string;
   engine?: DownloadEngine;
   connections?: number;
+  headers?: DownloadRequestHeaders;
+  source?: DownloadSource;
+  sourcePageUrl?: string;
+}
+
+export interface BrowserEnqueueMessage {
+  type: 'enqueue';
+  requestId: string;
+  url: string;
+  filename?: string;
+  headers?: DownloadRequestHeaders;
+  source: 'chrome' | 'edge' | 'firefox';
+  sourcePageUrl?: string;
+  connections?: number;
+}
+
+export interface BrowserPingMessage {
+  type: 'ping';
+  requestId: string;
+}
+
+export type BrowserNativeMessage = BrowserEnqueueMessage | BrowserPingMessage;
+
+export interface BrowserNativeResponse {
+  ok: boolean;
+  requestId: string;
+  accepted?: number;
+  error?: string;
 }
 
 export interface DownloadJob {
@@ -32,6 +66,9 @@ export interface DownloadJob {
   connections: number;
   createdAt: string;
   updatedAt: string;
+  source?: DownloadSource;
+  sourcePageUrl?: string;
+  headers?: DownloadRequestHeaders;
   engineTaskId?: string;
   error?: string;
 }

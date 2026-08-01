@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import type { DownloadCreateRequest, DownloadJob, DownloadStatus, EngineHealth } from '@subutai/shared';
+import { consumeBrowserPayloadArguments } from './browser/native-messaging';
 import { SubutaiEngine, type SubutaiTaskStatus } from './engines/subutai-engine';
 import { JobStore } from './storage/job-store';
 
@@ -107,23 +108,32 @@ async function assignTask(job: DownloadJob): Promise<void> {
   saveJob(job);
   broadcastJobs();
 
-  job.engineTaskId = await engine.addDownload({
+  const options: {
+    url: string;
+    destination: string;
+    filename?: string;
+    connections: number;
+    headers?: Record<string, string>;
+  } = {
     url: job.url,
     destination: job.destination,
     filename: job.filename,
     connections: job.connections,
-  });
+  };
+  if (job.headers) options.headers = job.headers;
+
+  job.engineTaskId = await engine.addDownload(options);
   job.status = 'queued';
   job.updatedAt = new Date().toISOString();
   saveJob(job);
   broadcastJobs();
 }
 
-async function createDownload(request: DownloadCreateRequest): Promise<DownloadJob> {
+export async function createDownload(request: DownloadCreateRequest): Promise<DownloadJob> {
   validateRequest(request);
   const now = new Date().toISOString();
   const id = crypto.randomUUID();
-  const connections = Math.max(1, Math.min(16, Math.trunc(request.connections ?? 16)));
+  const connections = Math.max(1, Math.min(32, Math.trunc(request.connections ?? 16)));
   const destination = request.destination.trim() || app.getPath('downloads');
   const requestedFilename = request.filename?.trim() ?? '';
   const filename = requestedFilename || inferFilename(request.url);
@@ -143,6 +153,9 @@ async function createDownload(request: DownloadCreateRequest): Promise<DownloadJ
     createdAt: now,
     updatedAt: now,
   };
+  if (request.source) job.source = request.source;
+  if (request.sourcePageUrl) job.sourcePageUrl = request.sourcePageUrl;
+  if (request.headers && Object.keys(request.headers).length > 0) job.headers = { ...request.headers };
 
   jobs.set(id, job);
   saveJob(job);
@@ -159,6 +172,10 @@ async function createDownload(request: DownloadCreateRequest): Promise<DownloadJ
   }
 
   return { ...job };
+}
+
+export async function enqueueBrowserArguments(args: readonly string[]): Promise<number> {
+  return consumeBrowserPayloadArguments(args, createDownload);
 }
 
 async function pauseDownload(id: string): Promise<DownloadJob> {
@@ -332,9 +349,10 @@ ipcMain.handle('window:toggle-maximize', (event): void => {
 });
 ipcMain.handle('window:close', (event): void => { BrowserWindow.fromWebContents(event.sender)?.close(); });
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   store = new JobStore(join(app.getPath('userData'), 'data', 'subutai.db'));
   restoreJobs();
+  await enqueueBrowserArguments(process.argv);
   createWindow();
   void recoverInterruptedJobs();
   syncTimer = setInterval(() => void synchronizeJobs(), 750);

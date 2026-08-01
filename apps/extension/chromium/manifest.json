@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "Subutai Download Manager Integration",
+  "version": "0.1.0",
+  "description": "Send browser downloads, links, media, cookies and request context to Subutai Download Manager.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA1V/pusidPVknCEA7gUIuPiNmyHt/J2kLmE1cSUJVzDmIY0HexW7j+BS7QGM2O5AA/+/scCef1bw8kfWjUEDK9oa/3jJ38D9+xf5v5bqxUhlMRl2dFY1+PQU/X4XvvgrVCinTdScelVm8RxyjxQrOjQyz0pCswWajRRRnJyYi/ACCiLDCwARg9Mb1/epdaL8ilma4HToFtXrgLgHnkuX7YC/Zw3yzOcSh0NMTkkBnAPfBY1/rar7PVtmdzGyu2+DiLgfL0WwwzuU1Z7OcAcr3qvrkPCBugNQXGHH/WAylA48gEsGLFX1KPyci3iW6gn+ZZV5amXameUHyMbD56cmpGQIDAQAB",
+  "permissions": [
+    "nativeMessaging",
+    "downloads",
+    "contextMenus",
+    "cookies",
+    "storage",
+    "webRequest",
+    "notifications",
+    "tabs"
+  ],
+  "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "Subutai",
+    "default_popup": "popup.html"
+  }
+}

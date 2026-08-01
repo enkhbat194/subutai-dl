@@ -10,16 +10,19 @@ export class SubutaiEngine {
     destination: string;
     filename?: string;
     connections: number;
+    headers?: Record<string, string>;
   }): Promise<string> {
     const directOptions: {
       destination: string;
       filename?: string;
       connections: number;
+      headers?: Record<string, string>;
     } = {
       destination: options.destination,
       connections: options.connections,
     };
     if (options.filename) directOptions.filename = options.filename;
+    if (options.headers) directOptions.headers = options.headers;
     return this.directEngine.addUri(options.url, directOptions);
   }
 

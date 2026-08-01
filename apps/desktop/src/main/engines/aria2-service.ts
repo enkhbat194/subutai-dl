@@ -38,6 +38,17 @@ interface JsonRpcResponse<T> {
   };
 }
 
+type Aria2Options = Record<string, string | string[]>;
+
+const BLOCKED_FORWARD_HEADERS = new Set([
+  'accept-encoding',
+  'connection',
+  'content-length',
+  'host',
+  'proxy-connection',
+  'transfer-encoding',
+]);
+
 export class Aria2Service {
   private child: ChildProcess | null = null;
   private startPromise: Promise<void> | null = null;
@@ -152,12 +163,13 @@ export class Aria2Service {
       destination: string;
       filename?: string;
       connections: number;
+      headers?: Record<string, string>;
     },
   ): Promise<string> {
     await this.ensureStarted();
 
     const connections = Math.max(1, Math.min(16, Math.trunc(options.connections)));
-    const ariaOptions: Record<string, string> = {
+    const ariaOptions: Aria2Options = {
       dir: options.destination,
       continue: 'true',
       split: String(connections),
@@ -168,6 +180,13 @@ export class Aria2Service {
     };
 
     if (options.filename?.trim()) ariaOptions.out = options.filename.trim();
+    if (options.headers) {
+      const forwardedHeaders = Object.entries(options.headers)
+        .filter(([name, value]) => !BLOCKED_FORWARD_HEADERS.has(name.toLowerCase()) && value.trim().length > 0)
+        .map(([name, value]) => `${name}: ${value.replace(/[\r\n]+/gu, ' ').trim()}`);
+      if (forwardedHeaders.length > 0) ariaOptions.header = forwardedHeaders;
+    }
+
     return this.call<string>('aria2.addUri', [[url], ariaOptions]);
   }
 

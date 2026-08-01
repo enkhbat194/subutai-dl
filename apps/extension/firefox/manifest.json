@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "Subutai Download Manager Integration",
+  "version": "0.1.0",
+  "description": "Send browser downloads, links, media, cookies and request context to Subutai Download Manager.",
+  "permissions": [
+    "nativeMessaging",
+    "downloads",
+    "contextMenus",
+    "cookies",
+    "storage",
+    "webRequest",
+    "notifications",
+    "tabs",
+    "<all_urls>"
+  ],
+  "background": {
+    "scripts": ["background.js"]
+  },
+  "action": {
+    "default_title": "Subutai",
+    "default_popup": "popup.html"
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "subutai-download@subutai.local",
+      "strict_min_version": "128.0"
+    }
+  }
+}
