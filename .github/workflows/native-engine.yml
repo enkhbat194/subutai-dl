@@ -39,7 +39,6 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install pinned Rust toolchain
-        shell: bash
         run: |
           rustup toolchain install 1.97.1 --profile minimal --component rustfmt,clippy
           rustup default 1.97.1
