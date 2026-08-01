@@ -2,7 +2,9 @@ name: Subutai Windows Package
 
 on:
   push:
-    branches: [main, agent/unified-subutai-runtime]
+    branches: [main, "agent/**"]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
