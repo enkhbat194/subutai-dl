@@ -4,6 +4,7 @@ import { RootApp } from './RootApp';
 import './styles.css';
 import './live.css';
 import './media.css';
+import './queue.css';
 
 const root = document.getElementById('root');
 
