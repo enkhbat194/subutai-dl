@@ -18,8 +18,7 @@ async function getFreePort() {
         reject(new Error('Could not allocate a local TCP port'));
         return;
       }
-      const { port } = address;
-      server.close((error) => error ? reject(error) : resolve(port));
+      server.close((error) => error ? reject(error) : resolve(address.port));
     });
   });
 }
@@ -30,10 +29,10 @@ function sha256(buffer) {
 
 const payload = randomBytes(5 * 1024 * 1024 + 137);
 const expectedHash = sha256(payload);
-const downloadDirectory = await mkdtemp(join(tmpdir(), 'subutai-aria2-'));
+const downloadDirectory = await mkdtemp(join(tmpdir(), 'subutai-direct-'));
 const rpcPort = await getFreePort();
 const rpcSecret = randomBytes(16).toString('hex');
-let aria2 = null;
+let engineProcess = null;
 let httpServer = null;
 
 async function rpc(method, params = []) {
@@ -47,9 +46,9 @@ async function rpc(method, params = []) {
       params: [`token:${rpcSecret}`, ...params],
     }),
   });
-  if (!response.ok) throw new Error(`aria2 RPC HTTP ${response.status}`);
+  if (!response.ok) throw new Error(`Subutai direct engine RPC HTTP ${response.status}`);
   const body = await response.json();
-  if (body.error) throw new Error(`aria2 RPC ${body.error.code}: ${body.error.message}`);
+  if (body.error) throw new Error(`Subutai direct engine RPC ${body.error.code}: ${body.error.message}`);
   return body.result;
 }
 
@@ -97,9 +96,9 @@ try {
     httpServer.listen(0, '127.0.0.1', resolve);
   });
   const address = httpServer.address();
-  if (!address || typeof address === 'string') throw new Error('HTTP smoke server did not start');
+  if (!address || typeof address === 'string') throw new Error('Subutai smoke server did not start');
 
-  aria2 = spawn('aria2c', [
+  engineProcess = spawn('aria2c', [
     '--enable-rpc=true',
     '--rpc-listen-all=false',
     `--rpc-listen-port=${rpcPort}`,
@@ -111,10 +110,10 @@ try {
   ], { stdio: ['ignore', 'pipe', 'pipe'] });
 
   let processError = '';
-  aria2.once('error', (error) => { processError = error.message; });
-  aria2.stderr.on('data', (chunk) => {
+  engineProcess.once('error', (error) => { processError = error.message; });
+  engineProcess.stderr.on('data', (chunk) => {
     const message = chunk.toString().trim();
-    if (message) process.stderr.write(`[aria2] ${message}\n`);
+    if (message) process.stderr.write(`[Subutai direct engine] ${message}\n`);
   });
 
   for (let attempt = 0; attempt < 50; attempt += 1) {
@@ -123,7 +122,7 @@ try {
       await rpc('aria2.getVersion');
       break;
     } catch {
-      if (attempt === 49) throw new Error('aria2 RPC did not become ready');
+      if (attempt === 49) throw new Error('Subutai direct engine did not become ready');
       await delay(100);
     }
   }
@@ -139,13 +138,20 @@ try {
 
   let finalStatus = null;
   for (let attempt = 0; attempt < 200; attempt += 1) {
-    finalStatus = await rpc('aria2.tellStatus', [gid, ['status', 'totalLength', 'completedLength', 'downloadSpeed', 'connections', 'errorMessage']]);
+    finalStatus = await rpc('aria2.tellStatus', [gid, [
+      'status',
+      'totalLength',
+      'completedLength',
+      'downloadSpeed',
+      'connections',
+      'errorMessage',
+    ]]);
     if (finalStatus.status === 'complete') break;
-    if (finalStatus.status === 'error') throw new Error(finalStatus.errorMessage || 'aria2 smoke download failed');
+    if (finalStatus.status === 'error') throw new Error(finalStatus.errorMessage || 'Subutai direct download failed');
     await delay(50);
   }
 
-  if (!finalStatus || finalStatus.status !== 'complete') throw new Error('aria2 smoke download timed out');
+  if (!finalStatus || finalStatus.status !== 'complete') throw new Error('Subutai direct download timed out');
   const downloaded = await readFile(join(downloadDirectory, 'smoke.bin'));
   const actualHash = sha256(downloaded);
   if (actualHash !== expectedHash) throw new Error(`Checksum mismatch: ${actualHash} != ${expectedHash}`);
@@ -154,11 +160,11 @@ try {
     result: 'PASS',
     bytes: downloaded.length,
     sha256: actualHash,
-    aria2Status: finalStatus.status,
+    status: finalStatus.status,
   }, null, 2));
 } finally {
-  if (aria2 && !aria2.killed) {
-    try { await rpc('aria2.shutdown'); } catch { aria2.kill(); }
+  if (engineProcess && !engineProcess.killed) {
+    try { await rpc('aria2.shutdown'); } catch { engineProcess.kill(); }
   }
   if (httpServer) await new Promise((resolve) => httpServer.close(resolve));
   await rm(downloadDirectory, { recursive: true, force: true });

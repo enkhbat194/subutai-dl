@@ -7,6 +7,7 @@ import type {
 } from '@subutai/shared';
 import { Aria2Service } from './aria2-service';
 import { MediaService } from './media-service';
+import { toPublicError } from './public-error';
 
 export interface SubutaiTaskStatus {
   gid: string;
@@ -119,7 +120,7 @@ export class SubutaiEngine {
     if (status.displayName) result.displayName = status.displayName;
     if (status.playlistIndex) result.playlistIndex = status.playlistIndex;
     if (status.playlistCount) result.playlistCount = status.playlistCount;
-    if (status.error) result.errorMessage = status.error;
+    if (status.error) result.errorMessage = toPublicError(status.error);
     return result;
   }
 
@@ -154,16 +155,8 @@ export class SubutaiEngine {
     if (direct.version) result.version = direct.version;
     if (media.version) result.mediaVersion = media.version;
     if (media.ffmpegVersion) result.ffmpegVersion = media.ffmpegVersion;
-    const errors = [direct.error, media.error].filter(Boolean).map((message) => this.toPublicError(String(message)));
+    const errors = [direct.error, media.error].filter(Boolean).map((message) => toPublicError(String(message)));
     if (errors.length > 0) result.error = errors.join(' | ');
     return result;
-  }
-
-  private toPublicError(message: string): string {
-    return message
-      .replaceAll(/aria2c/gi, 'Subutai Engine')
-      .replaceAll(/aria2/gi, 'Subutai Engine')
-      .replaceAll(/yt-dlp(?:\.exe)?/gi, 'Subutai Media')
-      .replaceAll(/ffmpeg(?:\.exe)?/gi, 'Subutai Media');
   }
 }

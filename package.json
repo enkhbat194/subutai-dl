@@ -2,14 +2,14 @@
   "name": "subutai-dl",
   "version": "0.1.0",
   "private": true,
-  "description": "SubutaiDL desktop download manager monorepo",
+  "description": "Subutai Download Manager monorepo",
   "packageManager": "pnpm@10.15.0",
   "scripts": {
     "dev": "pnpm --filter @subutai/desktop dev",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "lint": "pnpm -r lint",
-    "test:aria2": "node scripts/aria2-smoke.mjs",
+    "test:direct": "node scripts/direct-download-smoke.mjs",
     "test:media": "node scripts/media-smoke.mjs",
     "test:queue": "node --experimental-strip-types scripts/queue-policy-test.mts",
     "test:transfer": "node --experimental-strip-types scripts/transfer-policy-test.mts",
@@ -19,6 +19,7 @@
     "test:clipboard": "node --experimental-strip-types scripts/clipboard-policy-test.mts",
     "test:site-grabber": "node --experimental-strip-types scripts/site-grabber-test.mts",
     "test:system": "node --experimental-strip-types scripts/system-policy-test.mts",
-    "test:release-version": "node scripts/validate-release-version.mjs"
+    "test:release-version": "node scripts/validate-release-version.mjs",
+    "test:brand": "node scripts/brand-policy-test.mjs"
   }
 }
