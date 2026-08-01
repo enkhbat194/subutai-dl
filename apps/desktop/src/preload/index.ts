@@ -21,6 +21,8 @@ import type {
   SiteGrabberJob,
   SiteGrabberStartRequest,
   SubutaiDesktopApi,
+  SystemSettingsUpdate,
+  SystemState,
   TransferSettings,
   TransferSettingsUpdate,
 } from '@subutai/shared';
@@ -41,6 +43,13 @@ const api: SubutaiDesktopApi = {
   getSiteGrabberJob: (id: string): Promise<SiteGrabberJob> => ipcRenderer.invoke('site-grabber:get', id),
   cancelSiteGrabber: (id: string): Promise<SiteGrabberJob> => ipcRenderer.invoke('site-grabber:cancel', id),
   enqueueSiteGrabberResources: (request: SiteGrabberEnqueueRequest): Promise<SiteGrabberEnqueueResult> => ipcRenderer.invoke('site-grabber:enqueue', request),
+  getSystemState: (): Promise<SystemState> => ipcRenderer.invoke('system:get'),
+  updateSystemSettings: (settings: SystemSettingsUpdate): Promise<SystemState> => ipcRenderer.invoke('system:update-settings', settings),
+  checkForUpdates: (): Promise<SystemState> => ipcRenderer.invoke('system:check-updates'),
+  downloadUpdate: (): Promise<SystemState> => ipcRenderer.invoke('system:download-update'),
+  installUpdate: (): Promise<void> => ipcRenderer.invoke('system:install-update'),
+  showMainWindow: (): Promise<void> => ipcRenderer.invoke('system:show-window'),
+  quitApplication: (): Promise<void> => ipcRenderer.invoke('system:quit'),
   pauseDownload: (id: string): Promise<DownloadJob> => ipcRenderer.invoke('downloads:pause', id),
   resumeDownload: (id: string): Promise<DownloadJob> => ipcRenderer.invoke('downloads:resume', id),
   cancelDownload: (id: string): Promise<DownloadJob> => ipcRenderer.invoke('downloads:cancel', id),
@@ -87,6 +96,11 @@ const api: SubutaiDesktopApi = {
     const handler = (_event: Electron.IpcRendererEvent, job: SiteGrabberJob): void => listener(job);
     ipcRenderer.on('site-grabber:changed', handler);
     return () => ipcRenderer.removeListener('site-grabber:changed', handler);
+  },
+  onSystemStateChanged: (listener: (state: SystemState) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, state: SystemState): void => listener(state);
+    ipcRenderer.on('system:changed', handler);
+    return () => ipcRenderer.removeListener('system:changed', handler);
   },
   minimizeWindow: (): Promise<void> => ipcRenderer.invoke('window:minimize'),
   toggleMaximizeWindow: (): Promise<void> => ipcRenderer.invoke('window:toggle-maximize'),
