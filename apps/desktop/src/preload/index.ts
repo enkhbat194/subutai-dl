@@ -10,30 +10,28 @@ import type {
   QueueSettings,
   QueueSnapshot,
   SubutaiDesktopApi,
+  TransferSettings,
+  TransferSettingsUpdate,
 } from '@subutai/shared';
 
 const api: SubutaiDesktopApi = {
   listDownloads: (): Promise<DownloadJob[]> => ipcRenderer.invoke('downloads:list'),
-  createDownload: (request: DownloadCreateRequest): Promise<DownloadJob> =>
-    ipcRenderer.invoke('downloads:create', request),
+  createDownload: (request: DownloadCreateRequest): Promise<DownloadJob> => ipcRenderer.invoke('downloads:create', request),
   probeMedia: (request: MediaProbeRequest): Promise<MediaProbeResult> => ipcRenderer.invoke('media:probe', request),
   pauseDownload: (id: string): Promise<DownloadJob> => ipcRenderer.invoke('downloads:pause', id),
   resumeDownload: (id: string): Promise<DownloadJob> => ipcRenderer.invoke('downloads:resume', id),
   cancelDownload: (id: string): Promise<DownloadJob> => ipcRenderer.invoke('downloads:cancel', id),
-  removeDownload: (id: string, deleteFile = false): Promise<void> =>
-    ipcRenderer.invoke('downloads:remove', id, deleteFile),
+  removeDownload: (id: string, deleteFile = false): Promise<void> => ipcRenderer.invoke('downloads:remove', id, deleteFile),
   openDownloadFolder: (id: string): Promise<void> => ipcRenderer.invoke('downloads:open-folder', id),
-  setDownloadPriority: (id: string, priority: QueuePriority): Promise<DownloadJob> =>
-    ipcRenderer.invoke('downloads:priority', id, priority),
-  moveDownload: (id: string, direction: 'up' | 'down' | 'top' | 'bottom'): Promise<DownloadJob[]> =>
-    ipcRenderer.invoke('downloads:move', id, direction),
+  setDownloadPriority: (id: string, priority: QueuePriority): Promise<DownloadJob> => ipcRenderer.invoke('downloads:priority', id, priority),
+  moveDownload: (id: string, direction: 'up' | 'down' | 'top' | 'bottom'): Promise<DownloadJob[]> => ipcRenderer.invoke('downloads:move', id, direction),
   getQueueSnapshot: (): Promise<QueueSnapshot> => ipcRenderer.invoke('queue:get'),
-  updateQueueSettings: (settings: Partial<QueueSettings>): Promise<QueueSnapshot> =>
-    ipcRenderer.invoke('queue:settings', settings),
-  saveSchedule: (schedule: DownloadScheduleInput): Promise<QueueSnapshot> =>
-    ipcRenderer.invoke('queue:schedule-save', schedule),
+  updateQueueSettings: (settings: Partial<QueueSettings>): Promise<QueueSnapshot> => ipcRenderer.invoke('queue:settings', settings),
+  saveSchedule: (schedule: DownloadScheduleInput): Promise<QueueSnapshot> => ipcRenderer.invoke('queue:schedule-save', schedule),
   deleteSchedule: (id: string): Promise<QueueSnapshot> => ipcRenderer.invoke('queue:schedule-delete', id),
   runQueueNow: (): Promise<QueueSnapshot> => ipcRenderer.invoke('queue:run-now'),
+  getTransferSettings: (): Promise<TransferSettings> => ipcRenderer.invoke('transfer-settings:get'),
+  updateTransferSettings: (settings: TransferSettingsUpdate): Promise<TransferSettings> => ipcRenderer.invoke('transfer-settings:update', settings),
   getEngineHealth: (): Promise<EngineHealth> => ipcRenderer.invoke('engines:health'),
   onDownloadsChanged: (listener: (jobs: DownloadJob[]) => void): (() => void) => {
     const handler = (_event: Electron.IpcRendererEvent, jobs: DownloadJob[]): void => listener(jobs);
@@ -44,6 +42,11 @@ const api: SubutaiDesktopApi = {
     const handler = (_event: Electron.IpcRendererEvent, snapshot: QueueSnapshot): void => listener(snapshot);
     ipcRenderer.on('queue:changed', handler);
     return () => ipcRenderer.removeListener('queue:changed', handler);
+  },
+  onTransferSettingsChanged: (listener: (settings: TransferSettings) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, settings: TransferSettings): void => listener(settings);
+    ipcRenderer.on('transfer-settings:changed', handler);
+    return () => ipcRenderer.removeListener('transfer-settings:changed', handler);
   },
   minimizeWindow: (): Promise<void> => ipcRenderer.invoke('window:minimize'),
   toggleMaximizeWindow: (): Promise<void> => ipcRenderer.invoke('window:toggle-maximize'),
