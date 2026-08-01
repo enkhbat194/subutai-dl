@@ -2,7 +2,7 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "jsx": "react-jsx",
-    "types": ["node"],
+    "types": ["node", "react", "react-dom", "vite/client"],
     "baseUrl": ".",
     "paths": {
       "@subutai/shared": ["../../packages/shared/src/index.ts"]
