@@ -1,0 +1,3 @@
+// Node's built-in TypeScript type stripping does not resolve extensionless .ts imports.
+// Keep the application import stable while forwarding test execution to the typed module.
+export * from './site-parser.ts';

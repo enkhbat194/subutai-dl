@@ -5,7 +5,7 @@
     "types": ["node", "react", "react-dom", "vite/client"],
     "baseUrl": ".",
     "paths": {
-      "@subutai/shared": ["../../packages/shared/src/index.ts"]
+      "@subutai/shared": ["src/shared-bridge.ts"]
     }
   },
   "include": ["electron.vite.config.ts", "src/**/*.ts", "src/**/*.tsx"],

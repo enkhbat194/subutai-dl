@@ -13,6 +13,7 @@ if (isNativeMessagingInvocation(process.argv)) {
     void import('./subutai-runtime').then(({ enqueueBrowserArguments }) => {
       void import('./batch/batch-runtime');
       void import('./resilience/resilience-runtime');
+      void import('./tools/utility-runtime');
       app.on('second-instance', (_event, argv) => {
         void enqueueBrowserArguments(argv);
         const window = BrowserWindow.getAllWindows()[0];
