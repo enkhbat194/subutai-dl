@@ -44,6 +44,12 @@ jobs:
       - name: Batch and numbered URL tests
         run: pnpm test:batch
 
+      - name: Clipboard monitoring policy tests
+        run: pnpm test:clipboard
+
+      - name: Site Grabber local crawl tests
+        run: pnpm test:site-grabber
+
       - name: Failure and recovery policy tests
         run: pnpm test:failure-policy
 
