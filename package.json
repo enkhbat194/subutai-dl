@@ -8,6 +8,7 @@
     "dev": "pnpm --filter @subutai/desktop dev",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
-    "lint": "pnpm -r lint"
+    "lint": "pnpm -r lint",
+    "test:aria2": "node scripts/aria2-smoke.mjs"
   }
 }
