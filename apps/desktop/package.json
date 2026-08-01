@@ -2,6 +2,8 @@
   "name": "@subutai/desktop",
   "version": "0.1.0",
   "private": true,
+  "description": "Subutai Download Manager desktop application",
+  "author": "enkhbat194",
   "type": "module",
   "main": "./out/main/index.js",
   "scripts": {
@@ -46,16 +48,19 @@
       }
     ],
     "win": {
-      "target": ["nsis", "portable"],
-      "artifactName": "Subutai-${version}-${arch}-${target}.${ext}"
+      "target": ["nsis", "portable"]
     },
     "nsis": {
+      "artifactName": "Subutai-Setup-${version}-${arch}.${ext}",
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "Subutai Download Manager",
       "deleteAppDataOnUninstall": false
+    },
+    "portable": {
+      "artifactName": "Subutai-Portable-${version}-${arch}.${ext}"
     }
   }
 }
