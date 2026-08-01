@@ -1,19 +1,24 @@
-name: Subutai Windows Package
+name: Subutai Release
 
 on:
   push:
-    branches: [main, "agent/**"]
-  pull_request:
-    branches: [main]
+    tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Stable release tag matching package version, for example v0.1.0"
+        required: true
+        type: string
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  package-windows:
+  release-windows:
     runs-on: windows-latest
-    timeout-minutes: 45
+    timeout-minutes: 55
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -26,6 +31,10 @@ jobs:
       - name: Enable pnpm
         shell: pwsh
         run: corepack enable
+
+      - name: Validate release tag and package versions
+        shell: pwsh
+        run: node scripts/validate-release-version.mjs "$env:RELEASE_TAG"
 
       - name: Install Subutai download engines
         shell: pwsh
@@ -48,34 +57,29 @@ jobs:
           Copy-Item $ffmpeg.FullName "$engineDir/ffmpeg.exe"
           if ($ffprobe) { Copy-Item $ffprobe.FullName "$engineDir/ffprobe.exe" }
 
-          Get-ChildItem $engineDir -Filter *.exe | ForEach-Object {
-            Get-FileHash $_.FullName -Algorithm SHA256
-          }
-
       - name: Install dependencies
         shell: pwsh
         run: pnpm install --no-frozen-lockfile
 
-      - name: Validate release version
+      - name: Typecheck and release policies
         shell: pwsh
-        run: pnpm test:release-version
+        run: |
+          pnpm typecheck
+          pnpm test:system
+          pnpm test:failure-policy
 
-      - name: Typecheck
-        shell: pwsh
-        run: pnpm typecheck
-
-      - name: Build installer and portable app
+      - name: Build Windows installer and portable app
         shell: pwsh
         run: pnpm --filter @subutai/desktop build:win
 
-      - name: Validate packages and packaged app launch
+      - name: Validate release packages and launch
         shell: pwsh
         run: ./scripts/validate-windows-package.ps1 -LaunchSmoke
 
-      - name: Upload Subutai Windows packages
+      - name: Preserve release artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Subutai-Windows
+          name: Subutai-${{ env.RELEASE_TAG }}-Windows
           path: |
             apps/desktop/release/Subutai-Setup-*.exe
             apps/desktop/release/Subutai-Portable-*.exe
@@ -83,4 +87,19 @@ jobs:
             apps/desktop/release/*.blockmap
             apps/desktop/release/SHA256SUMS.txt
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 30
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: Subutai Download Manager ${{ env.RELEASE_TAG }}
+          target_commitish: ${{ github.sha }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: |
+            apps/desktop/release/Subutai-Setup-*.exe
+            apps/desktop/release/Subutai-Portable-*.exe
+            apps/desktop/release/latest.yml
+            apps/desktop/release/*.blockmap
+            apps/desktop/release/SHA256SUMS.txt

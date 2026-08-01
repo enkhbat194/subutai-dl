@@ -53,6 +53,9 @@ jobs:
       - name: System tray and updater policy tests
         run: pnpm test:system
 
+      - name: Release version consistency
+        run: pnpm test:release-version
+
       - name: Failure and recovery policy tests
         run: pnpm test:failure-policy
 

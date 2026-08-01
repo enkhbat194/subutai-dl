@@ -16,7 +16,7 @@ import type {
   SystemState,
   UpdateState,
 } from '@subutai/shared';
-import { autoUpdater } from 'electron-updater';
+import electronUpdater from 'electron-updater';
 import { JobStore } from '../storage/job-store';
 import {
   DEFAULT_SYSTEM_SETTINGS,
@@ -25,6 +25,7 @@ import {
   normalizeSystemSettings,
 } from './system-policy';
 
+const { autoUpdater } = electronUpdater;
 const SETTINGS_KEY = 'system-settings';
 const attachedWindows = new WeakSet<BrowserWindow>();
 let store: JobStore | null = null;
