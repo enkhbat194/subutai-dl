@@ -8,5 +8,9 @@
       "@subutai/shared": ["../../packages/shared/src/index.ts"]
     }
   },
-  "include": ["electron.vite.config.ts", "src/**/*.ts", "src/**/*.tsx"]
+  "include": ["electron.vite.config.ts", "src/**/*.ts", "src/**/*.tsx"],
+  "exclude": [
+    "src/renderer/src/App.tsx",
+    "src/renderer/src/LiveApp.tsx"
+  ]
 }
