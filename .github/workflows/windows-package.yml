@@ -56,6 +56,10 @@ jobs:
         shell: pwsh
         run: pnpm install --no-frozen-lockfile
 
+      - name: Native engine foundation tests
+        shell: pwsh
+        run: pnpm test:native-engine
+
       - name: Validate release version
         shell: pwsh
         run: pnpm test:release-version
