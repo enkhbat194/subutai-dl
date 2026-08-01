@@ -9,7 +9,8 @@ assert.match(rootPackage.version, /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/, 'Root p
 assert.equal(desktopPackage.version, rootPackage.version, 'Root and desktop package versions must match.');
 
 if (requestedTag) {
-  assert.match(requestedTag, /^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/, 'Release tag must use v<semver>.');
+  assert.match(requestedTag, /^v\d+\.\d+\.\d+$/, 'Stable release tag must use v<major>.<minor>.<patch>.');
+  assert.match(desktopPackage.version, /^\d+\.\d+\.\d+$/, 'Stable release package version must not contain a prerelease suffix.');
   assert.equal(requestedTag.slice(1), desktopPackage.version, `Tag ${requestedTag} does not match package version ${desktopPackage.version}.`);
 }
 
