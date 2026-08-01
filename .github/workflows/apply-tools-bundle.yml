@@ -1,0 +1,49 @@
+name: Apply Clipboard and Site Grabber Bundle
+
+on:
+  push:
+    branches: [agent/clipboard-site-grabber-v2]
+    paths:
+      - .github/apply-tools-bundle.py
+      - .github/workflows/apply-tools-bundle.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/clipboard-site-grabber-v2
+          fetch-depth: 0
+      - name: Fetch completed tools implementation
+        run: git fetch origin agent/clipboard-site-grabber
+      - name: Copy new source and test files
+        run: |
+          git checkout origin/agent/clipboard-site-grabber -- \
+            apps/desktop/src/main/clipboard/clipboard-monitor.ts \
+            apps/desktop/src/main/clipboard/clipboard-policy.ts \
+            apps/desktop/src/main/site-grabber/site-grabber-service.ts \
+            apps/desktop/src/main/site-grabber/site-parser.ts \
+            apps/desktop/src/main/tools/utility-runtime.ts \
+            apps/desktop/src/renderer/src/ClipboardSiteToolsLauncher.tsx \
+            apps/desktop/src/renderer/src/tools.css \
+            scripts/clipboard-policy-test.mts \
+            scripts/site-grabber-test.mts
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Integrate with current mainline contracts
+        run: python .github/apply-tools-bundle.py
+      - name: Remove one-time integration files
+        run: rm .github/apply-tools-bundle.py .github/workflows/apply-tools-bundle.yml
+      - name: Commit integrated bundle
+        run: |
+          git config user.name "Subutai Automation"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git commit -m "Integrate clipboard monitoring and Site Grabber"
+          git push origin HEAD:agent/clipboard-site-grabber-v2
