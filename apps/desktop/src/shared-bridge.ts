@@ -99,6 +99,48 @@ export interface SiteGrabberEnqueueResult {
   job: SiteGrabberJob;
 }
 
+export interface SystemSettings {
+  trayEnabled: boolean;
+  minimizeToTray: boolean;
+  closeToTray: boolean;
+  notificationsEnabled: boolean;
+  notifyOnComplete: boolean;
+  notifyOnFailure: boolean;
+  launchAtLogin: boolean;
+  automaticUpdateChecks: boolean;
+  automaticUpdateDownloads: boolean;
+}
+
+export interface SystemSettingsUpdate extends Partial<SystemSettings> {}
+
+export type UpdateStatus =
+  | 'idle'
+  | 'checking'
+  | 'available'
+  | 'not-available'
+  | 'downloading'
+  | 'downloaded'
+  | 'disabled'
+  | 'error';
+
+export interface UpdateState {
+  status: UpdateStatus;
+  currentVersion: string;
+  availableVersion?: string;
+  progressPercent?: number;
+  bytesPerSecond?: number;
+  checkedAt?: string;
+  error?: string;
+}
+
+export interface SystemState {
+  settings: SystemSettings;
+  update: UpdateState;
+  notificationsSupported: boolean;
+  trayAvailable: boolean;
+  packaged: boolean;
+}
+
 declare module '../../../packages/shared/src/index' {
   interface SubutaiDesktopApi {
     getClipboardSnapshot(): Promise<ClipboardSnapshot>;
@@ -111,7 +153,15 @@ declare module '../../../packages/shared/src/index' {
     getSiteGrabberJob(id: string): Promise<SiteGrabberJob>;
     cancelSiteGrabber(id: string): Promise<SiteGrabberJob>;
     enqueueSiteGrabberResources(request: SiteGrabberEnqueueRequest): Promise<SiteGrabberEnqueueResult>;
+    getSystemState(): Promise<SystemState>;
+    updateSystemSettings(settings: SystemSettingsUpdate): Promise<SystemState>;
+    checkForUpdates(): Promise<SystemState>;
+    downloadUpdate(): Promise<SystemState>;
+    installUpdate(): Promise<void>;
+    showMainWindow(): Promise<void>;
+    quitApplication(): Promise<void>;
     onClipboardChanged(listener: (snapshot: ClipboardSnapshot) => void): () => void;
     onSiteGrabberChanged(listener: (job: SiteGrabberJob) => void): () => void;
+    onSystemStateChanged(listener: (state: SystemState) => void): () => void;
   }
 }

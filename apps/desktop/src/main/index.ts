@@ -14,6 +14,7 @@ if (isNativeMessagingInvocation(process.argv)) {
       void import('./batch/batch-runtime');
       void import('./resilience/resilience-runtime');
       void import('./tools/utility-runtime');
+      void import('./system/system-runtime');
       app.on('second-instance', (_event, argv) => {
         void enqueueBrowserArguments(argv);
         const window = BrowserWindow.getAllWindows()[0];

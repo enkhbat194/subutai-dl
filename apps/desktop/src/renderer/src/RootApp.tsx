@@ -5,6 +5,7 @@ import { MediaLauncher } from './MediaLauncher';
 import { ResilienceLauncher } from './ResilienceLauncher';
 import { QueueSchedulerLauncher } from './QueueSchedulerLauncher';
 import { SubutaiApp } from './SubutaiApp';
+import { SystemLauncher } from './SystemLauncher';
 import { TransferSettingsLauncher } from './TransferSettingsLauncher';
 
 export function RootApp(): ReactElement {
@@ -13,6 +14,7 @@ export function RootApp(): ReactElement {
       <SubutaiApp />
       <ResilienceLauncher />
       <ClipboardSiteToolsLauncher />
+      <SystemLauncher />
       <BatchDownloadLauncher />
       <TransferSettingsLauncher />
       <QueueSchedulerLauncher />
