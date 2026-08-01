@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, safeStorage, shell } from 'electron';
 import { existsSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { basename, join } from 'node:path';
@@ -15,9 +15,16 @@ import type {
   QueuePriority,
   QueueSettings,
   QueueSnapshot,
+  TransferSettings,
+  TransferSettingsUpdate,
 } from '@subutai/shared';
 import { consumeBrowserPayloadArguments } from './browser/native-messaging';
 import { SubutaiEngine, type SubutaiTaskStatus } from './engines/subutai-engine';
+import {
+  DEFAULT_TRANSFER_SETTINGS,
+  normalizeTransferSettings,
+  resolveProxyUrl,
+} from './network/transfer-policy';
 import { isRunningStatus, queueAllowance, sortQueuedJobs } from './queue/queue-policy';
 import { JobStore } from './storage/job-store';
 
@@ -28,6 +35,8 @@ let store: JobStore | null = null;
 let syncTimer: NodeJS.Timeout | null = null;
 let syncInProgress = false;
 let queueInProgress = false;
+let proxyPassword = '';
+let transferSettings: TransferSettings = { ...DEFAULT_TRANSFER_SETTINGS };
 let queueSettings: QueueSettings = {
   maxConcurrentDownloads: 3,
   schedulingEnabled: false,
@@ -94,16 +103,17 @@ function saveJob(job: DownloadJob): void {
 
 function broadcastJobs(): void {
   const current = snapshot();
-  for (const window of BrowserWindow.getAllWindows()) {
-    window.webContents.send('downloads:changed', current);
-  }
+  for (const window of BrowserWindow.getAllWindows()) window.webContents.send('downloads:changed', current);
 }
 
 function broadcastQueue(): void {
   const current = queueSnapshot();
-  for (const window of BrowserWindow.getAllWindows()) {
-    window.webContents.send('queue:changed', current);
-  }
+  for (const window of BrowserWindow.getAllWindows()) window.webContents.send('queue:changed', current);
+}
+
+function broadcastTransferSettings(): void {
+  const current = { ...transferSettings };
+  for (const window of BrowserWindow.getAllWindows()) window.webContents.send('transfer-settings:changed', current);
 }
 
 function broadcastAll(): void {
@@ -212,6 +222,7 @@ async function assignTask(job: DownloadJob): Promise<void> {
     headers?: Record<string, string>;
     sourcePageUrl?: string;
     media?: MediaDownloadOptions;
+    speedLimitBytesPerSecond?: number;
   } = {
     url: job.url,
     destination: job.destination,
@@ -221,6 +232,7 @@ async function assignTask(job: DownloadJob): Promise<void> {
   if (job.headers) options.headers = job.headers;
   if (job.sourcePageUrl) options.sourcePageUrl = job.sourcePageUrl;
   if (job.media) options.media = job.media;
+  if (typeof job.speedLimitBytesPerSecond === 'number') options.speedLimitBytesPerSecond = job.speedLimitBytesPerSecond;
 
   job.engineTaskId = await engine.addDownload(options);
   job.status = 'queued';
@@ -346,6 +358,9 @@ export async function createDownload(request: DownloadCreateRequest): Promise<Do
   if (request.headers && Object.keys(request.headers).length > 0) job.headers = { ...request.headers };
   if (media) job.media = media;
   if (request.scheduleId) job.scheduleId = request.scheduleId;
+  if (typeof request.speedLimitBytesPerSecond === 'number' && request.speedLimitBytesPerSecond > 0) {
+    job.speedLimitBytesPerSecond = Math.trunc(request.speedLimitBytesPerSecond);
+  }
 
   jobs.set(id, job);
   saveJob(job);
@@ -391,9 +406,7 @@ async function resumeDownload(id: string): Promise<DownloadJob> {
 
 async function cancelDownload(id: string): Promise<DownloadJob> {
   const job = getJob(id);
-  if (job.engineTaskId && !['completed', 'failed', 'cancelled'].includes(job.status)) {
-    await engine.cancel(job.engineTaskId);
-  }
+  if (job.engineTaskId && !['completed', 'failed', 'cancelled'].includes(job.status)) await engine.cancel(job.engineTaskId);
   delete job.engineTaskId;
   job.status = 'cancelled';
   job.pausedByScheduler = false;
@@ -409,16 +422,10 @@ async function cancelDownload(id: string): Promise<DownloadJob> {
 async function removeDownload(id: string, deleteFile = false): Promise<void> {
   const job = getJob(id);
   if (job.engineTaskId && !['completed', 'failed', 'cancelled'].includes(job.status)) {
-    try {
-      await engine.cancel(job.engineTaskId);
-    } catch {
-      // The task may already be gone.
-    }
+    try { await engine.cancel(job.engineTaskId); } catch { /* task may already be gone */ }
   }
-
   jobs.delete(id);
   store?.remove(id);
-
   if (deleteFile) {
     await rm(join(job.destination, job.filename), { force: true });
     if (job.engine !== 'media') await rm(join(job.destination, `${job.filename}.aria2`), { force: true });
@@ -454,13 +461,7 @@ async function moveDownload(id: string, direction: 'up' | 'down' | 'top' | 'bott
   if (index < 0) throw new Error(`Таталт олдсонгүй: ${id}`);
   const [job] = ordered.splice(index, 1);
   if (!job) return snapshot();
-  const target = direction === 'top'
-    ? 0
-    : direction === 'bottom'
-      ? ordered.length
-      : direction === 'up'
-        ? Math.max(0, index - 1)
-        : Math.min(ordered.length, index + 1);
+  const target = direction === 'top' ? 0 : direction === 'bottom' ? ordered.length : direction === 'up' ? Math.max(0, index - 1) : Math.min(ordered.length, index + 1);
   ordered.splice(target, 0, job);
   const now = new Date().toISOString();
   ordered.forEach((item, queueIndex) => {
@@ -539,13 +540,59 @@ async function runQueueNow(): Promise<QueueSnapshot> {
   return queueSnapshot();
 }
 
+function loadProxyPassword(): string {
+  const encoded = store?.loadState<string>('proxy-password-encrypted');
+  if (!encoded || !safeStorage.isEncryptionAvailable()) return '';
+  try {
+    return safeStorage.decryptString(Buffer.from(encoded, 'base64'));
+  } catch {
+    return '';
+  }
+}
+
+function persistProxyPassword(): void {
+  if (!store) return;
+  if (!proxyPassword) {
+    store.deleteState('proxy-password-encrypted');
+    return;
+  }
+  if (!safeStorage.isEncryptionAvailable()) return;
+  const encrypted = safeStorage.encryptString(proxyPassword).toString('base64');
+  store.saveState('proxy-password-encrypted', encrypted);
+}
+
+async function updateTransferSettings(update: TransferSettingsUpdate): Promise<TransferSettings> {
+  if (update.clearProxyPassword) proxyPassword = '';
+  else if (typeof update.proxyPassword === 'string') proxyPassword = update.proxyPassword;
+  transferSettings = normalizeTransferSettings(transferSettings, update, Boolean(proxyPassword));
+  if (transferSettings.proxyMode === 'manual') resolveProxyUrl(transferSettings, proxyPassword);
+  store?.saveState('transfer-settings', transferSettings);
+  persistProxyPassword();
+  await engine.configureTransfer(transferSettings, proxyPassword);
+
+  for (const job of jobs.values()) {
+    if (job.engine !== 'media' || !isRunningStatus(job.status) || !job.engineTaskId) continue;
+    try {
+      await engine.pause(job.engineTaskId);
+      job.status = 'queued';
+      job.updatedAt = new Date().toISOString();
+      saveJob(job);
+    } catch {
+      // Existing media task may have completed while settings were changing.
+    }
+  }
+  broadcastTransferSettings();
+  broadcastAll();
+  void processQueue();
+  return { ...transferSettings };
+}
+
 function updateJobFromStatus(job: DownloadJob, status: SubutaiTaskStatus): void {
   const totalBytes = parseByteCount(status.totalLength);
   const downloadedBytes = parseByteCount(status.completedLength);
   const speedBytesPerSecond = parseByteCount(status.downloadSpeed);
   const remaining = Math.max(0, totalBytes - downloadedBytes);
   const filePath = status.files?.[0]?.path;
-
   const mapped = status.phase === 'merging' ? 'merging' : statusFromEngine(status.status);
   job.status = mapped === 'queued' && job.engineTaskId ? 'resolving' : mapped;
   job.totalBytes = totalBytes > 0 ? totalBytes : null;
@@ -568,8 +615,7 @@ async function synchronizeJobs(): Promise<void> {
   try {
     let changed = false;
     for (const job of jobs.values()) {
-      if (!job.engineTaskId || ['completed', 'failed', 'cancelled'].includes(job.status)) continue;
-      if (job.status === 'paused') continue;
+      if (!job.engineTaskId || ['completed', 'failed', 'cancelled'].includes(job.status) || job.status === 'paused') continue;
       try {
         const status = await engine.getStatus(job.engineTaskId);
         updateJobFromStatus(job, status);
@@ -599,6 +645,9 @@ function restoreState(): void {
   if (!store) return;
   queueSettings = store.loadQueueSettings();
   for (const schedule of store.loadSchedules()) schedules.set(schedule.id, schedule);
+  proxyPassword = loadProxyPassword();
+  const savedTransfer = store.loadState<TransferSettingsUpdate>('transfer-settings') ?? {};
+  transferSettings = normalizeTransferSettings(DEFAULT_TRANSFER_SETTINGS, savedTransfer, Boolean(proxyPassword));
   let order = 1;
   for (const restored of store.loadAll()) {
     restored.speedBytesPerSecond = 0;
@@ -629,6 +678,8 @@ ipcMain.handle('queue:settings', (_event, settings: Partial<QueueSettings>) => u
 ipcMain.handle('queue:schedule-save', (_event, schedule: DownloadScheduleInput) => saveSchedule(schedule));
 ipcMain.handle('queue:schedule-delete', (_event, id: string) => deleteSchedule(id));
 ipcMain.handle('queue:run-now', () => runQueueNow());
+ipcMain.handle('transfer-settings:get', (): TransferSettings => ({ ...transferSettings }));
+ipcMain.handle('transfer-settings:update', (_event, settings: TransferSettingsUpdate) => updateTransferSettings(settings));
 ipcMain.handle('engines:health', (): EngineHealth => ({ subutai: engine.getHealth() }));
 ipcMain.handle('window:minimize', (event): void => { BrowserWindow.fromWebContents(event.sender)?.minimize(); });
 ipcMain.handle('window:toggle-maximize', (event): void => {
@@ -642,6 +693,7 @@ ipcMain.handle('window:close', (event): void => { BrowserWindow.fromWebContents(
 app.whenReady().then(async () => {
   store = new JobStore(join(app.getPath('userData'), 'data', 'subutai.db'));
   restoreState();
+  await engine.configureTransfer(transferSettings, proxyPassword);
   await enqueueBrowserArguments(process.argv);
   createWindow();
   await processQueue();
@@ -656,6 +708,8 @@ app.on('before-quit', () => {
   try {
     store?.saveMany(jobs.values());
     store?.saveQueueSettings(queueSettings);
+    store?.saveState('transfer-settings', transferSettings);
+    persistProxyPassword();
     for (const schedule of schedules.values()) store?.saveSchedule(schedule);
     store?.close();
   } catch {
