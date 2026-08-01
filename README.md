@@ -1,19 +1,36 @@
-# SubutaiDL
+# Subutai
 
-**Divide the download. Conquer the wait.**
+Subutai is a private Windows download manager for fast transfers, recovery, browser integration, media downloads, queues and scheduling.
 
-SubutaiDL is a private high-performance download manager project focused on parallel downloads, resilient recovery, browser integration, and pluggable download engines.
+## Product identity
 
-## Planned architecture
+- Product: **Subutai**
+- Formal name: **Subutai Download Manager**
+- Windows artifacts: `Subutai-Setup-*` and `Subutai-Portable-*`
+- Repository: `subutai-dl`
 
-- Electron + React + TypeScript desktop shell
-- Unified download queue and persistent job state
-- aria2 adapter for accelerated generic downloads
-- yt-dlp adapter for supported media extraction
-- FFmpeg adapter for media merge and conversion
-- Browser extension + native messaging bridge
-- SQLite-backed history, settings, and recovery
+Subutai is delivered as one application. Bundled dependencies are internal implementation details, not separate user-facing products.
 
-## Status
+## Current capability groups
 
-Repository bootstrap is in progress on `feat/bootstrap`.
+- Chrome, Edge and Firefox integration
+- Browser interception and right-click actions
+- Request context forwarding
+- Direct and media downloads
+- Playlist, subtitles, audio-only, 4K, HLS and DASH options
+- Persistent queue and scheduler
+- Proxy, speed limits, retry and timeout controls
+- Batch and numbered URL expansion
+- Clipboard monitoring
+- Site Grabber
+- System tray, notifications and update handling
+- Crash and network-interruption recovery
+- Windows Setup and Portable packaging
+
+All requested capability groups are implemented and automated checks exist. Physical Windows/browser acceptance and additional production hardening remain.
+
+See [`docs/PROJECT_STATUS.md`](docs/PROJECT_STATUS.md) for the authoritative implementation and remaining-work matrix.
+
+## Brand rule
+
+Public UI, notifications, browser extension, installer, artifacts and public errors use only **Subutai** or **Subutai Download Manager**. Dependency names remain only where technically or legally required.
