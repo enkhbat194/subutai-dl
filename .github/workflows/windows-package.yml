@@ -13,7 +13,7 @@ permissions:
 jobs:
   package-windows:
     runs-on: windows-latest
-    timeout-minutes: 45
+    timeout-minutes: 50
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -26,6 +26,13 @@ jobs:
       - name: Enable pnpm
         shell: pwsh
         run: corepack enable
+
+      - name: Resolve pinned Rust toolchain
+        shell: pwsh
+        run: |
+          rustup show active-toolchain
+          rustc --version
+          cargo --version
 
       - name: Install Subutai download engines
         shell: pwsh
@@ -55,6 +62,10 @@ jobs:
       - name: Install dependencies
         shell: pwsh
         run: pnpm install --no-frozen-lockfile
+
+      - name: Native engine foundation tests
+        shell: pwsh
+        run: pnpm test:native-engine
 
       - name: Validate release version
         shell: pwsh
