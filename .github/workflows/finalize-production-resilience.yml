@@ -1,0 +1,134 @@
+name: Finalize Production Resilience
+
+on:
+  push:
+    branches: [agent/production-resilience]
+    paths:
+      - .github/workflows/finalize-production-resilience.yml
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  linux-validation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/production-resilience
+          fetch-depth: 0
+      - name: Wait for integration commit
+        shell: bash
+        run: |
+          for attempt in $(seq 1 90); do
+            git fetch origin agent/production-resilience
+            git checkout -B agent/production-resilience origin/agent/production-resilience
+            if [ ! -f .github/apply-production-resilience.py ]; then exit 0; fi
+            sleep 10
+          done
+          echo "Integration workflow did not finish in time." >&2
+          exit 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: corepack enable
+      - name: Install runtime dependencies
+        run: sudo apt-get update && sudo apt-get install -y aria2 yt-dlp ffmpeg
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+      - name: Typecheck and policy tests
+        run: |
+          pnpm typecheck
+          pnpm test:queue
+          pnpm test:transfer
+          pnpm test:batch
+          pnpm test:clipboard
+          pnpm test:site-grabber
+          pnpm test:system
+          pnpm test:failure-policy
+      - name: Production build
+        run: pnpm build
+      - name: Direct and media smoke tests
+        run: |
+          pnpm test:aria2
+          pnpm test:media
+      - name: Crash and network interruption test
+        env:
+          SUBUTAI_RESILIENCE_MB: "64"
+        run: pnpm test:resilience
+
+  windows-validation:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/production-resilience
+          fetch-depth: 0
+      - name: Wait for integration commit
+        shell: bash
+        run: |
+          for attempt in $(seq 1 90); do
+            git fetch origin agent/production-resilience
+            git checkout -B agent/production-resilience origin/agent/production-resilience
+            if [ ! -f .github/apply-production-resilience.py ]; then exit 0; fi
+            sleep 10
+          done
+          echo "Integration workflow did not finish in time." >&2
+          exit 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Enable pnpm
+        shell: pwsh
+        run: corepack enable
+      - name: Install bundled engines
+        shell: pwsh
+        run: |
+          choco install aria2 yt-dlp ffmpeg -y --no-progress
+          $target = "apps/desktop/resources/engines/win32-x64"
+          New-Item -ItemType Directory -Force $target | Out-Null
+          Copy-Item (Get-Command aria2c.exe).Source "$target/aria2c.exe"
+          Copy-Item (Get-Command yt-dlp.exe).Source "$target/yt-dlp.exe"
+          Copy-Item (Get-Command ffmpeg.exe).Source "$target/ffmpeg.exe"
+          $ffprobe = Get-Command ffprobe.exe -ErrorAction SilentlyContinue
+          if ($ffprobe) { Copy-Item $ffprobe.Source "$target/ffprobe.exe" }
+      - name: Install dependencies
+        shell: pwsh
+        run: pnpm install --no-frozen-lockfile
+      - name: Typecheck
+        shell: pwsh
+        run: pnpm typecheck
+      - name: Build Setup and Portable packages
+        shell: pwsh
+        run: pnpm --filter @subutai/desktop build:win
+      - name: Crash and network interruption test
+        shell: pwsh
+        env:
+          SUBUTAI_RESILIENCE_MB: "64"
+        run: pnpm test:resilience
+
+  merge:
+    needs: [linux-validation, windows-validation]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/production-resilience
+          fetch-depth: 0
+      - name: Remove one-time finalizer
+        run: |
+          git config user.name "Subutai Automation"
+          git config user.email "actions@users.noreply.github.com"
+          git rm .github/workflows/finalize-production-resilience.yml
+          git commit -m "Remove production resilience finalizer"
+          git push origin HEAD:agent/production-resilience
+      - name: Merge pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pr=$(gh pr list --repo "$GITHUB_REPOSITORY" --head agent/production-resilience --state open --json number --jq '.[0].number')
+          test -n "$pr"
+          gh pr merge "$pr" --repo "$GITHUB_REPOSITORY" --squash --subject "Harden crash and network recovery" --body "Add transient failure recovery, crash-session detection, offline/online and resume recovery, status UI, and cross-platform checksum-verified interruption tests."
