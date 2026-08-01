@@ -2,7 +2,15 @@ import { app, BrowserWindow, ipcMain, shell } from 'electron';
 import { existsSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { basename, join } from 'node:path';
-import type { DownloadCreateRequest, DownloadJob, DownloadStatus, EngineHealth } from '@subutai/shared';
+import type {
+  DownloadCreateRequest,
+  DownloadJob,
+  DownloadStatus,
+  EngineHealth,
+  MediaDownloadOptions,
+  MediaProbeRequest,
+  MediaProbeResult,
+} from '@subutai/shared';
 import { consumeBrowserPayloadArguments } from './browser/native-messaging';
 import { SubutaiEngine, type SubutaiTaskStatus } from './engines/subutai-engine';
 import { JobStore } from './storage/job-store';
@@ -12,6 +20,12 @@ const engine = new SubutaiEngine();
 let store: JobStore | null = null;
 let syncTimer: NodeJS.Timeout | null = null;
 let syncInProgress = false;
+
+const MEDIA_HOSTS = [
+  'youtube.com', 'youtu.be', 'facebook.com', 'fb.watch', 'instagram.com',
+  'tiktok.com', 'vimeo.com', 'dailymotion.com', 'twitch.tv', 'soundcloud.com',
+  'twitter.com', 'x.com', 'reddit.com',
+];
 
 function createWindow(): void {
   const window = new BrowserWindow({
@@ -96,6 +110,32 @@ function validateRequest(request: DownloadCreateRequest): void {
   }
 }
 
+function isLikelyMediaUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.toLowerCase();
+    if (MEDIA_HOSTS.some((candidate) => host === candidate || host.endsWith(`.${candidate}`))) return true;
+    const path = parsed.pathname.toLowerCase();
+    return path.endsWith('.m3u8') || path.endsWith('.mpd');
+  } catch {
+    return false;
+  }
+}
+
+function resolveMediaOptions(request: DownloadCreateRequest): MediaDownloadOptions | undefined {
+  if (request.media) return { ...request.media };
+  if (request.engine === 'media' || (request.engine !== 'subutai' && isLikelyMediaUrl(request.url))) {
+    return {
+      mode: 'video',
+      quality: 'best',
+      playlist: false,
+      subtitles: false,
+      embedMetadata: true,
+    };
+  }
+  return undefined;
+}
+
 function getJob(id: string): DownloadJob {
   const job = jobs.get(id);
   if (!job) throw new Error(`Таталт олдсонгүй: ${id}`);
@@ -114,13 +154,17 @@ async function assignTask(job: DownloadJob): Promise<void> {
     filename?: string;
     connections: number;
     headers?: Record<string, string>;
+    sourcePageUrl?: string;
+    media?: MediaDownloadOptions;
   } = {
     url: job.url,
     destination: job.destination,
-    filename: job.filename,
     connections: job.connections,
   };
+  if (job.filename && job.filename !== 'Media таталт') options.filename = job.filename;
   if (job.headers) options.headers = job.headers;
+  if (job.sourcePageUrl) options.sourcePageUrl = job.sourcePageUrl;
+  if (job.media) options.media = job.media;
 
   job.engineTaskId = await engine.addDownload(options);
   job.status = 'queued';
@@ -136,26 +180,28 @@ export async function createDownload(request: DownloadCreateRequest): Promise<Do
   const connections = Math.max(1, Math.min(32, Math.trunc(request.connections ?? 16)));
   const destination = request.destination.trim() || app.getPath('downloads');
   const requestedFilename = request.filename?.trim() ?? '';
-  const filename = requestedFilename || inferFilename(request.url);
+  const media = resolveMediaOptions(request);
+  const filename = requestedFilename || (media ? 'Media таталт' : inferFilename(request.url));
 
   const job: DownloadJob = {
     id,
     url: request.url.trim(),
     filename,
     destination,
-    engine: 'subutai',
+    engine: media ? 'media' : 'subutai',
     status: 'queued',
     downloadedBytes: 0,
     totalBytes: null,
     speedBytesPerSecond: 0,
     etaSeconds: null,
-    connections,
+    connections: media ? 1 : connections,
     createdAt: now,
     updatedAt: now,
   };
   if (request.source) job.source = request.source;
   if (request.sourcePageUrl) job.sourcePageUrl = request.sourcePageUrl;
   if (request.headers && Object.keys(request.headers).length > 0) job.headers = { ...request.headers };
+  if (media) job.media = media;
 
   jobs.set(id, job);
   saveJob(job);
@@ -176,6 +222,11 @@ export async function createDownload(request: DownloadCreateRequest): Promise<Do
 
 export async function enqueueBrowserArguments(args: readonly string[]): Promise<number> {
   return consumeBrowserPayloadArguments(args, createDownload);
+}
+
+async function probeMedia(request: MediaProbeRequest): Promise<MediaProbeResult> {
+  validateRequest({ url: request.url, destination: '', engine: 'media' });
+  return engine.probeMedia(request.url.trim(), request.headers, request.sourcePageUrl);
 }
 
 async function pauseDownload(id: string): Promise<DownloadJob> {
@@ -237,7 +288,7 @@ async function removeDownload(id: string, deleteFile = false): Promise<void> {
 
   if (deleteFile) {
     await rm(join(job.destination, job.filename), { force: true });
-    await rm(join(job.destination, `${job.filename}.aria2`), { force: true });
+    if (job.engine !== 'media') await rm(join(job.destination, `${job.filename}.aria2`), { force: true });
   }
   broadcastJobs();
 }
@@ -260,14 +311,17 @@ function updateJobFromStatus(job: DownloadJob, status: SubutaiTaskStatus): void 
   const remaining = Math.max(0, totalBytes - downloadedBytes);
   const filePath = status.files?.[0]?.path;
 
-  job.status = statusFromEngine(status.status);
+  job.status = status.phase === 'merging' ? 'merging' : statusFromEngine(status.status);
   job.totalBytes = totalBytes > 0 ? totalBytes : null;
   job.downloadedBytes = downloadedBytes;
   job.speedBytesPerSecond = speedBytesPerSecond;
   job.etaSeconds = speedBytesPerSecond > 0 ? Math.ceil(remaining / speedBytesPerSecond) : null;
-  job.connections = Math.max(0, Number(status.connections) || job.connections);
+  job.connections = job.engine === 'media' ? 1 : Math.max(0, Number(status.connections) || job.connections);
   job.updatedAt = new Date().toISOString();
   if (filePath) job.filename = basename(filePath);
+  else if (status.displayName && job.engine === 'media') job.filename = status.displayName;
+  if (status.playlistIndex) job.playlistIndex = status.playlistIndex;
+  if (status.playlistCount) job.playlistCount = status.playlistCount;
   if (status.errorMessage) job.error = status.errorMessage;
   else if (job.status !== 'failed') delete job.error;
 }
@@ -306,7 +360,6 @@ async function synchronizeJobs(): Promise<void> {
 function restoreJobs(): void {
   if (!store) return;
   for (const restored of store.loadAll()) {
-    restored.engine = 'subutai';
     restored.speedBytesPerSecond = 0;
     restored.etaSeconds = null;
     if (!['completed', 'failed', 'cancelled'].includes(restored.status)) {
@@ -334,6 +387,7 @@ async function recoverInterruptedJobs(): Promise<void> {
 
 ipcMain.handle('downloads:list', (): DownloadJob[] => snapshot());
 ipcMain.handle('downloads:create', (_event, request: DownloadCreateRequest) => createDownload(request));
+ipcMain.handle('media:probe', (_event, request: MediaProbeRequest) => probeMedia(request));
 ipcMain.handle('downloads:pause', (_event, id: string) => pauseDownload(id));
 ipcMain.handle('downloads:resume', (_event, id: string) => resumeDownload(id));
 ipcMain.handle('downloads:cancel', (_event, id: string) => cancelDownload(id));

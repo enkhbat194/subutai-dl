@@ -16,6 +16,36 @@ export interface DownloadRequestHeaders {
   [name: string]: string;
 }
 
+export type MediaQuality = 'best' | '2160p' | '1440p' | '1080p' | '720p' | '480p';
+export type MediaAudioFormat = 'mp3' | 'm4a' | 'opus' | 'flac' | 'wav';
+
+export interface MediaDownloadOptions {
+  mode: 'video' | 'audio';
+  quality?: MediaQuality;
+  audioFormat?: MediaAudioFormat;
+  playlist?: boolean;
+  subtitles?: boolean;
+  subtitleLanguages?: string[];
+  embedMetadata?: boolean;
+  embedThumbnail?: boolean;
+}
+
+export interface MediaProbeRequest {
+  url: string;
+  headers?: DownloadRequestHeaders;
+  sourcePageUrl?: string;
+}
+
+export interface MediaProbeResult {
+  title: string;
+  uploader?: string;
+  durationSeconds?: number;
+  thumbnail?: string;
+  webpageUrl?: string;
+  isPlaylist: boolean;
+  entryCount?: number;
+}
+
 export interface DownloadCreateRequest {
   url: string;
   filename?: string;
@@ -25,6 +55,7 @@ export interface DownloadCreateRequest {
   headers?: DownloadRequestHeaders;
   source?: DownloadSource;
   sourcePageUrl?: string;
+  media?: MediaDownloadOptions;
 }
 
 export interface BrowserEnqueueMessage {
@@ -69,6 +100,9 @@ export interface DownloadJob {
   source?: DownloadSource;
   sourcePageUrl?: string;
   headers?: DownloadRequestHeaders;
+  media?: MediaDownloadOptions;
+  playlistIndex?: number;
+  playlistCount?: number;
   engineTaskId?: string;
   error?: string;
 }
@@ -77,6 +111,10 @@ export interface SubutaiEngineHealth {
   available: boolean;
   running: boolean;
   version?: string;
+  mediaAvailable?: boolean;
+  mediaRunning?: boolean;
+  mediaVersion?: string;
+  ffmpegVersion?: string;
   error?: string;
 }
 
@@ -87,6 +125,7 @@ export interface EngineHealth {
 export interface SubutaiDesktopApi {
   listDownloads(): Promise<DownloadJob[]>;
   createDownload(request: DownloadCreateRequest): Promise<DownloadJob>;
+  probeMedia(request: MediaProbeRequest): Promise<MediaProbeResult>;
   pauseDownload(id: string): Promise<DownloadJob>;
   resumeDownload(id: string): Promise<DownloadJob>;
   cancelDownload(id: string): Promise<DownloadJob>;

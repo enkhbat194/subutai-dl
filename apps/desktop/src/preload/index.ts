@@ -1,10 +1,18 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { DownloadCreateRequest, DownloadJob, EngineHealth, SubutaiDesktopApi } from '@subutai/shared';
+import type {
+  DownloadCreateRequest,
+  DownloadJob,
+  EngineHealth,
+  MediaProbeRequest,
+  MediaProbeResult,
+  SubutaiDesktopApi,
+} from '@subutai/shared';
 
 const api: SubutaiDesktopApi = {
   listDownloads: (): Promise<DownloadJob[]> => ipcRenderer.invoke('downloads:list'),
   createDownload: (request: DownloadCreateRequest): Promise<DownloadJob> =>
     ipcRenderer.invoke('downloads:create', request),
+  probeMedia: (request: MediaProbeRequest): Promise<MediaProbeResult> => ipcRenderer.invoke('media:probe', request),
   pauseDownload: (id: string): Promise<DownloadJob> => ipcRenderer.invoke('downloads:pause', id),
   resumeDownload: (id: string): Promise<DownloadJob> => ipcRenderer.invoke('downloads:resume', id),
   cancelDownload: (id: string): Promise<DownloadJob> => ipcRenderer.invoke('downloads:cancel', id),
