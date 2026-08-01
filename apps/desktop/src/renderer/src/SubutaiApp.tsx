@@ -239,15 +239,15 @@ export function SubutaiApp(): ReactElement {
   return (
     <div className="app-shell">
       <header className="titlebar">
-        <div className="brand-lockup"><div className="brand-mark"><span>♞</span></div><div><strong>SUBUTAI IDM</strong><span>DESKTOP APPLICATION</span></div></div>
-        <div className="titlebar-description">Subutai IDM — хурдан, найдвартай, олон хэсэгт таталтын нэгдсэн систем<br />Pause, Resume, Recovery, Speed, ETA бүгд нэг апп дотор ажиллана.</div>
+        <div className="brand-lockup"><div className="brand-mark"><span>♞</span></div><div><strong>SUBUTAI</strong><span>DOWNLOAD MANAGER</span></div></div>
+        <div className="titlebar-description">Subutai — хурдан, найдвартай, олон хэсэгт таталтын нэгдсэн систем<br />Pause, Resume, Recovery, Speed, ETA бүгд нэг апп дотор ажиллана.</div>
         <div className="window-controls"><button className="window-control minimize" onClick={() => void window.subutai.minimizeWindow()}>—</button><button className="window-control maximize" onClick={() => void window.subutai.toggleMaximizeWindow()}>□</button><button className="window-control close" onClick={() => void window.subutai.closeWindow()}>×</button></div>
       </header>
 
       <main className="dashboard">
         <section className="primary-grid">
           <aside className="left-sidebar panel">
-            <div className="sidebar-brand"><span className="mini-brand">♞</span> Subutai IDM</div>
+            <div className="sidebar-brand"><span className="mini-brand">♞</span> Subutai</div>
             <nav>{navItems.map(([icon, label]) => <button key={label} className={activeNav === label ? 'nav-item active' : 'nav-item'} onClick={() => setActiveNav(label)}><span>{icon}</span>{label}</button>)}</nav>
             <div className={`engine-health ${engineClass}`}><span className="health-dot" /><div><b>{engineText}</b><small>Нэгдсэн таталтын хөдөлгүүр</small></div></div>
           </aside>

@@ -21,6 +21,7 @@ import type {
 } from '@subutai/shared';
 import { consumeBrowserPayloadArguments } from './browser/native-messaging';
 import { SubutaiEngine, type SubutaiTaskStatus } from './engines/subutai-engine';
+import { toPublicError } from './engines/public-error';
 import {
   DEFAULT_TRANSFER_SETTINGS,
   normalizeTransferSettings,
@@ -131,7 +132,7 @@ function parseByteCount(value: string | undefined): number {
 
 
 function markJobFailed(job: DownloadJob, error: unknown): void {
-  const message = error instanceof Error ? error.message : String(error);
+  const message = toPublicError(error);
   job.status = 'failed';
   job.error = message;
   job.failureKind = classifyDownloadFailure(message);
@@ -291,7 +292,7 @@ async function processQueue(force = false): Promise<void> {
           try {
             await pauseForSchedule(job);
           } catch (error) {
-            job.error = error instanceof Error ? error.message : String(error);
+            job.error = toPublicError(error);
             job.updatedAt = new Date().toISOString();
             saveJob(job);
           }
@@ -387,7 +388,11 @@ export async function enqueueBrowserArguments(args: readonly string[]): Promise<
 
 async function probeMedia(request: MediaProbeRequest): Promise<MediaProbeResult> {
   validateRequest({ url: request.url, destination: '', engine: 'media' });
-  return engine.probeMedia(request.url.trim(), request.headers, request.sourcePageUrl);
+  try {
+    return await engine.probeMedia(request.url.trim(), request.headers, request.sourcePageUrl);
+  } catch (error) {
+    throw new Error(toPublicError(error));
+  }
 }
 
 async function pauseDownload(id: string): Promise<DownloadJob> {
