@@ -77,28 +77,41 @@ export class JobStore {
     this.database.prepare('DELETE FROM downloads WHERE id = ?').run(id);
   }
 
-  loadQueueSettings(): QueueSettings {
-    const row = this.database.prepare('SELECT payload FROM app_state WHERE key = ?').get('queue-settings') as { payload: string } | undefined;
-    if (!row) return { ...DEFAULT_QUEUE_SETTINGS };
+  loadState<T>(key: string): T | null {
+    const row = this.database.prepare('SELECT payload FROM app_state WHERE key = ?').get(key) as { payload: string } | undefined;
+    if (!row) return null;
     try {
-      const parsed = JSON.parse(row.payload) as Partial<QueueSettings>;
-      return {
-        maxConcurrentDownloads: Math.max(1, Math.min(32, Math.trunc(parsed.maxConcurrentDownloads ?? DEFAULT_QUEUE_SETTINGS.maxConcurrentDownloads))),
-        schedulingEnabled: parsed.schedulingEnabled ?? DEFAULT_QUEUE_SETTINGS.schedulingEnabled,
-        pauseOutsideSchedule: parsed.pauseOutsideSchedule ?? DEFAULT_QUEUE_SETTINGS.pauseOutsideSchedule,
-      };
+      return JSON.parse(row.payload) as T;
     } catch {
-      return { ...DEFAULT_QUEUE_SETTINGS };
+      return null;
     }
   }
 
-  saveQueueSettings(settings: QueueSettings): void {
+  saveState(key: string, value: unknown): void {
     const now = new Date().toISOString();
     this.database.prepare(`
       INSERT INTO app_state (key, payload, updated_at)
       VALUES (?, ?, ?)
       ON CONFLICT(key) DO UPDATE SET payload = excluded.payload, updated_at = excluded.updated_at
-    `).run('queue-settings', JSON.stringify(settings), now);
+    `).run(key, JSON.stringify(value), now);
+  }
+
+  deleteState(key: string): void {
+    this.database.prepare('DELETE FROM app_state WHERE key = ?').run(key);
+  }
+
+  loadQueueSettings(): QueueSettings {
+    const parsed = this.loadState<Partial<QueueSettings>>('queue-settings');
+    if (!parsed) return { ...DEFAULT_QUEUE_SETTINGS };
+    return {
+      maxConcurrentDownloads: Math.max(1, Math.min(32, Math.trunc(parsed.maxConcurrentDownloads ?? DEFAULT_QUEUE_SETTINGS.maxConcurrentDownloads))),
+      schedulingEnabled: parsed.schedulingEnabled ?? DEFAULT_QUEUE_SETTINGS.schedulingEnabled,
+      pauseOutsideSchedule: parsed.pauseOutsideSchedule ?? DEFAULT_QUEUE_SETTINGS.pauseOutsideSchedule,
+    };
+  }
+
+  saveQueueSettings(settings: QueueSettings): void {
+    this.saveState('queue-settings', settings);
   }
 
   loadSchedules(): DownloadSchedule[] {
