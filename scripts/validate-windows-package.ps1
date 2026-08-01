@@ -72,14 +72,49 @@ $checksumPath = Join-Path $releasePath "SHA256SUMS.txt"
 Set-Content -Path $checksumPath -Value $checksumLines -Encoding ascii
 
 if ($LaunchSmoke) {
+  $stdoutPath = Join-Path $releasePath "launch-smoke.stdout.log"
+  $stderrPath = Join-Path $releasePath "launch-smoke.stderr.log"
+  $diagnosticPath = Join-Path $releasePath "launch-smoke.runtime.log"
+  Remove-Item $stdoutPath, $stderrPath, $diagnosticPath -Force -ErrorAction SilentlyContinue
+
   $env:ELECTRON_ENABLE_LOGGING = "1"
-  $process = Start-Process -FilePath $appExecutable -ArgumentList "--subutai-smoke-test" -PassThru
-  if (-not $process.WaitForExit(20000)) {
+  $env:SUBUTAI_SMOKE_LOG = $diagnosticPath
+  $process = Start-Process `
+    -FilePath $appExecutable `
+    -ArgumentList "--subutai-smoke-test" `
+    -RedirectStandardOutput $stdoutPath `
+    -RedirectStandardError $stderrPath `
+    -PassThru
+
+  if (-not $process.WaitForExit(25000)) {
     Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
-    throw "Packaged Subutai app did not finish its launch smoke test within 20 seconds."
+    if (Test-Path $diagnosticPath) { Get-Content $diagnosticPath | Write-Host }
+    if (Test-Path $stderrPath) { Get-Content $stderrPath | Write-Host }
+    throw "Packaged Subutai app did not finish its launch smoke test within 25 seconds."
+  }
+
+  $process.Refresh()
+  if (Test-Path $diagnosticPath) {
+    Write-Host "Subutai runtime smoke log:"
+    Get-Content $diagnosticPath | Write-Host
+  }
+  if (Test-Path $stdoutPath) {
+    $stdout = Get-Content $stdoutPath -Raw
+    if ($stdout) { Write-Host "Subutai smoke stdout:`n$stdout" }
+  }
+  if (Test-Path $stderrPath) {
+    $stderr = Get-Content $stderrPath -Raw
+    if ($stderr) { Write-Host "Subutai smoke stderr:`n$stderr" }
   }
   if ($process.ExitCode -ne 0) {
     throw "Packaged Subutai app launch smoke failed with exit code $($process.ExitCode)."
+  }
+  if (-not (Test-Path $diagnosticPath)) {
+    throw "Packaged Subutai app did not produce its runtime smoke log."
+  }
+  $diagnostic = Get-Content $diagnosticPath -Raw
+  if ($diagnostic -notmatch "Launch smoke completed successfully") {
+    throw "Packaged Subutai app exited without completing its runtime smoke sequence."
   }
 }
 
