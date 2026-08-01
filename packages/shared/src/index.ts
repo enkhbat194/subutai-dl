@@ -35,4 +35,7 @@ export interface DownloadJob {
 export interface SubutaiDesktopApi {
   listDownloads(): Promise<DownloadJob[]>;
   createDownload(request: DownloadCreateRequest): Promise<DownloadJob>;
+  minimizeWindow(): Promise<void>;
+  toggleMaximizeWindow(): Promise<void>;
+  closeWindow(): Promise<void>;
 }
