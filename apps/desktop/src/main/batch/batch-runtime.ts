@@ -4,6 +4,7 @@ import type {
   BatchCreateResult,
   BatchPreviewRequest,
   BatchPreviewResult,
+  DownloadCreateRequest,
 } from '@subutai/shared';
 import { createDownload } from '../subutai-runtime';
 import { previewBatch } from './batch-expander';
@@ -19,14 +20,17 @@ async function createBatchDownloads(request: BatchCreateRequest): Promise<BatchC
   const result: BatchCreateResult = { jobs: [], rejected: [] };
   for (const url of preview.urls) {
     try {
-      const job = await createDownload({
+      const downloadRequest: DownloadCreateRequest = {
         url,
         destination: request.destination,
-        connections: request.connections,
-        priority: request.priority,
-        speedLimitBytesPerSecond: request.speedLimitBytesPerSecond,
         source: 'batch',
-      });
+      };
+      if (typeof request.connections === 'number') downloadRequest.connections = request.connections;
+      if (request.priority) downloadRequest.priority = request.priority;
+      if (typeof request.speedLimitBytesPerSecond === 'number') {
+        downloadRequest.speedLimitBytesPerSecond = request.speedLimitBytesPerSecond;
+      }
+      const job = await createDownload(downloadRequest);
       result.jobs.push(job);
     } catch (error) {
       result.rejected.push({
