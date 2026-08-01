@@ -51,6 +51,10 @@ function makeInternal(snapshot: SiteGrabberJob, completed: boolean): InternalJob
   return internal;
 }
 
+function isCancelled(job: InternalJob): boolean {
+  return job.controller.signal.aborted || job.snapshot.status === 'cancelled';
+}
+
 function normalizedRequest(request: SiteGrabberStartRequest): SiteGrabberJob {
   const root = new URL(request.rootUrl.trim());
   if (!['http:', 'https:'].includes(root.protocol)) throw new Error('Site Grabber зөвхөн HTTP/HTTPS сайт дэмжинэ.');
@@ -235,9 +239,9 @@ export class SiteGrabberService {
         if (snapshot.resources.length >= snapshot.maxResources) break;
       }
 
-      if (snapshot.status !== 'cancelled') snapshot.status = 'completed';
+      if (!isCancelled(job)) snapshot.status = 'completed';
     } catch (error) {
-      if (snapshot.status !== 'cancelled') {
+      if (!isCancelled(job)) {
         snapshot.status = 'failed';
         snapshot.error = error instanceof Error ? error.message : String(error);
       }
