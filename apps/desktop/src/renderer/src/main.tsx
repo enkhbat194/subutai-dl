@@ -9,6 +9,7 @@ import './transfer.css';
 import './batch.css';
 import './resilience.css';
 import './tools.css';
+import './system.css';
 
 const root = document.getElementById('root');
 
