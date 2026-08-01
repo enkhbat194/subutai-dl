@@ -13,7 +13,7 @@ permissions:
 jobs:
   package-windows:
     runs-on: windows-latest
-    timeout-minutes: 40
+    timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -56,6 +56,10 @@ jobs:
         shell: pwsh
         run: pnpm install --no-frozen-lockfile
 
+      - name: Validate release version
+        shell: pwsh
+        run: pnpm test:release-version
+
       - name: Typecheck
         shell: pwsh
         run: pnpm typecheck
@@ -64,10 +68,19 @@ jobs:
         shell: pwsh
         run: pnpm --filter @subutai/desktop build:win
 
+      - name: Validate packages and packaged app launch
+        shell: pwsh
+        run: ./scripts/validate-windows-package.ps1 -LaunchSmoke
+
       - name: Upload Subutai Windows packages
         uses: actions/upload-artifact@v4
         with:
           name: Subutai-Windows
-          path: apps/desktop/release/*
+          path: |
+            apps/desktop/release/Subutai-Setup-*.exe
+            apps/desktop/release/Subutai-Portable-*.exe
+            apps/desktop/release/latest.yml
+            apps/desktop/release/*.blockmap
+            apps/desktop/release/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 14
