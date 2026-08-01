@@ -1,6 +1,6 @@
 import { createServer } from 'node:http';
-import { mkdtemp, readdir, readFile, rm, stat } from 'node:fs/promises';
-import { createReadStream } from 'node:fs';
+import { mkdtemp, readdir, readFile, rm, stat, mkdir } from 'node:fs/promises';
+import { createReadStream, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, extname, join } from 'node:path';
 import { spawn } from 'node:child_process';
@@ -25,10 +25,10 @@ const ytDlp = process.env.SUBUTAI_YTDLP_PATH || 'yt-dlp';
 const root = await mkdtemp(join(tmpdir(), 'subutai-media-'));
 const sourceDir = join(root, 'source');
 const outputDir = join(root, 'output');
-await import('node:fs/promises').then(({ mkdir }) => Promise.all([
+await Promise.all([
   mkdir(sourceDir, { recursive: true }),
   mkdir(outputDir, { recursive: true }),
-]));
+]);
 
 let server;
 try {
@@ -43,13 +43,16 @@ try {
     join(sourceDir, 'sample.m3u8'),
   ]);
 
-  server = createServer(async (request, response) => {
+  server = createServer((request, response) => {
     try {
       const requested = decodeURIComponent(new URL(request.url || '/', 'http://127.0.0.1').pathname);
       const file = join(sourceDir, requested.replace(/^\/+/, ''));
       const extension = extname(file);
       response.setHeader('content-type', extension === '.m3u8' ? 'application/vnd.apple.mpegurl' : 'video/mp2t');
-      createReadStream(file).pipe(response);
+      createReadStream(file).on('error', () => {
+        if (!response.headersSent) response.statusCode = 404;
+        response.end();
+      }).pipe(response);
     } catch {
       response.statusCode = 404;
       response.end();
@@ -59,13 +62,16 @@ try {
   const address = server.address();
   if (!address || typeof address === 'string') throw new Error('Local media server did not start.');
 
-  await run(ytDlp, [
-    '--no-warnings', '--no-playlist',
-    '--ffmpeg-location', dirname(ffmpeg),
+  const downloadArgs = ['--no-warnings', '--no-playlist'];
+  if (ffmpeg !== basename(ffmpeg) || existsSync(ffmpeg)) {
+    downloadArgs.push('--ffmpeg-location', dirname(ffmpeg));
+  }
+  downloadArgs.push(
     '--merge-output-format', 'mp4',
     '--output', join(outputDir, 'subutai-media.%(ext)s'),
     `http://127.0.0.1:${address.port}/sample.m3u8`,
-  ]);
+  );
+  await run(ytDlp, downloadArgs);
 
   const outputs = (await readdir(outputDir)).filter((name) => !name.endsWith('.part'));
   if (outputs.length === 0) throw new Error('Media smoke test produced no output file.');
