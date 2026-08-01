@@ -1,0 +1,56 @@
+name: Subutai Windows Package
+
+on:
+  push:
+    branches: [main, agent/unified-subutai-runtime]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package-windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Enable pnpm
+        shell: pwsh
+        run: corepack enable
+
+      - name: Install Subutai direct-download engine
+        shell: pwsh
+        run: |
+          choco install aria2 -y --no-progress
+          $engine = Get-ChildItem "$env:ChocolateyInstall\lib\aria2*" -Recurse -Filter aria2c.exe | Select-Object -First 1
+          if (-not $engine) { throw "Subutai engine binary was not found after installation." }
+          New-Item -ItemType Directory -Force "apps/desktop/resources/engines/win32-x64" | Out-Null
+          Copy-Item $engine.FullName "apps/desktop/resources/engines/win32-x64/aria2c.exe"
+          Get-FileHash "apps/desktop/resources/engines/win32-x64/aria2c.exe" -Algorithm SHA256
+
+      - name: Install dependencies
+        shell: pwsh
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Typecheck
+        shell: pwsh
+        run: pnpm typecheck
+
+      - name: Build installer and portable app
+        shell: pwsh
+        run: pnpm --filter @subutai/desktop build:win
+
+      - name: Upload Subutai Windows packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: Subutai-Windows
+          path: apps/desktop/release/*
+          if-no-files-found: error
+          retention-days: 14
