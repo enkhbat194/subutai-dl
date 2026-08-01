@@ -2,7 +2,13 @@ import { app } from 'electron';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
-import type { DownloadRequestHeaders, MediaDownloadOptions, MediaProbeResult } from '@subutai/shared';
+import type {
+  DownloadRequestHeaders,
+  MediaDownloadOptions,
+  MediaProbeResult,
+  TransferSettings,
+} from '@subutai/shared';
+import { DEFAULT_TRANSFER_SETTINGS, resolveProxyUrl, ytDlpSpeed } from '../network/transfer-policy';
 
 export type MediaTaskState = 'waiting' | 'active' | 'paused' | 'complete' | 'error' | 'removed';
 
@@ -28,6 +34,7 @@ interface MediaTask {
   filename?: string;
   headers?: DownloadRequestHeaders;
   sourcePageUrl?: string;
+  speedLimitBytesPerSecond?: number;
   options: MediaDownloadOptions;
   process: ChildProcess | null;
   status: MediaTaskStatus;
@@ -60,11 +67,23 @@ function sanitizeHeader(name: string, value: string): string | null {
   return `${normalizedName}:${normalizedValue}`;
 }
 
+function minimumPositive(...values: number[]): number {
+  const positive = values.filter((value) => value > 0);
+  return positive.length > 0 ? Math.min(...positive) : 0;
+}
+
 export class MediaService {
   private readonly tasks = new Map<string, MediaTask>();
   private ytDlpVersion = '';
   private ffmpegVersion = '';
   private lastError = '';
+  private transferSettings: TransferSettings = { ...DEFAULT_TRANSFER_SETTINGS };
+  private proxyPassword = '';
+
+  configure(settings: TransferSettings, proxyPassword: string): void {
+    this.transferSettings = { ...settings };
+    this.proxyPassword = proxyPassword;
+  }
 
   async probe(url: string, headers?: DownloadRequestHeaders, sourcePageUrl?: string): Promise<MediaProbeResult> {
     const args = [
@@ -72,9 +91,10 @@ export class MediaService {
       '--skip-download',
       '--no-warnings',
       '--no-call-home',
-      '--socket-timeout', '20',
-      '--extractor-retries', '3',
+      '--socket-timeout', String(this.transferSettings.connectTimeoutSeconds),
+      '--extractor-retries', String(this.transferSettings.retryMaxAttempts),
     ];
+    this.appendTransferArguments(args, 0);
     this.appendRequestArguments(args, headers, sourcePageUrl);
     args.push(url);
 
@@ -98,6 +118,7 @@ export class MediaService {
     filename?: string;
     headers?: DownloadRequestHeaders;
     sourcePageUrl?: string;
+    speedLimitBytesPerSecond?: number;
     options: MediaDownloadOptions;
   }): Promise<string> {
     const id = crypto.randomUUID();
@@ -121,6 +142,7 @@ export class MediaService {
     if (input.filename) task.filename = input.filename;
     if (input.headers) task.headers = { ...input.headers };
     if (input.sourcePageUrl) task.sourcePageUrl = input.sourcePageUrl;
+    if (typeof input.speedLimitBytesPerSecond === 'number') task.speedLimitBytesPerSecond = input.speedLimitBytesPerSecond;
     this.tasks.set(id, task);
     await this.startTask(task);
     return id;
@@ -250,22 +272,24 @@ export class MediaService {
     const options = task.options;
     const quality = options.quality ?? 'best';
     const qualityHeight = quality === 'best' ? null : Number.parseInt(quality, 10);
+    const retryDelay = Math.max(1, this.transferSettings.retryBaseDelaySeconds);
     const args = [
       '--newline',
       '--continue',
       '--part',
       '--no-call-home',
-      '--socket-timeout', '20',
-      '--retries', '10',
-      '--fragment-retries', '10',
-      '--retry-sleep', 'http:linear=1:5:2',
-      '--retry-sleep', 'fragment:linear=1:5:2',
+      '--socket-timeout', String(this.transferSettings.transferTimeoutSeconds),
+      '--retries', String(this.transferSettings.retryMaxAttempts),
+      '--fragment-retries', String(this.transferSettings.retryMaxAttempts),
+      '--retry-sleep', `http:linear=${retryDelay}:30:${retryDelay}`,
+      '--retry-sleep', `fragment:linear=${retryDelay}:30:${retryDelay}`,
       '--concurrent-fragments', '8',
       '--paths', task.destination,
       '--progress-template', 'download:SUBUTAI_PROGRESS|%(progress.downloaded_bytes)s|%(progress.total_bytes_estimate)s|%(progress.speed)s|%(progress.eta)s|%(progress.status)s|%(info.title)s|%(info.playlist_index)s|%(info.playlist_count)s',
       '--print', 'after_move:SUBUTAI_FILE|%(filepath)s',
     ];
     this.appendFfmpegLocation(args, ffmpegPath);
+    this.appendTransferArguments(args, task.speedLimitBytesPerSecond ?? 0);
 
     if (task.filename?.trim()) {
       const stem = task.filename.replace(/\.[^.]+$/, '');
@@ -297,6 +321,25 @@ export class MediaService {
     this.appendRequestArguments(args, task.headers, task.sourcePageUrl);
     args.push(task.url);
     return args;
+  }
+
+  private appendTransferArguments(args: string[], taskSpeedLimit: number): void {
+    const effectiveSpeed = minimumPositive(
+      taskSpeedLimit,
+      this.transferSettings.defaultDownloadSpeedLimitBytesPerSecond,
+      this.transferSettings.globalSpeedLimitBytesPerSecond,
+    );
+    const speed = ytDlpSpeed(effectiveSpeed);
+    if (speed) args.push('--limit-rate', speed);
+
+    if (this.transferSettings.proxyMode === 'off') {
+      args.push('--proxy', '');
+      return;
+    }
+    if (this.transferSettings.proxyMode === 'manual') {
+      const proxy = resolveProxyUrl(this.transferSettings, this.proxyPassword);
+      if (proxy) args.push('--proxy', proxy);
+    }
   }
 
   private appendFfmpegLocation(args: string[], ffmpegPath: string): void {
