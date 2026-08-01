@@ -50,6 +50,9 @@ jobs:
       - name: Site Grabber local crawl tests
         run: pnpm test:site-grabber
 
+      - name: Tray notification and updater policy tests
+        run: pnpm test:system
+
       - name: Failure and recovery policy tests
         run: pnpm test:failure-policy
 
