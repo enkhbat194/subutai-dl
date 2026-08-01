@@ -13,6 +13,8 @@
     "test:media": "node scripts/media-smoke.mjs",
     "test:queue": "node --experimental-strip-types scripts/queue-policy-test.mts",
     "test:transfer": "node --experimental-strip-types scripts/transfer-policy-test.mts",
-    "test:batch": "node --experimental-strip-types scripts/batch-expander-test.mts"
+    "test:batch": "node --experimental-strip-types scripts/batch-expander-test.mts",
+    "test:failure-policy": "node --experimental-strip-types scripts/failure-policy-test.mts",
+    "test:resilience": "node scripts/resilience-download-test.mjs"
   }
 }
