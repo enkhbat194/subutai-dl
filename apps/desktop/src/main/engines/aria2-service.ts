@@ -105,10 +105,10 @@ export class Aria2Service {
     );
 
     this.child = child;
-    let spawnError: Error | null = null;
+    let spawnErrorMessage = '';
 
     child.once('error', (error) => {
-      spawnError = error;
+      spawnErrorMessage = error.message;
       this.lastError = error.message;
     });
 
@@ -126,9 +126,9 @@ export class Aria2Service {
     });
 
     for (let attempt = 0; attempt < 40; attempt += 1) {
-      if (spawnError) {
+      if (spawnErrorMessage) {
         throw new Error(
-          `aria2c was not found or could not start. Install aria2 or set SUBUTAI_ARIA2_PATH. ${spawnError.message}`,
+          `aria2c was not found or could not start. Install aria2 or set SUBUTAI_ARIA2_PATH. ${spawnErrorMessage}`,
         );
       }
 
@@ -168,7 +168,6 @@ export class Aria2Service {
     };
 
     if (options.filename?.trim()) ariaOptions.out = options.filename.trim();
-
     return this.call<string>('aria2.addUri', [[url], ariaOptions]);
   }
 
