@@ -11,6 +11,7 @@
     "lint": "pnpm -r lint",
     "test:aria2": "node scripts/aria2-smoke.mjs",
     "test:media": "node scripts/media-smoke.mjs",
-    "test:queue": "node --experimental-strip-types scripts/queue-policy-test.mts"
+    "test:queue": "node --experimental-strip-types scripts/queue-policy-test.mts",
+    "test:transfer": "node --experimental-strip-types scripts/transfer-policy-test.mts"
   }
 }
