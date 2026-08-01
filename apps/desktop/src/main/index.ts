@@ -1,5 +1,6 @@
 import { app, BrowserWindow } from 'electron';
 import { isNativeMessagingInvocation, runNativeMessagingHost } from './browser/native-messaging';
+import { ensureNativeMessagingRegistered } from './browser/registration';
 
 if (isNativeMessagingInvocation(process.argv)) {
   void runNativeMessagingHost().finally(() => app.exit(process.exitCode ?? 0));
@@ -8,6 +9,7 @@ if (isNativeMessagingInvocation(process.argv)) {
   if (!hasSingleInstanceLock) {
     app.quit();
   } else {
+    void app.whenReady().then(() => ensureNativeMessagingRegistered()).catch(() => undefined);
     void import('./subutai-runtime').then(({ enqueueBrowserArguments }) => {
       app.on('second-instance', (_event, argv) => {
         void enqueueBrowserArguments(argv);
