@@ -13,7 +13,7 @@ permissions:
 jobs:
   desktop:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -26,8 +26,8 @@ jobs:
       - name: Enable pnpm
         run: corepack enable
 
-      - name: Install direct-download backend
-        run: sudo apt-get update && sudo apt-get install -y aria2
+      - name: Install Subutai runtime dependencies
+        run: sudo apt-get update && sudo apt-get install -y aria2 yt-dlp ffmpeg
 
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
@@ -40,3 +40,6 @@ jobs:
 
       - name: Real segmented-download smoke test
         run: pnpm test:aria2
+
+      - name: Real HLS media smoke test
+        run: pnpm test:media
