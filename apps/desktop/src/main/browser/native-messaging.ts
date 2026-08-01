@@ -158,7 +158,7 @@ async function launchDesktopWithPayload(message: BrowserEnqueueMessage): Promise
 }
 
 export async function runNativeMessagingHost(): Promise<void> {
-  let requestId = crypto.randomUUID();
+  let requestId: string = crypto.randomUUID();
   try {
     const message = validateMessage(await readOneNativeMessage());
     requestId = message.requestId;
