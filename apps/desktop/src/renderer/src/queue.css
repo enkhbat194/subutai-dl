@@ -1,0 +1,360 @@
+.queue-launch-button {
+  position: fixed;
+  right: 28px;
+  bottom: 92px;
+  z-index: 40;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 48px;
+  padding: 0 15px;
+  border: 1px solid rgba(255, 192, 73, .35);
+  border-radius: 14px;
+  background: linear-gradient(135deg, #7b4a0b, #c78018);
+  color: #fff;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, .32);
+  cursor: pointer;
+}
+
+.queue-launch-button span {
+  font-size: 20px;
+}
+
+.queue-launch-button em {
+  display: grid;
+  place-items: center;
+  min-width: 23px;
+  height: 23px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, .25);
+  font-style: normal;
+}
+
+.queue-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 110;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(1, 7, 16, .86);
+  backdrop-filter: blur(12px);
+}
+
+.queue-modal {
+  width: min(980px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  padding: 24px;
+  border: 1px solid rgba(209, 151, 48, .28);
+  border-radius: 20px;
+  background: linear-gradient(180deg, #0d1b2e, #091321);
+  color: #eaf4ff;
+  box-shadow: 0 30px 90px rgba(0, 0, 0, .58);
+}
+
+.queue-modal-header,
+.queue-card-heading,
+.queue-job-row,
+.schedule-list-real article {
+  display: flex;
+  align-items: center;
+}
+
+.queue-modal-header {
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+
+.queue-modal-header span {
+  font-size: 11px;
+  letter-spacing: .2em;
+  color: #e5a52c;
+}
+
+.queue-modal-header h2 {
+  margin: 5px 0 0;
+  font-size: 24px;
+}
+
+.queue-modal-header > button {
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, .08);
+  color: #fff;
+  font-size: 24px;
+  cursor: pointer;
+}
+
+.queue-status-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.queue-status-grid article {
+  padding: 13px;
+  border: 1px solid rgba(111, 154, 205, .18);
+  border-radius: 12px;
+  background: rgba(15, 34, 58, .75);
+}
+
+.queue-status-grid span {
+  display: block;
+  margin-bottom: 6px;
+  color: #8fa6bf;
+  font-size: 11px;
+}
+
+.queue-status-grid strong {
+  font-size: 21px;
+}
+
+.queue-status-grid .queue-allowed strong {
+  color: #72e49d;
+}
+
+.queue-status-grid .queue-blocked strong {
+  color: #ffb267;
+}
+
+.queue-settings-card,
+.queue-list-card,
+.schedule-card {
+  margin-top: 14px;
+  padding: 16px;
+  border: 1px solid rgba(111, 154, 205, .17);
+  border-radius: 14px;
+  background: rgba(8, 22, 39, .75);
+}
+
+.queue-settings-card {
+  display: grid;
+  grid-template-columns: 1.1fr 1fr 1.4fr auto;
+  gap: 12px;
+  align-items: end;
+}
+
+.queue-settings-card h3 {
+  grid-column: 1 / -1;
+  margin: 0 0 2px;
+}
+
+.queue-modal label {
+  display: grid;
+  gap: 6px;
+  color: #9bb0c9;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.queue-modal input,
+.queue-modal select {
+  min-height: 40px;
+  padding: 0 10px;
+  border: 1px solid rgba(110, 153, 203, .24);
+  border-radius: 9px;
+  background: #07111f;
+  color: #edf7ff;
+}
+
+.queue-settings-card .queue-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+}
+
+.queue-check input,
+.schedule-toggle input {
+  min-height: 0;
+  width: 16px;
+  height: 16px;
+}
+
+.queue-run-now,
+.schedule-add {
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid rgba(225, 167, 62, .4);
+  border-radius: 9px;
+  background: linear-gradient(135deg, #72440b, #b46e12);
+  color: #fff;
+  cursor: pointer;
+}
+
+.queue-card-heading {
+  justify-content: space-between;
+  margin-bottom: 11px;
+}
+
+.queue-card-heading h3 {
+  margin: 0;
+}
+
+.queue-card-heading span {
+  color: #89a0bb;
+  font-size: 12px;
+}
+
+.queue-job-list,
+.schedule-list-real {
+  display: grid;
+  gap: 8px;
+}
+
+.queue-job-row {
+  gap: 10px;
+  min-height: 52px;
+  padding: 8px 10px;
+  border: 1px solid rgba(102, 146, 198, .14);
+  border-radius: 10px;
+  background: rgba(14, 31, 52, .74);
+}
+
+.queue-position {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: #172a43;
+  color: #a9c9eb;
+}
+
+.queue-job-name {
+  display: grid;
+  flex: 1;
+  gap: 3px;
+  min-width: 0;
+}
+
+.queue-job-name strong,
+.queue-job-name small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.queue-job-name small {
+  color: #8299b3;
+}
+
+.queue-job-row select {
+  min-height: 34px;
+}
+
+.queue-move-buttons {
+  display: flex;
+  gap: 5px;
+}
+
+.queue-move-buttons button,
+.schedule-delete {
+  min-width: 31px;
+  min-height: 31px;
+  border: 1px solid rgba(109, 153, 204, .2);
+  border-radius: 8px;
+  background: #12243b;
+  color: #cfe2f6;
+  cursor: pointer;
+}
+
+.schedule-form-grid {
+  display: grid;
+  grid-template-columns: 1.4fr repeat(3, 1fr);
+  gap: 10px;
+}
+
+.schedule-days {
+  display: flex;
+  gap: 7px;
+  margin: 12px 0;
+}
+
+.schedule-days button {
+  width: 38px;
+  height: 34px;
+  border: 1px solid rgba(109, 153, 204, .2);
+  border-radius: 9px;
+  background: #102139;
+  color: #a9bed5;
+  cursor: pointer;
+}
+
+.schedule-days button.active {
+  border-color: #d18a20;
+  background: rgba(196, 119, 17, .28);
+  color: #fff;
+}
+
+.schedule-list-real {
+  margin-top: 14px;
+}
+
+.schedule-list-real article {
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(100, 145, 196, .14);
+  border-radius: 10px;
+  background: rgba(14, 31, 52, .72);
+}
+
+.schedule-list-real article.active {
+  border-color: rgba(77, 212, 130, .45);
+  box-shadow: inset 3px 0 0 #4ed185;
+}
+
+.schedule-list-real article > div {
+  display: grid;
+  flex: 1;
+  gap: 3px;
+}
+
+.schedule-list-real article span {
+  color: #849cb6;
+  font-size: 12px;
+}
+
+.schedule-toggle {
+  display: flex !important;
+  align-items: center;
+  gap: 7px;
+}
+
+.schedule-delete {
+  padding: 0 10px;
+  color: #ffb6bd;
+}
+
+.queue-empty,
+.queue-loading {
+  padding: 22px;
+  text-align: center;
+  color: #8199b4;
+}
+
+.queue-error {
+  margin-top: 14px;
+  padding: 11px 12px;
+  border: 1px solid rgba(255, 100, 110, .35);
+  border-radius: 10px;
+  background: rgba(143, 28, 39, .2);
+  color: #ffb8bf;
+}
+
+@media (max-width: 820px) {
+  .queue-status-grid,
+  .queue-settings-card,
+  .schedule-form-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .queue-settings-card h3 {
+    grid-column: 1 / -1;
+  }
+}
