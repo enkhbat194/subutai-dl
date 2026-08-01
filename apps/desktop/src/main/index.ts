@@ -3,7 +3,7 @@ import { isNativeMessagingInvocation, runNativeMessagingHost } from './browser/n
 import { ensureNativeMessagingRegistered } from './browser/registration';
 
 if (isNativeMessagingInvocation(process.argv)) {
-  void runNativeMessagingHost().finally(() => app.exit(process.exitCode ?? 0));
+  void runNativeMessagingHost().finally(() => app.exit(Number(process.exitCode ?? 0)));
 } else {
   const hasSingleInstanceLock = app.requestSingleInstanceLock();
   if (!hasSingleInstanceLock) {
