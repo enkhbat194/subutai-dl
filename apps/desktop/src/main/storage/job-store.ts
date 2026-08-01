@@ -1,7 +1,13 @@
 import { DatabaseSync } from 'node:sqlite';
 import { dirname } from 'node:path';
 import { mkdirSync } from 'node:fs';
-import type { DownloadJob } from '@subutai/shared';
+import type { DownloadJob, DownloadSchedule, QueueSettings } from '@subutai/shared';
+
+const DEFAULT_QUEUE_SETTINGS: QueueSettings = {
+  maxConcurrentDownloads: 3,
+  schedulingEnabled: false,
+  pauseOutsideSchedule: true,
+};
 
 export class JobStore {
   private readonly database: DatabaseSync;
@@ -13,6 +19,16 @@ export class JobStore {
       PRAGMA journal_mode = WAL;
       PRAGMA synchronous = NORMAL;
       CREATE TABLE IF NOT EXISTS downloads (
+        id TEXT PRIMARY KEY,
+        payload TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS app_state (
+        key TEXT PRIMARY KEY,
+        payload TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS schedules (
         id TEXT PRIMARY KEY,
         payload TEXT NOT NULL,
         updated_at TEXT NOT NULL
@@ -59,6 +75,55 @@ export class JobStore {
 
   remove(id: string): void {
     this.database.prepare('DELETE FROM downloads WHERE id = ?').run(id);
+  }
+
+  loadQueueSettings(): QueueSettings {
+    const row = this.database.prepare('SELECT payload FROM app_state WHERE key = ?').get('queue-settings') as { payload: string } | undefined;
+    if (!row) return { ...DEFAULT_QUEUE_SETTINGS };
+    try {
+      const parsed = JSON.parse(row.payload) as Partial<QueueSettings>;
+      return {
+        maxConcurrentDownloads: Math.max(1, Math.min(32, Math.trunc(parsed.maxConcurrentDownloads ?? DEFAULT_QUEUE_SETTINGS.maxConcurrentDownloads))),
+        schedulingEnabled: parsed.schedulingEnabled ?? DEFAULT_QUEUE_SETTINGS.schedulingEnabled,
+        pauseOutsideSchedule: parsed.pauseOutsideSchedule ?? DEFAULT_QUEUE_SETTINGS.pauseOutsideSchedule,
+      };
+    } catch {
+      return { ...DEFAULT_QUEUE_SETTINGS };
+    }
+  }
+
+  saveQueueSettings(settings: QueueSettings): void {
+    const now = new Date().toISOString();
+    this.database.prepare(`
+      INSERT INTO app_state (key, payload, updated_at)
+      VALUES (?, ?, ?)
+      ON CONFLICT(key) DO UPDATE SET payload = excluded.payload, updated_at = excluded.updated_at
+    `).run('queue-settings', JSON.stringify(settings), now);
+  }
+
+  loadSchedules(): DownloadSchedule[] {
+    const rows = this.database.prepare('SELECT payload FROM schedules ORDER BY updated_at DESC').all() as Array<{ payload: string }>;
+    const schedules: DownloadSchedule[] = [];
+    for (const row of rows) {
+      try {
+        schedules.push(JSON.parse(row.payload) as DownloadSchedule);
+      } catch {
+        // Ignore damaged schedule rows.
+      }
+    }
+    return schedules;
+  }
+
+  saveSchedule(schedule: DownloadSchedule): void {
+    this.database.prepare(`
+      INSERT INTO schedules (id, payload, updated_at)
+      VALUES (?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET payload = excluded.payload, updated_at = excluded.updated_at
+    `).run(schedule.id, JSON.stringify(schedule), schedule.updatedAt);
+  }
+
+  deleteSchedule(id: string): void {
+    this.database.prepare('DELETE FROM schedules WHERE id = ?').run(id);
   }
 
   close(): void {

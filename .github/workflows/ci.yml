@@ -35,6 +35,9 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      - name: Queue and scheduler policy tests
+        run: pnpm test:queue
+
       - name: Build desktop
         run: pnpm build
 

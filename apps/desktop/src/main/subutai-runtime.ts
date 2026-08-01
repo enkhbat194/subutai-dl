@@ -5,21 +5,34 @@ import { basename, join } from 'node:path';
 import type {
   DownloadCreateRequest,
   DownloadJob,
+  DownloadSchedule,
+  DownloadScheduleInput,
   DownloadStatus,
   EngineHealth,
   MediaDownloadOptions,
   MediaProbeRequest,
   MediaProbeResult,
+  QueuePriority,
+  QueueSettings,
+  QueueSnapshot,
 } from '@subutai/shared';
 import { consumeBrowserPayloadArguments } from './browser/native-messaging';
 import { SubutaiEngine, type SubutaiTaskStatus } from './engines/subutai-engine';
+import { isRunningStatus, queueAllowance, sortQueuedJobs } from './queue/queue-policy';
 import { JobStore } from './storage/job-store';
 
 const jobs = new Map<string, DownloadJob>();
+const schedules = new Map<string, DownloadSchedule>();
 const engine = new SubutaiEngine();
 let store: JobStore | null = null;
 let syncTimer: NodeJS.Timeout | null = null;
 let syncInProgress = false;
+let queueInProgress = false;
+let queueSettings: QueueSettings = {
+  maxConcurrentDownloads: 3,
+  schedulingEnabled: false,
+  pauseOutsideSchedule: true,
+};
 
 const MEDIA_HOSTS = [
   'youtube.com', 'youtu.be', 'facebook.com', 'fb.watch', 'instagram.com',
@@ -52,8 +65,27 @@ function createWindow(): void {
 
 function snapshot(): DownloadJob[] {
   return Array.from(jobs.values())
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .sort((a, b) => {
+      const orderA = a.queueOrder ?? Number.MAX_SAFE_INTEGER;
+      const orderB = b.queueOrder ?? Number.MAX_SAFE_INTEGER;
+      if (orderA !== orderB) return orderA - orderB;
+      return b.createdAt.localeCompare(a.createdAt);
+    })
     .map((job) => ({ ...job }));
+}
+
+function queueSnapshot(date = new Date()): QueueSnapshot {
+  const allowance = queueAllowance(queueSettings, Array.from(schedules.values()), date);
+  const values = Array.from(jobs.values());
+  return {
+    settings: { ...queueSettings },
+    schedules: Array.from(schedules.values()).sort((a, b) => a.name.localeCompare(b.name)),
+    activeScheduleIds: allowance.activeScheduleIds,
+    allowedNow: allowance.allowed,
+    runningCount: values.filter((job) => isRunningStatus(job.status)).length,
+    queuedCount: values.filter((job) => job.status === 'queued').length,
+    pausedCount: values.filter((job) => job.status === 'paused').length,
+  };
 }
 
 function saveJob(job: DownloadJob): void {
@@ -65,6 +97,18 @@ function broadcastJobs(): void {
   for (const window of BrowserWindow.getAllWindows()) {
     window.webContents.send('downloads:changed', current);
   }
+}
+
+function broadcastQueue(): void {
+  const current = queueSnapshot();
+  for (const window of BrowserWindow.getAllWindows()) {
+    window.webContents.send('queue:changed', current);
+  }
+}
+
+function broadcastAll(): void {
+  broadcastJobs();
+  broadcastQueue();
 }
 
 function parseByteCount(value: string | undefined): number {
@@ -142,11 +186,23 @@ function getJob(id: string): DownloadJob {
   return job;
 }
 
+function nextQueueOrder(): number {
+  let highest = 0;
+  for (const job of jobs.values()) highest = Math.max(highest, job.queueOrder ?? 0);
+  return highest + 1;
+}
+
+function jobMatchesSchedule(job: DownloadJob, activeScheduleIds: string[], schedulingEnabled: boolean): boolean {
+  if (!job.scheduleId) return true;
+  if (!schedulingEnabled) return true;
+  return activeScheduleIds.includes(job.scheduleId);
+}
+
 async function assignTask(job: DownloadJob): Promise<void> {
   job.status = 'resolving';
   job.updatedAt = new Date().toISOString();
   saveJob(job);
-  broadcastJobs();
+  broadcastAll();
 
   const options: {
     url: string;
@@ -170,7 +226,92 @@ async function assignTask(job: DownloadJob): Promise<void> {
   job.status = 'queued';
   job.updatedAt = new Date().toISOString();
   saveJob(job);
-  broadcastJobs();
+}
+
+async function startQueuedJob(job: DownloadJob): Promise<void> {
+  job.pausedByScheduler = false;
+  if (job.engineTaskId) {
+    job.status = 'resolving';
+    job.updatedAt = new Date().toISOString();
+    saveJob(job);
+    await engine.resume(job.engineTaskId);
+  } else {
+    await assignTask(job);
+  }
+}
+
+async function pauseForSchedule(job: DownloadJob): Promise<void> {
+  if (!isRunningStatus(job.status)) return;
+  if (job.engineTaskId) await engine.pause(job.engineTaskId);
+  job.status = 'paused';
+  job.pausedByScheduler = true;
+  job.speedBytesPerSecond = 0;
+  job.etaSeconds = null;
+  job.updatedAt = new Date().toISOString();
+  saveJob(job);
+}
+
+async function processQueue(force = false): Promise<void> {
+  if (queueInProgress) return;
+  queueInProgress = true;
+  try {
+    const allowance = queueAllowance(queueSettings, Array.from(schedules.values()), new Date());
+    const allowed = force || allowance.allowed;
+
+    if (!allowed) {
+      if (queueSettings.pauseOutsideSchedule) {
+        for (const job of jobs.values()) {
+          try {
+            await pauseForSchedule(job);
+          } catch (error) {
+            job.error = error instanceof Error ? error.message : String(error);
+            job.updatedAt = new Date().toISOString();
+            saveJob(job);
+          }
+        }
+      }
+      broadcastAll();
+      return;
+    }
+
+    for (const job of jobs.values()) {
+      if (job.status === 'paused' && job.pausedByScheduler) {
+        job.status = 'queued';
+        job.pausedByScheduler = false;
+        job.updatedAt = new Date().toISOString();
+        saveJob(job);
+      }
+    }
+
+    const runningCount = Array.from(jobs.values()).filter((job) => isRunningStatus(job.status)).length;
+    let slots = Math.max(0, (force ? queueSettings.maxConcurrentDownloads : allowance.maxConcurrent) - runningCount);
+    if (slots <= 0) {
+      broadcastAll();
+      return;
+    }
+
+    const candidates = sortQueuedJobs(jobs.values()).filter((job) =>
+      jobMatchesSchedule(job, allowance.activeScheduleIds, queueSettings.schedulingEnabled) && !job.pausedByScheduler,
+    );
+
+    for (const job of candidates) {
+      if (slots <= 0) break;
+      try {
+        await startQueuedJob(job);
+        slots -= 1;
+      } catch (error) {
+        job.status = 'failed';
+        job.error = error instanceof Error ? error.message : String(error);
+        job.speedBytesPerSecond = 0;
+        job.etaSeconds = null;
+        job.updatedAt = new Date().toISOString();
+        saveJob(job);
+      }
+    }
+    broadcastAll();
+  } finally {
+    queueInProgress = false;
+  }
 }
 
 export async function createDownload(request: DownloadCreateRequest): Promise<DownloadJob> {
@@ -197,26 +338,19 @@ export async function createDownload(request: DownloadCreateRequest): Promise<Do
     connections: media ? 1 : connections,
     createdAt: now,
     updatedAt: now,
+    priority: request.priority ?? 'normal',
+    queueOrder: nextQueueOrder(),
   };
   if (request.source) job.source = request.source;
   if (request.sourcePageUrl) job.sourcePageUrl = request.sourcePageUrl;
   if (request.headers && Object.keys(request.headers).length > 0) job.headers = { ...request.headers };
   if (media) job.media = media;
+  if (request.scheduleId) job.scheduleId = request.scheduleId;
 
   jobs.set(id, job);
   saveJob(job);
-  broadcastJobs();
-
-  try {
-    await assignTask(job);
-  } catch (error) {
-    job.status = 'failed';
-    job.error = error instanceof Error ? error.message : String(error);
-    job.updatedAt = new Date().toISOString();
-    saveJob(job);
-    broadcastJobs();
-  }
-
+  broadcastAll();
+  void processQueue();
   return { ...job };
 }
 
@@ -231,30 +365,27 @@ async function probeMedia(request: MediaProbeRequest): Promise<MediaProbeResult>
 
 async function pauseDownload(id: string): Promise<DownloadJob> {
   const job = getJob(id);
-  if (!job.engineTaskId) await assignTask(job);
-  if (!job.engineTaskId) throw new Error('Таталтын даалгавар үүссэнгүй.');
-  await engine.pause(job.engineTaskId);
+  if (job.engineTaskId && isRunningStatus(job.status)) await engine.pause(job.engineTaskId);
   job.status = 'paused';
+  job.pausedByScheduler = false;
   job.speedBytesPerSecond = 0;
   job.etaSeconds = null;
   job.updatedAt = new Date().toISOString();
   saveJob(job);
-  broadcastJobs();
+  broadcastAll();
+  void processQueue();
   return { ...job };
 }
 
 async function resumeDownload(id: string): Promise<DownloadJob> {
   const job = getJob(id);
-  if (!job.engineTaskId) {
-    await assignTask(job);
-  } else {
-    await engine.resume(job.engineTaskId);
-    job.status = 'queued';
-    job.updatedAt = new Date().toISOString();
-    saveJob(job);
-    broadcastJobs();
-  }
+  job.status = 'queued';
+  job.pausedByScheduler = false;
   delete job.error;
+  job.updatedAt = new Date().toISOString();
+  saveJob(job);
+  broadcastAll();
+  void processQueue();
   return { ...job };
 }
 
@@ -265,11 +396,13 @@ async function cancelDownload(id: string): Promise<DownloadJob> {
   }
   delete job.engineTaskId;
   job.status = 'cancelled';
+  job.pausedByScheduler = false;
   job.speedBytesPerSecond = 0;
   job.etaSeconds = null;
   job.updatedAt = new Date().toISOString();
   saveJob(job);
-  broadcastJobs();
+  broadcastAll();
+  void processQueue();
   return { ...job };
 }
 
@@ -290,7 +423,8 @@ async function removeDownload(id: string, deleteFile = false): Promise<void> {
     await rm(join(job.destination, job.filename), { force: true });
     if (job.engine !== 'media') await rm(join(job.destination, `${job.filename}.aria2`), { force: true });
   }
-  broadcastJobs();
+  broadcastAll();
+  void processQueue();
 }
 
 async function openDownloadFolder(id: string): Promise<void> {
@@ -304,6 +438,107 @@ async function openDownloadFolder(id: string): Promise<void> {
   if (error) throw new Error(error);
 }
 
+async function setDownloadPriority(id: string, priority: QueuePriority): Promise<DownloadJob> {
+  const job = getJob(id);
+  job.priority = priority;
+  job.updatedAt = new Date().toISOString();
+  saveJob(job);
+  broadcastAll();
+  void processQueue();
+  return { ...job };
+}
+
+async function moveDownload(id: string, direction: 'up' | 'down' | 'top' | 'bottom'): Promise<DownloadJob[]> {
+  const ordered = Array.from(jobs.values()).sort((a, b) => (a.queueOrder ?? 0) - (b.queueOrder ?? 0));
+  const index = ordered.findIndex((job) => job.id === id);
+  if (index < 0) throw new Error(`Таталт олдсонгүй: ${id}`);
+  const [job] = ordered.splice(index, 1);
+  if (!job) return snapshot();
+  const target = direction === 'top'
+    ? 0
+    : direction === 'bottom'
+      ? ordered.length
+      : direction === 'up'
+        ? Math.max(0, index - 1)
+        : Math.min(ordered.length, index + 1);
+  ordered.splice(target, 0, job);
+  const now = new Date().toISOString();
+  ordered.forEach((item, queueIndex) => {
+    item.queueOrder = queueIndex + 1;
+    item.updatedAt = now;
+    saveJob(item);
+  });
+  broadcastAll();
+  return snapshot();
+}
+
+function normalizeQueueSettings(update: Partial<QueueSettings>): QueueSettings {
+  return {
+    maxConcurrentDownloads: Math.max(1, Math.min(32, Math.trunc(update.maxConcurrentDownloads ?? queueSettings.maxConcurrentDownloads))),
+    schedulingEnabled: update.schedulingEnabled ?? queueSettings.schedulingEnabled,
+    pauseOutsideSchedule: update.pauseOutsideSchedule ?? queueSettings.pauseOutsideSchedule,
+  };
+}
+
+async function updateQueueSettings(update: Partial<QueueSettings>): Promise<QueueSnapshot> {
+  queueSettings = normalizeQueueSettings(update);
+  store?.saveQueueSettings(queueSettings);
+  await processQueue();
+  broadcastQueue();
+  return queueSnapshot();
+}
+
+function validateTime(value: string): string {
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(value)) throw new Error(`Цагийн формат буруу: ${value}`);
+  return value;
+}
+
+async function saveSchedule(input: DownloadScheduleInput): Promise<QueueSnapshot> {
+  const name = input.name.trim();
+  if (!name) throw new Error('Хуваарийн нэр шаардлагатай.');
+  const id = input.id?.trim() || crypto.randomUUID();
+  const existing = schedules.get(id);
+  const now = new Date().toISOString();
+  const schedule: DownloadSchedule = {
+    id,
+    name,
+    enabled: Boolean(input.enabled),
+    days: Array.from(new Set(input.days.map((day) => Math.max(0, Math.min(6, Math.trunc(day)))))).sort(),
+    startTime: validateTime(input.startTime),
+    endTime: validateTime(input.endTime),
+    createdAt: existing?.createdAt ?? now,
+    updatedAt: now,
+  };
+  if (typeof input.maxConcurrentDownloads === 'number' && input.maxConcurrentDownloads > 0) {
+    schedule.maxConcurrentDownloads = Math.max(1, Math.min(32, Math.trunc(input.maxConcurrentDownloads)));
+  }
+  schedules.set(id, schedule);
+  store?.saveSchedule(schedule);
+  await processQueue();
+  broadcastQueue();
+  return queueSnapshot();
+}
+
+async function deleteSchedule(id: string): Promise<QueueSnapshot> {
+  schedules.delete(id);
+  store?.deleteSchedule(id);
+  for (const job of jobs.values()) {
+    if (job.scheduleId === id) {
+      delete job.scheduleId;
+      job.updatedAt = new Date().toISOString();
+      saveJob(job);
+    }
+  }
+  await processQueue();
+  broadcastAll();
+  return queueSnapshot();
+}
+
+async function runQueueNow(): Promise<QueueSnapshot> {
+  await processQueue(true);
+  return queueSnapshot();
+}
+
 function updateJobFromStatus(job: DownloadJob, status: SubutaiTaskStatus): void {
   const totalBytes = parseByteCount(status.totalLength);
   const downloadedBytes = parseByteCount(status.completedLength);
@@ -311,7 +546,8 @@ function updateJobFromStatus(job: DownloadJob, status: SubutaiTaskStatus): void 
   const remaining = Math.max(0, totalBytes - downloadedBytes);
   const filePath = status.files?.[0]?.path;
 
-  job.status = status.phase === 'merging' ? 'merging' : statusFromEngine(status.status);
+  const mapped = status.phase === 'merging' ? 'merging' : statusFromEngine(status.status);
+  job.status = mapped === 'queued' && job.engineTaskId ? 'resolving' : mapped;
   job.totalBytes = totalBytes > 0 ? totalBytes : null;
   job.downloadedBytes = downloadedBytes;
   job.speedBytesPerSecond = speedBytesPerSecond;
@@ -333,6 +569,7 @@ async function synchronizeJobs(): Promise<void> {
     let changed = false;
     for (const job of jobs.values()) {
       if (!job.engineTaskId || ['completed', 'failed', 'cancelled'].includes(job.status)) continue;
+      if (job.status === 'paused') continue;
       try {
         const status = await engine.getStatus(job.engineTaskId);
         updateJobFromStatus(job, status);
@@ -351,38 +588,30 @@ async function synchronizeJobs(): Promise<void> {
         }
       }
     }
-    if (changed) broadcastJobs();
+    if (changed) broadcastAll();
   } finally {
     syncInProgress = false;
   }
+  void processQueue();
 }
 
-function restoreJobs(): void {
+function restoreState(): void {
   if (!store) return;
+  queueSettings = store.loadQueueSettings();
+  for (const schedule of store.loadSchedules()) schedules.set(schedule.id, schedule);
+  let order = 1;
   for (const restored of store.loadAll()) {
     restored.speedBytesPerSecond = 0;
     restored.etaSeconds = null;
+    restored.priority ??= 'normal';
+    restored.queueOrder ??= order;
+    order += 1;
     if (!['completed', 'failed', 'cancelled'].includes(restored.status)) {
       delete restored.engineTaskId;
-      if (restored.status !== 'paused') restored.status = 'queued';
+      if (restored.status !== 'paused' || restored.pausedByScheduler) restored.status = 'queued';
     }
     jobs.set(restored.id, restored);
   }
-}
-
-async function recoverInterruptedJobs(): Promise<void> {
-  for (const job of jobs.values()) {
-    if (job.status !== 'queued' || job.engineTaskId) continue;
-    try {
-      await assignTask(job);
-    } catch (error) {
-      job.status = 'failed';
-      job.error = error instanceof Error ? error.message : String(error);
-      job.updatedAt = new Date().toISOString();
-      saveJob(job);
-    }
-  }
-  broadcastJobs();
 }
 
 ipcMain.handle('downloads:list', (): DownloadJob[] => snapshot());
@@ -393,6 +622,13 @@ ipcMain.handle('downloads:resume', (_event, id: string) => resumeDownload(id));
 ipcMain.handle('downloads:cancel', (_event, id: string) => cancelDownload(id));
 ipcMain.handle('downloads:remove', (_event, id: string, deleteFile?: boolean) => removeDownload(id, deleteFile));
 ipcMain.handle('downloads:open-folder', (_event, id: string) => openDownloadFolder(id));
+ipcMain.handle('downloads:priority', (_event, id: string, priority: QueuePriority) => setDownloadPriority(id, priority));
+ipcMain.handle('downloads:move', (_event, id: string, direction: 'up' | 'down' | 'top' | 'bottom') => moveDownload(id, direction));
+ipcMain.handle('queue:get', (): QueueSnapshot => queueSnapshot());
+ipcMain.handle('queue:settings', (_event, settings: Partial<QueueSettings>) => updateQueueSettings(settings));
+ipcMain.handle('queue:schedule-save', (_event, schedule: DownloadScheduleInput) => saveSchedule(schedule));
+ipcMain.handle('queue:schedule-delete', (_event, id: string) => deleteSchedule(id));
+ipcMain.handle('queue:run-now', () => runQueueNow());
 ipcMain.handle('engines:health', (): EngineHealth => ({ subutai: engine.getHealth() }));
 ipcMain.handle('window:minimize', (event): void => { BrowserWindow.fromWebContents(event.sender)?.minimize(); });
 ipcMain.handle('window:toggle-maximize', (event): void => {
@@ -405,10 +641,10 @@ ipcMain.handle('window:close', (event): void => { BrowserWindow.fromWebContents(
 
 app.whenReady().then(async () => {
   store = new JobStore(join(app.getPath('userData'), 'data', 'subutai.db'));
-  restoreJobs();
+  restoreState();
   await enqueueBrowserArguments(process.argv);
   createWindow();
-  void recoverInterruptedJobs();
+  await processQueue();
   syncTimer = setInterval(() => void synchronizeJobs(), 750);
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -419,6 +655,8 @@ app.on('before-quit', () => {
   if (syncTimer) clearInterval(syncTimer);
   try {
     store?.saveMany(jobs.values());
+    store?.saveQueueSettings(queueSettings);
+    for (const schedule of schedules.values()) store?.saveSchedule(schedule);
     store?.close();
   } catch {
     // Shutdown must continue even when persistence is unavailable.
