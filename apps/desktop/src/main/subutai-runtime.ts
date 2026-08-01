@@ -4,6 +4,7 @@ import { rm } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import type {
   DownloadCreateRequest,
+  DownloadFailureKind,
   DownloadJob,
   DownloadSchedule,
   DownloadScheduleInput,
@@ -26,6 +27,7 @@ import {
   resolveProxyUrl,
 } from './network/transfer-policy';
 import { isRunningStatus, queueAllowance, sortQueuedJobs } from './queue/queue-policy';
+import { canAutoRetry, classifyDownloadFailure } from './resilience/failure-policy';
 import { JobStore } from './storage/job-store';
 
 const jobs = new Map<string, DownloadJob>();
@@ -125,6 +127,17 @@ function parseByteCount(value: string | undefined): number {
   if (!value) return 0;
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+}
+
+
+function markJobFailed(job: DownloadJob, error: unknown): void {
+  const message = error instanceof Error ? error.message : String(error);
+  job.status = 'failed';
+  job.error = message;
+  job.failureKind = classifyDownloadFailure(message);
+  job.speedBytesPerSecond = 0;
+  job.etaSeconds = null;
+  job.updatedAt = new Date().toISOString();
 }
 
 function statusFromEngine(status: SubutaiTaskStatus['status']): DownloadStatus {
@@ -235,6 +248,8 @@ async function assignTask(job: DownloadJob): Promise<void> {
   if (typeof job.speedLimitBytesPerSecond === 'number') options.speedLimitBytesPerSecond = job.speedLimitBytesPerSecond;
 
   job.engineTaskId = await engine.addDownload(options);
+  delete job.error;
+  delete job.failureKind;
   job.status = 'queued';
   job.updatedAt = new Date().toISOString();
   saveJob(job);
@@ -312,11 +327,7 @@ async function processQueue(force = false): Promise<void> {
         await startQueuedJob(job);
         slots -= 1;
       } catch (error) {
-        job.status = 'failed';
-        job.error = error instanceof Error ? error.message : String(error);
-        job.speedBytesPerSecond = 0;
-        job.etaSeconds = null;
-        job.updatedAt = new Date().toISOString();
+        markJobFailed(job, error);
         saveJob(job);
       }
     }
@@ -352,6 +363,7 @@ export async function createDownload(request: DownloadCreateRequest): Promise<Do
     updatedAt: now,
     priority: request.priority ?? 'normal',
     queueOrder: nextQueueOrder(),
+    retryCount: 0,
   };
   if (request.source) job.source = request.source;
   if (request.sourcePageUrl) job.sourcePageUrl = request.sourcePageUrl;
@@ -587,6 +599,39 @@ async function updateTransferSettings(update: TransferSettingsUpdate): Promise<T
   return { ...transferSettings };
 }
 
+
+export function getDownloadSnapshot(): DownloadJob[] {
+  return snapshot();
+}
+
+export async function recoverNetworkInterruptedDownloads(maxRetries = 5): Promise<number> {
+  let recovered = 0;
+  for (const job of jobs.values()) {
+    if (!canAutoRetry(job, maxRetries)) continue;
+    if (job.engineTaskId) {
+      try {
+        await engine.cancel(job.engineTaskId);
+      } catch {
+        // The failed task may already have disappeared from the engine.
+      }
+    }
+    delete job.engineTaskId;
+    delete job.error;
+    delete job.failureKind;
+    job.status = 'queued';
+    job.retryCount = (job.retryCount ?? 0) + 1;
+    job.lastRetryAt = new Date().toISOString();
+    job.updatedAt = job.lastRetryAt;
+    saveJob(job);
+    recovered += 1;
+  }
+  if (recovered > 0) {
+    broadcastAll();
+    await processQueue(true);
+  }
+  return recovered;
+}
+
 function updateJobFromStatus(job: DownloadJob, status: SubutaiTaskStatus): void {
   const totalBytes = parseByteCount(status.totalLength);
   const downloadedBytes = parseByteCount(status.completedLength);
@@ -605,8 +650,13 @@ function updateJobFromStatus(job: DownloadJob, status: SubutaiTaskStatus): void 
   else if (status.displayName && job.engine === 'media') job.filename = status.displayName;
   if (status.playlistIndex) job.playlistIndex = status.playlistIndex;
   if (status.playlistCount) job.playlistCount = status.playlistCount;
-  if (status.errorMessage) job.error = status.errorMessage;
-  else if (job.status !== 'failed') delete job.error;
+  if (status.errorMessage) {
+    job.error = status.errorMessage;
+    job.failureKind = classifyDownloadFailure(status.errorMessage);
+  } else if (job.status !== 'failed') {
+    delete job.error;
+    delete job.failureKind;
+  }
 }
 
 async function synchronizeJobs(): Promise<void> {
@@ -624,11 +674,7 @@ async function synchronizeJobs(): Promise<void> {
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         if (!message.toLowerCase().includes('not found')) {
-          job.status = 'failed';
-          job.error = message;
-          job.speedBytesPerSecond = 0;
-          job.etaSeconds = null;
-          job.updatedAt = new Date().toISOString();
+          markJobFailed(job, message);
           saveJob(job);
           changed = true;
         }
@@ -654,6 +700,7 @@ function restoreState(): void {
     restored.etaSeconds = null;
     restored.priority ??= 'normal';
     restored.queueOrder ??= order;
+    restored.retryCount ??= 0;
     order += 1;
     if (!['completed', 'failed', 'cancelled'].includes(restored.status)) {
       delete restored.engineTaskId;
