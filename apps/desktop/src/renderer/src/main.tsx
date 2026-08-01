@@ -5,6 +5,7 @@ import './styles.css';
 import './live.css';
 import './media.css';
 import './queue.css';
+import './transfer.css';
 
 const root = document.getElementById('root');
 
