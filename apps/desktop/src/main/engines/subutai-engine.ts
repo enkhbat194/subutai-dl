@@ -4,7 +4,7 @@ import type {
   MediaProbeResult,
   SubutaiEngineHealth,
 } from '@subutai/shared';
-import { Aria2Service, type Aria2TaskStatus } from './aria2-service';
+import { Aria2Service } from './aria2-service';
 import { MediaService } from './media-service';
 
 export interface SubutaiTaskStatus {
@@ -95,8 +95,8 @@ export class SubutaiEngine {
       completedLength: String(status.downloadedBytes),
       downloadSpeed: String(status.speedBytesPerSecond),
       connections: '1',
-      phase: status.phase,
     };
+    if (status.phase) result.phase = status.phase;
     if (status.filename) {
       result.files = [{
         path: status.filename,
