@@ -12,6 +12,7 @@ export type DownloadStatus =
 
 export type DownloadSource = 'desktop' | 'chrome' | 'edge' | 'firefox' | 'clipboard' | 'batch' | 'site-grabber';
 export type QueuePriority = 'low' | 'normal' | 'high';
+export type ProxyMode = 'off' | 'system' | 'manual';
 
 export interface DownloadRequestHeaders {
   [name: string]: string;
@@ -59,6 +60,7 @@ export interface DownloadCreateRequest {
   media?: MediaDownloadOptions;
   priority?: QueuePriority;
   scheduleId?: string;
+  speedLimitBytesPerSecond?: number;
 }
 
 export interface BrowserEnqueueMessage {
@@ -110,6 +112,7 @@ export interface DownloadJob {
   queueOrder?: number;
   scheduleId?: string;
   pausedByScheduler?: boolean;
+  speedLimitBytesPerSecond?: number;
   engineTaskId?: string;
   error?: string;
 }
@@ -152,6 +155,33 @@ export interface QueueSnapshot {
   pausedCount: number;
 }
 
+export interface TransferSettings {
+  globalSpeedLimitBytesPerSecond: number;
+  defaultDownloadSpeedLimitBytesPerSecond: number;
+  proxyMode: ProxyMode;
+  proxyUrl: string;
+  proxyUsername: string;
+  proxyPasswordSet: boolean;
+  retryMaxAttempts: number;
+  retryBaseDelaySeconds: number;
+  connectTimeoutSeconds: number;
+  transferTimeoutSeconds: number;
+}
+
+export interface TransferSettingsUpdate {
+  globalSpeedLimitBytesPerSecond?: number;
+  defaultDownloadSpeedLimitBytesPerSecond?: number;
+  proxyMode?: ProxyMode;
+  proxyUrl?: string;
+  proxyUsername?: string;
+  proxyPassword?: string;
+  clearProxyPassword?: boolean;
+  retryMaxAttempts?: number;
+  retryBaseDelaySeconds?: number;
+  connectTimeoutSeconds?: number;
+  transferTimeoutSeconds?: number;
+}
+
 export interface SubutaiEngineHealth {
   available: boolean;
   running: boolean;
@@ -183,9 +213,12 @@ export interface SubutaiDesktopApi {
   saveSchedule(schedule: DownloadScheduleInput): Promise<QueueSnapshot>;
   deleteSchedule(id: string): Promise<QueueSnapshot>;
   runQueueNow(): Promise<QueueSnapshot>;
+  getTransferSettings(): Promise<TransferSettings>;
+  updateTransferSettings(settings: TransferSettingsUpdate): Promise<TransferSettings>;
   getEngineHealth(): Promise<EngineHealth>;
   onDownloadsChanged(listener: (jobs: DownloadJob[]) => void): () => void;
   onQueueChanged(listener: (snapshot: QueueSnapshot) => void): () => void;
+  onTransferSettingsChanged(listener: (settings: TransferSettings) => void): () => void;
   minimizeWindow(): Promise<void>;
   toggleMaximizeWindow(): Promise<void>;
   closeWindow(): Promise<void>;

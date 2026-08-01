@@ -38,6 +38,9 @@ jobs:
       - name: Queue and scheduler policy tests
         run: pnpm test:queue
 
+      - name: Transfer control policy tests
+        run: pnpm test:transfer
+
       - name: Build desktop
         run: pnpm build
 

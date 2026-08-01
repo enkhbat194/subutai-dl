@@ -3,6 +3,7 @@ import type {
   MediaDownloadOptions,
   MediaProbeResult,
   SubutaiEngineHealth,
+  TransferSettings,
 } from '@subutai/shared';
 import { Aria2Service } from './aria2-service';
 import { MediaService } from './media-service';
@@ -39,6 +40,11 @@ export class SubutaiEngine {
   private readonly directEngine = new Aria2Service();
   private readonly mediaEngine = new MediaService();
 
+  async configureTransfer(settings: TransferSettings, proxyPassword: string): Promise<void> {
+    this.mediaEngine.configure(settings, proxyPassword);
+    await this.directEngine.configure(settings, proxyPassword);
+  }
+
   async addDownload(options: {
     url: string;
     destination: string;
@@ -47,6 +53,7 @@ export class SubutaiEngine {
     headers?: DownloadRequestHeaders;
     sourcePageUrl?: string;
     media?: MediaDownloadOptions;
+    speedLimitBytesPerSecond?: number;
   }): Promise<string> {
     if (options.media) {
       const mediaOptions: {
@@ -56,6 +63,7 @@ export class SubutaiEngine {
         filename?: string;
         headers?: DownloadRequestHeaders;
         sourcePageUrl?: string;
+        speedLimitBytesPerSecond?: number;
       } = {
         url: options.url,
         destination: options.destination,
@@ -64,6 +72,7 @@ export class SubutaiEngine {
       if (options.filename) mediaOptions.filename = options.filename;
       if (options.headers) mediaOptions.headers = options.headers;
       if (options.sourcePageUrl) mediaOptions.sourcePageUrl = options.sourcePageUrl;
+      if (typeof options.speedLimitBytesPerSecond === 'number') mediaOptions.speedLimitBytesPerSecond = options.speedLimitBytesPerSecond;
       return `media:${await this.mediaEngine.addDownload(mediaOptions)}`;
     }
 
@@ -72,12 +81,14 @@ export class SubutaiEngine {
       filename?: string;
       connections: number;
       headers?: DownloadRequestHeaders;
+      speedLimitBytesPerSecond?: number;
     } = {
       destination: options.destination,
       connections: options.connections,
     };
     if (options.filename) directOptions.filename = options.filename;
     if (options.headers) directOptions.headers = options.headers;
+    if (typeof options.speedLimitBytesPerSecond === 'number') directOptions.speedLimitBytesPerSecond = options.speedLimitBytesPerSecond;
     return `direct:${await this.directEngine.addUri(options.url, directOptions)}`;
   }
 
