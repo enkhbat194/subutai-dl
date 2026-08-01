@@ -10,6 +10,7 @@ import type {
   EngineHealth,
   MediaProbeRequest,
   MediaProbeResult,
+  NetworkResilienceState,
   QueuePriority,
   QueueSettings,
   QueueSnapshot,
@@ -38,6 +39,8 @@ const api: SubutaiDesktopApi = {
   runQueueNow: (): Promise<QueueSnapshot> => ipcRenderer.invoke('queue:run-now'),
   getTransferSettings: (): Promise<TransferSettings> => ipcRenderer.invoke('transfer-settings:get'),
   updateTransferSettings: (settings: TransferSettingsUpdate): Promise<TransferSettings> => ipcRenderer.invoke('transfer-settings:update', settings),
+  getNetworkResilienceState: (): Promise<NetworkResilienceState> => ipcRenderer.invoke('network-resilience:get'),
+  retryNetworkDownloads: (): Promise<NetworkResilienceState> => ipcRenderer.invoke('network-resilience:retry'),
   getEngineHealth: (): Promise<EngineHealth> => ipcRenderer.invoke('engines:health'),
   onDownloadsChanged: (listener: (jobs: DownloadJob[]) => void): (() => void) => {
     const handler = (_event: Electron.IpcRendererEvent, jobs: DownloadJob[]): void => listener(jobs);
@@ -53,6 +56,11 @@ const api: SubutaiDesktopApi = {
     const handler = (_event: Electron.IpcRendererEvent, settings: TransferSettings): void => listener(settings);
     ipcRenderer.on('transfer-settings:changed', handler);
     return () => ipcRenderer.removeListener('transfer-settings:changed', handler);
+  },
+  onNetworkResilienceChanged: (listener: (state: NetworkResilienceState) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, state: NetworkResilienceState): void => listener(state);
+    ipcRenderer.on('network-resilience:changed', handler);
+    return () => ipcRenderer.removeListener('network-resilience:changed', handler);
   },
   minimizeWindow: (): Promise<void> => ipcRenderer.invoke('window:minimize'),
   toggleMaximizeWindow: (): Promise<void> => ipcRenderer.invoke('window:toggle-maximize'),
