@@ -9,7 +9,7 @@ on:
       - "docs/NATIVE_ENGINE_IPC.md"
       - "docs/PROJECT_STATUS.md"
       - "scripts/native-engine-policy-test.mjs"
-      - "scripts/apply-n4-runtime-cleanup.mjs"
+      - "scripts/apply-n4-typescript-fixes.mjs"
       - "rust-toolchain.toml"
       - "package.json"
       - "pnpm-lock.yaml"
@@ -24,7 +24,7 @@ on:
       - "docs/NATIVE_ENGINE_IPC.md"
       - "docs/PROJECT_STATUS.md"
       - "scripts/native-engine-policy-test.mjs"
-      - "scripts/apply-n4-runtime-cleanup.mjs"
+      - "scripts/apply-n4-typescript-fixes.mjs"
       - "rust-toolchain.toml"
       - "package.json"
       - "pnpm-lock.yaml"
@@ -57,24 +57,24 @@ jobs:
         with:
           node-version: 22
 
-      - name: Apply N4 desktop runtime cleanup
+      - name: Apply N4 TypeScript fixes
         shell: powershell
         run: |
-          node scripts/apply-n4-runtime-cleanup.mjs
-          Remove-Item scripts/apply-n4-runtime-cleanup.mjs
+          node scripts/apply-n4-typescript-fixes.mjs
+          Remove-Item scripts/apply-n4-typescript-fixes.mjs
 
-      - name: Save N4 desktop runtime cleanup
+      - name: Save N4 TypeScript fixes
         shell: powershell
         run: |
           $changes = git status --porcelain
           if ([string]::IsNullOrWhiteSpace($changes)) {
-            Write-Host "N4 desktop runtime cleanup is already applied."
+            Write-Host "N4 TypeScript fixes are already applied."
             exit 0
           }
           git config user.name "Subutai Automation"
           git config user.email "subutai-automation@users.noreply.github.com"
           git add -A
-          git commit -m "Remove legacy direct download runtime cleanup"
+          git commit -m "Fix N4 desktop bridge TypeScript contracts"
           git push origin "HEAD:${{ github.head_ref || github.ref_name }}"
 
       - name: Install pinned Rust toolchain
