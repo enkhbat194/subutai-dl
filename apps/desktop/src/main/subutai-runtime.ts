@@ -773,8 +773,8 @@ async function restartChangedRemote(job: DownloadJob, status: SubutaiTaskStatus)
   return true;
 }
 
-async function verifyJobIntegrity(job: DownloadJob): Promise<void> {
-  if (job.engine === 'media' || !job.expectedSha256 || job.actualSha256) return;
+async function verifyJobIntegrity(job: DownloadJob): Promise<boolean> {
+  if (job.engine === 'media' || !job.expectedSha256 || job.actualSha256) return true;
   const filePath = join(job.destination, job.filename);
   const verification = await verifyCompletedDownload(filePath, job.expectedSha256);
   job.actualSha256 = verification.actualSha256;
@@ -790,7 +790,9 @@ async function verifyJobIntegrity(job: DownloadJob): Promise<void> {
     job.speedBytesPerSecond = 0;
     job.etaSeconds = null;
     job.updatedAt = new Date().toISOString();
+    return false;
   }
+  return true;
 }
 
 async function synchronizeJobs(): Promise<void> {
@@ -813,10 +815,8 @@ async function synchronizeJobs(): Promise<void> {
           }
           if (!mirrorSwitched) await restartChangedRemote(job, status);
         } else if (job.status === 'completed') {
-          await verifyJobIntegrity(job);
-          if (job.status === 'failed' && job.failureKind === 'integrity') {
-            await failoverToNextMirror(job, 'integrity');
-          }
+          const integrityMatched = await verifyJobIntegrity(job);
+          if (!integrityMatched) await failoverToNextMirror(job, 'integrity');
         }
         saveJob(job);
         changed = true;
