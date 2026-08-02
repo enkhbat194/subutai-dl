@@ -85,9 +85,10 @@ async function prepare() {
   let persistedBytes = 0;
   try {
     run = runNative(url, destinationPath);
+    const interruptedCompletion = run.completion.catch((error) => error);
     persistedBytes = await waitForProgress(run, minimumProgressBytes);
     await terminateProcessTree(run.child.pid);
-    await run.completion.catch(() => undefined);
+    await interruptedCompletion;
   } finally {
     await server.stop();
   }
