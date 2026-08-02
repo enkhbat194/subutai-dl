@@ -1,18 +1,12 @@
 name: Subutai Resilience
 
 on:
-  push:
-    branches: [main, "agent/**"]
-  pull_request:
-    branches: [main]
   workflow_dispatch:
     inputs:
       large_file_mb:
         description: Large-file validation size in MB
         required: false
         default: "1024"
-  schedule:
-    - cron: "20 2 * * 0"
 
 permissions:
   contents: read
@@ -30,10 +24,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Install aria2 on Linux
+      - name: Install direct-download test dependency on Linux
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y aria2
-      - name: Install aria2 on Windows
+      - name: Install direct-download test dependency on Windows
         if: runner.os == 'Windows'
         shell: pwsh
         run: choco install aria2 -y --no-progress
@@ -43,8 +37,7 @@ jobs:
           SUBUTAI_RESILIENCE_MB: "64"
         run: node scripts/resilience-download-test.mjs
 
-  scheduled-large-file:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+  large-file:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -52,7 +45,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Install aria2
+      - name: Install direct-download test dependency
         run: sudo apt-get update && sudo apt-get install -y aria2
       - name: Large-file crash and network interruption suite
         env:

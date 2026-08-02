@@ -1,0 +1,19 @@
+[package]
+name = "subutai-native-engine"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+name = "subutai_native_engine"
+path = "src/lib.rs"
+
+[[bin]]
+name = "subutai-engine"
+path = "src/main.rs"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+panic = "abort"
+strip = "symbols"

@@ -1,0 +1,144 @@
+name: Subutai Native Engine
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "engines/native/**"
+      - "docs/NATIVE_ENGINE_LOCKED_PLAN.md"
+      - "docs/NATIVE_ENGINE_IPC.md"
+      - "docs/PROJECT_STATUS.md"
+      - "scripts/native-engine-policy-test.mjs"
+      - "rust-toolchain.toml"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "apps/**"
+      - "packages/**"
+      - ".github/workflows/native-engine.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "engines/native/**"
+      - "docs/NATIVE_ENGINE_LOCKED_PLAN.md"
+      - "docs/NATIVE_ENGINE_IPC.md"
+      - "docs/PROJECT_STATUS.md"
+      - "scripts/native-engine-policy-test.mjs"
+      - "rust-toolchain.toml"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "apps/**"
+      - "packages/**"
+      - ".github/workflows/native-engine.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  native-engine:
+    name: subutai-windows
+    runs-on: [self-hosted, Windows, X64, subutai]
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install pinned Rust toolchain
+        shell: powershell
+        run: |
+          $cargoBin = Join-Path $env:USERPROFILE ".cargo\bin"
+          if (-not (Get-Command rustup -ErrorAction SilentlyContinue)) {
+            $rustupInstaller = Join-Path $env:RUNNER_TEMP "rustup-init.exe"
+            Invoke-WebRequest "https://win.rustup.rs/x86_64" -OutFile $rustupInstaller
+            & $rustupInstaller -y --profile minimal --default-toolchain none
+          }
+          $env:PATH = "$cargoBin;$env:PATH"
+          $cargoBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          rustup toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy
+          rustup default 1.97.1
+          rustc --version --verbose
+          cargo --version
+
+      - name: Verify Subutai ownership policy
+        shell: powershell
+        run: node scripts/native-engine-policy-test.mjs
+
+      - name: Check native engine formatting
+        shell: powershell
+        run: cargo fmt --manifest-path engines/native/Cargo.toml --all -- --check
+
+      - name: Check native engine quality
+        shell: powershell
+        run: cargo clippy --manifest-path engines/native/Cargo.toml --all-targets -- -D warnings
+
+      - name: Run native engine unit and protocol tests
+        shell: powershell
+        run: cargo test --manifest-path engines/native/Cargo.toml --all-targets
+
+      - name: Run durable journal self-test
+        shell: powershell
+        run: cargo run --quiet --manifest-path engines/native/Cargo.toml -- self-test
+
+      - name: Enable pnpm
+        shell: powershell
+        run: |
+          corepack enable
+          pnpm --version
+
+      - name: Install desktop dependencies
+        shell: powershell
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Check public Subutai identity
+        shell: powershell
+        run: pnpm test:brand
+
+      - name: Typecheck desktop and browser integration
+        shell: powershell
+        run: pnpm typecheck
+
+      - name: Run queue and scheduler tests
+        shell: powershell
+        run: pnpm test:queue
+
+      - name: Run transfer control tests
+        shell: powershell
+        run: pnpm test:transfer
+
+      - name: Run batch download tests
+        shell: powershell
+        run: pnpm test:batch
+
+      - name: Run clipboard monitoring tests
+        shell: powershell
+        run: pnpm test:clipboard
+
+      - name: Run Site Grabber tests
+        shell: powershell
+        run: pnpm test:site-grabber
+
+      - name: Run tray and updater tests
+        shell: powershell
+        run: pnpm test:system
+
+      - name: Run failure and recovery policy tests
+        shell: powershell
+        run: pnpm test:failure-policy
+
+      - name: Check release version consistency
+        shell: powershell
+        run: pnpm test:release-version
+
+      - name: Build Subutai desktop
+        shell: powershell
+        run: pnpm build
