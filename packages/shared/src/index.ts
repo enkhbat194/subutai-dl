@@ -67,6 +67,7 @@ export interface DownloadCreateRequest {
   fileConflictPolicy?: FileConflictPolicy;
   remoteChangePolicy?: RemoteChangePolicy;
   expectedSha256?: string;
+  mirrorUrls?: string[];
 }
 
 export interface BatchPreviewRequest {
@@ -147,6 +148,10 @@ export interface DownloadJob {
   fileConflictPolicy?: FileConflictPolicy;
   remoteChangePolicy?: RemoteChangePolicy;
   expectedSha256?: string;
+  mirrorUrls?: string[];
+  mirrorIndex?: number;
+  activeSourceUrl?: string;
+  mirrorFallbackCount?: number;
   actualSha256?: string;
   quarantinePath?: string;
   destinationPolicyApplied?: boolean;
