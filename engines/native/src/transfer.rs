@@ -268,14 +268,14 @@ where
         });
     }
 
-    if let Some(expected) = metadata.content_length {
-        if expected != downloaded {
-            file.sync_all()?;
-            return Err(TransferError::SizeMismatch {
-                expected,
-                actual: downloaded,
-            });
-        }
+    if let Some(expected) = metadata.content_length
+        && expected != downloaded
+    {
+        file.sync_all()?;
+        return Err(TransferError::SizeMismatch {
+            expected,
+            actual: downloaded,
+        });
     }
 
     file.sync_all()?;
