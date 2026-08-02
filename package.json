@@ -22,6 +22,7 @@
     "test:site-grabber": "node --experimental-strip-types scripts/site-grabber-test.mts",
     "test:system": "node --experimental-strip-types scripts/system-policy-test.mts",
     "test:release-version": "node scripts/validate-release-version.mjs",
+    "test:release-engine": "node scripts/release-engine-policy-test.mjs",
     "test:brand": "node scripts/brand-policy-test.mjs"
   }
 }
