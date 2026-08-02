@@ -15,6 +15,10 @@ const desktopMain = read('apps', 'desktop', 'src', 'main', 'index.ts');
 const transactionalUpdater = read(
   'apps', 'desktop', 'src', 'main', 'system', 'transactional-updater.ts',
 );
+const updateJournal = read(
+  'apps', 'desktop', 'src', 'main', 'system', 'update-journal.ts',
+);
+const watchdog = read('apps', 'desktop', 'resources', 'updater', 'update-watchdog.ps1');
 const viteConfig = read('apps', 'desktop', 'electron.vite.config.ts');
 const workflow = read('.github', 'workflows', 'real-update-acceptance.yml');
 
@@ -25,8 +29,9 @@ function requireText(source, expected, label) {
 for (const required of [
   'SubutaiRealUpdateSafety-',
   'com.subutai.downloadmanager.real-update-acceptance',
-  "acceptanceProductName = 'Subutai Real Update Acceptance'",
+  "acceptanceProductName = 'Subutai Download Manager'",
   "acceptanceInstallDirectoryName = '@subutaidesktop'",
+  "electronUpdaterCacheDir = Join-Path $env:LOCALAPPDATA '@subutaidesktop-updater'",
   'Programs\\$acceptanceInstallDirectoryName',
   "-After \"`$installDir = Join-Path `$env:LOCALAPPDATA 'Programs\\@subutaidesktop'\"",
   '$package.build.productName = $acceptanceProductName',
@@ -36,6 +41,9 @@ for (const required of [
   '$package.build.nsis.allowToChangeInstallationDirectory = $false',
   '-NotePropertyName perMachine -NotePropertyValue $false',
   '-NotePropertyName allowElevation -NotePropertyValue $false',
+  "Capture-Directory -Path $userDataDir -Name 'product-user-data'",
+  "Capture-Directory -Path $electronUpdaterCacheDir -Name 'electron-updater-cache'",
+  "Capture-Directory -Path $updaterRoot -Name 'transactional-updater'",
   "-After \"  `$process = Start-Process -FilePath ([string]`$BaselineBuild.setupPath) -ArgumentList @('/S') -PassThru -Wait\"",
   'Set-AcceptanceAppIdentity',
   'Set-AcceptanceHarnessIdentity',
@@ -53,6 +61,12 @@ for (const required of [
 if (wrapper.includes('$package | Add-Member -NotePropertyName productName')) {
   throw new Error('Acceptance identity must mutate build.productName, not a shadow top-level package property.');
 }
+if (wrapper.includes('Subutai Real Update Acceptance.exe')) {
+  throw new Error('Real acceptance must retain the production controlled executable filename.');
+}
+
+requireText(updateJournal, "'subutai download manager.exe'", 'TypeScript controlled executable validator');
+requireText(watchdog, "'Subutai Download Manager.exe'", 'External watchdog controlled executable validator');
 
 for (const required of [
   '${APP_EXECUTABLE_FILENAME}',
@@ -168,4 +182,4 @@ if (!workflow.includes('workflow_dispatch:') || !workflow.includes('pull_request
   throw new Error('Real updater acceptance must support manual and pull-request execution.');
 }
 
-console.log('Subutai real two-installer updater acceptance policy passed: acceptance-only one-click per-user non-elevating NSIS identity, deterministic sanitized-package install path, dynamic packaged executable browser registration, isolated silent baseline install, real A/B builds, loopback feed, healthy update, forced rollback, checksum rejection, durable user state, browser bridge evidence, bounded console diagnostics and read-only execution are locked.');
+console.log('Subutai real two-installer updater acceptance policy passed: acceptance-only appId with the production controlled executable identity, one-click per-user non-elevating NSIS install, deterministic sanitized-package install path, dynamic packaged executable browser registration, isolated runner state, real A/B builds, loopback feed, healthy update, forced rollback, checksum rejection, durable user state, browser bridge evidence, bounded console diagnostics and read-only execution are locked.');
