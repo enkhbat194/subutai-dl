@@ -58,6 +58,11 @@
         "filter": ["**/*"]
       },
       {
+        "from": "resources/updater",
+        "to": "updater",
+        "filter": ["**/*"]
+      },
+      {
         "from": "../extension/dist",
         "to": "browser-extension",
         "filter": ["**/*"]
