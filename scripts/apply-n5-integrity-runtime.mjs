@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 
 const path = 'apps/desktop/src/main/subutai-runtime.ts';
-let source = readFileSync(path, 'utf8');
+let source = readFileSync(path, 'utf8').replace(/\r\n/gu, '\n');
 
 function replaceOnce(before, after) {
   const first = source.indexOf(before);
