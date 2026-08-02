@@ -37,7 +37,10 @@ $root = [System.IO.Path]::GetFullPath($RootPath)
 $packageDirectory = Join-Path $root "packages\$Version"
 New-Item -ItemType Directory -Force -Path $packageDirectory | Out-Null
 $destination = Join-Path $packageDirectory "Subutai-Setup-$Version-rollback.exe"
-Copy-Item -LiteralPath $source -Destination $destination -Force
+$destination = [System.IO.Path]::GetFullPath($destination)
+if (-not [System.StringComparer]::OrdinalIgnoreCase.Equals($source, $destination)) {
+  Copy-Item -LiteralPath $source -Destination $destination -Force
+}
 
 $sourceHash = (Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash.ToLowerInvariant()
 $destinationHash = (Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash.ToLowerInvariant()
