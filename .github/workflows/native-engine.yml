@@ -11,6 +11,8 @@ on:
       - "scripts/native-engine-policy-test.mjs"
       - "scripts/native-soak-benchmark.mjs"
       - "scripts/publish-native-soak-summary.mjs"
+      - "scripts/native-large-queue-benchmark.mjs"
+      - "scripts/publish-native-large-queue-summary.mjs"
       - "scripts/release-engine-policy-test.mjs"
       - "scripts/dependency-lock-policy-test.mjs"
       - "scripts/integrity-policy-test.mts"
@@ -34,6 +36,8 @@ on:
       - "scripts/native-engine-policy-test.mjs"
       - "scripts/native-soak-benchmark.mjs"
       - "scripts/publish-native-soak-summary.mjs"
+      - "scripts/native-large-queue-benchmark.mjs"
+      - "scripts/publish-native-large-queue-summary.mjs"
       - "scripts/release-engine-policy-test.mjs"
       - "scripts/dependency-lock-policy-test.mjs"
       - "scripts/integrity-policy-test.mts"
@@ -60,7 +64,7 @@ jobs:
   native-engine:
     name: subutai-windows
     runs-on: [self-hosted, Windows, X64, subutai]
-    timeout-minutes: 75
+    timeout-minutes: 90
 
     steps:
       - name: Checkout
@@ -139,6 +143,23 @@ jobs:
         env:
           SUBUTAI_SOAK_REPORT: artifacts/n5/native-soak-report.json
         run: node scripts/publish-native-soak-summary.mjs
+
+      - name: Run native large-file and queue benchmark
+        shell: powershell
+        env:
+          SUBUTAI_BENCHMARK_LARGE_MIB: 128
+          SUBUTAI_BENCHMARK_QUEUE_JOBS: 12
+          SUBUTAI_BENCHMARK_QUEUE_MIB: 16
+          SUBUTAI_BENCHMARK_CONCURRENCY: 3
+          SUBUTAI_BENCHMARK_SEGMENTS: 8
+          SUBUTAI_BENCHMARK_REPORT: artifacts/n5/native-large-queue-report.json
+        run: pnpm test:native-large-queue
+
+      - name: Publish native large-file and queue telemetry
+        shell: powershell
+        env:
+          SUBUTAI_BENCHMARK_REPORT: artifacts/n5/native-large-queue-report.json
+        run: node scripts/publish-native-large-queue-summary.mjs
 
       - name: Check public Subutai identity
         shell: powershell
