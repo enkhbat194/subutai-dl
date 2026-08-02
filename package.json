@@ -10,7 +10,7 @@
     "typecheck": "pnpm -r typecheck",
     "lint": "pnpm -r lint",
     "test:native-policy": "node scripts/native-engine-policy-test.mjs",
-    "test:native-engine": "pnpm test:native-policy && cargo fmt --manifest-path engines/native/Cargo.toml --all -- --check && cargo clippy --manifest-path engines/native/Cargo.toml --all-targets -- -D warnings && cargo test --manifest-path engines/native/Cargo.toml --all-targets && cargo run --quiet --manifest-path engines/native/Cargo.toml -- self-test",
+    "test:native-engine": "pnpm test:native-policy && cargo fmt --manifest-path engines/native/Cargo.toml --all -- --check && cargo clippy --manifest-path engines/native/Cargo.toml --all-targets -- -D warnings && cargo test --manifest-path engines/native/Cargo.toml --all-targets && cargo run --quiet --manifest-path engines/native/Cargo.toml --bin subutai-engine -- self-test",
     "test:direct": "node scripts/direct-download-smoke.mjs",
     "test:media": "node scripts/media-smoke.mjs",
     "test:queue": "node --experimental-strip-types scripts/queue-policy-test.mts",
