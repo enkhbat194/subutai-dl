@@ -25,6 +25,8 @@ $registryKeys = @(
 )
 $directoryState = @()
 $registryState = @()
+$primaryFailure = $null
+$restorationFailures = New-Object System.Collections.Generic.List[string]
 
 function Stop-SubutaiProcesses {
   Get-Process -Name 'Subutai Download Manager' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
@@ -60,6 +62,16 @@ function Restore-DirectoryState {
   }
 }
 
+function Restore-RegistryState {
+  foreach ($entry in $registryState) {
+    Remove-Item -LiteralPath ([string]$entry.key) -Recurse -Force -ErrorAction SilentlyContinue
+    if ($entry.existed) {
+      New-Item -Path ([string]$entry.key) -Force | Out-Null
+      Set-Item -LiteralPath ([string]$entry.key) -Value ([string]$entry.value) -Force
+    }
+  }
+}
+
 try {
   New-Item -ItemType Directory -Force -Path $safetyRoot | Out-Null
   foreach ($key in $registryKeys) {
@@ -80,25 +92,33 @@ try {
     -TargetVersion $TargetVersion `
     -Workspace $Workspace `
     -ScenarioTimeoutSeconds $ScenarioTimeoutSeconds
+} catch {
+  $primaryFailure = $_
 } finally {
-  Stop-SubutaiProcesses
-  if (Test-Path -LiteralPath $installDir) {
-    $uninstaller = Get-ChildItem -LiteralPath $installDir -File -Filter 'Uninstall*.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($uninstaller) {
-      Start-Process -FilePath $uninstaller.FullName -ArgumentList '/S' -Wait -ErrorAction SilentlyContinue | Out-Null
+  try { Stop-SubutaiProcesses } catch { $restorationFailures.Add("Stop processes: $($_.Exception.Message)") }
+  try {
+    if (Test-Path -LiteralPath $installDir) {
+      $uninstaller = Get-ChildItem -LiteralPath $installDir -File -Filter 'Uninstall*.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
+      if ($uninstaller) {
+        Start-Process -FilePath $uninstaller.FullName -ArgumentList '/S' -Wait -ErrorAction SilentlyContinue | Out-Null
+      }
     }
+  } catch { $restorationFailures.Add("Uninstall acceptance app: $($_.Exception.Message)") }
+  try { Stop-SubutaiProcesses } catch { $restorationFailures.Add("Stop post-uninstall processes: $($_.Exception.Message)") }
+  try { Remove-Item -LiteralPath $installDir -Recurse -Force -ErrorAction SilentlyContinue } catch { $restorationFailures.Add("Remove acceptance install: $($_.Exception.Message)") }
+  try { Remove-BrowserRegistration } catch { $restorationFailures.Add("Remove acceptance browser registration: $($_.Exception.Message)") }
+  try { Restore-DirectoryState } catch { $restorationFailures.Add("Restore directories: $($_.Exception.Message)") }
+  try { Restore-RegistryState } catch { $restorationFailures.Add("Restore registry: $($_.Exception.Message)") }
+  try { Remove-Item -LiteralPath (Join-Path $workspacePath 'pre-existing-state') -Recurse -Force -ErrorAction SilentlyContinue } catch { $restorationFailures.Add("Remove nested backup: $($_.Exception.Message)") }
+  try { Remove-Item -LiteralPath $safetyRoot -Recurse -Force -ErrorAction SilentlyContinue } catch { $restorationFailures.Add("Remove safety backup: $($_.Exception.Message)") }
+}
+
+if ($primaryFailure) {
+  if ($restorationFailures.Count -gt 0) {
+    Write-Warning ("Runner restoration also reported: " + ($restorationFailures -join ' | '))
   }
-  Stop-SubutaiProcesses
-  Remove-Item -LiteralPath $installDir -Recurse -Force -ErrorAction SilentlyContinue
-  Remove-BrowserRegistration
-  Restore-DirectoryState
-  foreach ($entry in $registryState) {
-    Remove-Item -LiteralPath ([string]$entry.key) -Recurse -Force -ErrorAction SilentlyContinue
-    if ($entry.existed) {
-      New-Item -Path ([string]$entry.key) -Force | Out-Null
-      (Get-Item -LiteralPath ([string]$entry.key)).SetValue('', [string]$entry.value)
-    }
-  }
-  Remove-Item -LiteralPath (Join-Path $workspacePath 'pre-existing-state') -Recurse -Force -ErrorAction SilentlyContinue
-  Remove-Item -LiteralPath $safetyRoot -Recurse -Force -ErrorAction SilentlyContinue
+  throw $primaryFailure
+}
+if ($restorationFailures.Count -gt 0) {
+  throw "Real update acceptance passed but runner restoration failed: $($restorationFailures -join ' | ')"
 }
