@@ -47,6 +47,7 @@ pub struct HttpProbe {
     pub final_url: String,
     pub status_code: u16,
     pub content_length: Option<u64>,
+    pub content_range: Option<String>,
     pub accepts_byte_ranges: bool,
     pub etag: Option<String>,
     pub last_modified: Option<String>,
@@ -101,6 +102,15 @@ pub enum TransferError {
     MissingParent(PathBuf),
     InsufficientDiskSpace { required: u64, available: u64 },
     SizeMismatch { expected: u64, actual: u64 },
+    MissingContentLength,
+    ByteRangesUnsupported,
+    InvalidContentRange(String),
+    ReservedHeader(String),
+    RemoteChanged(String),
+    UnsafeResume(String),
+    ResumeMismatch(String),
+    Journal(String),
+    WorkerPanic,
     Windows { operation: &'static str, code: u32 },
     Io(std::io::Error),
     Protocol(String),
@@ -110,7 +120,10 @@ impl Display for TransferError {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::UnsupportedPlatform => {
-                write!(formatter, "N1 transfer is currently available on Windows")
+                write!(
+                    formatter,
+                    "native transfer is currently available on Windows"
+                )
             }
             Self::InvalidUrl(value) => write!(formatter, "invalid HTTP/HTTPS URL: {value}"),
             Self::InvalidHeaderName(name) => {
@@ -143,6 +156,39 @@ impl Display for TransferError {
                 formatter,
                 "download size mismatch: expected {expected} bytes, received {actual} bytes"
             ),
+            Self::MissingContentLength => {
+                write!(
+                    formatter,
+                    "server did not provide a stable remote file size"
+                )
+            }
+            Self::ByteRangesUnsupported => {
+                write!(
+                    formatter,
+                    "server does not support verified byte-range transfer"
+                )
+            }
+            Self::InvalidContentRange(value) => {
+                write!(formatter, "invalid or unexpected Content-Range: {value}")
+            }
+            Self::ReservedHeader(name) => {
+                write!(
+                    formatter,
+                    "request header {name} is managed by the segmented engine"
+                )
+            }
+            Self::RemoteChanged(reason) => {
+                write!(
+                    formatter,
+                    "remote file changed and cannot be resumed safely: {reason}"
+                )
+            }
+            Self::UnsafeResume(reason) => write!(formatter, "unsafe resume refused: {reason}"),
+            Self::ResumeMismatch(reason) => write!(formatter, "saved transfer mismatch: {reason}"),
+            Self::Journal(reason) => write!(formatter, "transfer journal error: {reason}"),
+            Self::WorkerPanic => {
+                write!(formatter, "segmented transfer worker stopped unexpectedly")
+            }
             Self::Windows { operation, code } => write!(
                 formatter,
                 "Windows operation {operation} failed with error {code}"
@@ -324,7 +370,9 @@ pub(crate) fn probe_from_headers(
             .map(|(_, value)| value.trim().to_string())
     };
 
-    let content_length = header("content-range")
+    let content_range = header("content-range");
+    let content_length = content_range
+        .clone()
         .and_then(parse_content_range_total)
         .or_else(|| header("content-length").and_then(|value| value.parse::<u64>().ok()));
     let content_disposition = header("content-disposition");
@@ -334,6 +382,7 @@ pub(crate) fn probe_from_headers(
         final_url,
         status_code,
         content_length,
+        content_range,
         accepts_byte_ranges: header("accept-ranges")
             .is_some_and(|value| value.eq_ignore_ascii_case("bytes")),
         etag: header("etag"),
@@ -427,9 +476,10 @@ mod tests {
         let probe = probe_from_headers(
             "https://example.test/a",
             "https://example.test/final".into(),
-            200,
+            206,
             &[
-                ("Content-Length".into(), "123".into()),
+                ("Content-Length".into(), "1".into()),
+                ("Content-Range".into(), "bytes 0-0/123".into()),
                 ("Accept-Ranges".into(), "bytes".into()),
                 (
                     "Content-Disposition".into(),
@@ -438,6 +488,7 @@ mod tests {
             ],
         );
         assert_eq!(probe.content_length, Some(123));
+        assert_eq!(probe.content_range.as_deref(), Some("bytes 0-0/123"));
         assert!(probe.accepts_byte_ranges);
         assert_eq!(
             probe.suggested_filename.as_deref(),

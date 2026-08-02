@@ -28,7 +28,7 @@ Source of truth: `main` plus merged PRs and the currently verified native-engine
 | 11 | Tray, notifications and automatic update | Yes | Yes | Pending |
 | 12 | Large-file, crash and network-switch resilience | Yes | Yes | Partial |
 
-All 12 capability groups exist. They are not yet equivalent to a completed commercial release because clean-install browser acceptance, signing, real-site media testing and first-party engine replacement remain.
+All 12 capability groups exist. They are not yet equivalent to a completed commercial release because clean-install browser acceptance, signing, real-site media testing and first-party engine migration remain.
 
 ## First-party native-engine replacement
 
@@ -38,7 +38,7 @@ Final Subutai releases must not require a third-party download or media executab
 |---|---|---:|---:|---:|
 | N0 | State, range planning, durable journal and desktop/engine protocol | Complete | PASS | PR #15 |
 | N1 | HTTP/HTTPS probe and safe single-stream transfer | Complete | PASS | PR #16 |
-| N2 | Segmented transfer, pause/resume and safe recovery | Pending | Pending | Pending |
+| N2 | Segmented transfer, pause/resume and validator-safe recovery | Complete | PASS | PR #17 |
 | N3 | Adaptive connections and dynamic chunking | Pending | Pending | Pending |
 | N4 | Replace the desktop direct-download path | Pending | Pending | Pending |
 | N5 | Production acceptance and old-engine removal | Pending | Pending | Pending |
@@ -70,66 +70,85 @@ Final Subutai releases must not require a third-party download or media executab
 - Cookie, referer, authorization and other request headers through validated header objects.
 - Header injection rejection for CR, LF and NUL characters.
 - Safe single-stream download to `<destination>.subutai.part`.
-- Destination conflict and existing-partial-file protection.
-- Parent-directory creation and relative destination support.
-- Disk-space preflight when the remote size is known.
-- Bounded 64 KiB streaming buffer, byte-count progress, elapsed time and transfer-rate reporting.
-- First-party SHA-256 implementation with standard known-answer tests.
-- Content-length verification before completion.
-- File flush and atomic final move; an incomplete file is never presented as completed.
-- `subutai-engine probe <url>` command.
-- `subutai-engine download <url> <destination>` command.
-- Deterministic local Windows test server covering redirect, metadata, actual byte transfer, final hash and partial-to-final behavior.
-- Unsafe Rust restricted to one audited Windows API boundary; business logic remains safe Rust.
+- Destination conflict, existing-partial-file and disk-space protection.
+- Bounded streaming buffer, progress, elapsed time and transfer-rate reporting.
+- First-party SHA-256 with standard known-answer tests.
+- Content-length verification, file flush and atomic final move.
+- `subutai-engine probe <url>` and `subutai-engine download <url> <destination>` commands.
+- Deterministic local Windows tests for redirect, metadata, byte transfer, hash and completion.
 
-## Latest N1 verification evidence
+## N2 — completed and verified
 
-The final check-only run on `subutai-windows` passed:
+- Concurrent first-party byte-range workers with disjoint writes into one preallocated `.subutai.part` file.
+- Segment count and minimum segment size controls built on the N0 overflow-safe range planner.
+- Per-segment start, end, completed-byte count and state persisted in the durable dual-slot journal.
+- Checkpointed progress while data is actively transferring.
+- Thread-safe pause, resume and cancel control shared by every worker.
+- Pause leaves the partial file and journal intact; cancel removes resumable state intentionally.
+- Resume starts each unfinished segment from its exact persisted byte offset.
+- Mandatory HTTP `206 Partial Content` and exact `Content-Range` validation for every segment.
+- Remote total-size validation before any persisted transfer is resumed.
+- Strong ETag preferred for `If-Range`; Last-Modified used when no strong ETag is available.
+- Resume refused when ETag, Last-Modified or remote size changes.
+- Validator-less resume refused after any bytes have been persisted.
+- Active or failed segment states normalized safely after process interruption.
+- Crash-window recovery for journals already in verifying or completed state.
+- Full-file SHA-256 after all ranges finish, followed by atomic final move.
+- `subutai-engine download-segmented <url> <destination> [segments] [minimum-segment-bytes]` command.
+- Re-running the same CLI URL and destination resumes the saved transfer automatically.
+- Deterministic local Windows range server supports concurrent connections and deliberate slow streaming.
+- Mid-transfer test pauses after real nonzero progress, persists 524 KiB in the observed runner execution, then resumes remaining ranges and verifies exact final bytes.
+- Validator-change test confirms a saved transfer is preserved but never mixed with changed remote content.
+
+## Latest N2 verification evidence
+
+The Windows self-hosted runner passed:
 
 1. Subutai native ownership policy.
 2. Rust formatting check.
 3. Static checks with every warning treated as an error.
-4. N0 unit, journal and protocol tests.
-5. N1 SHA-256 vectors.
-6. N1 local HTTP redirect and metadata probe.
-7. N1 real byte-stream download, size check, hash check and atomic completion.
-8. Durable journal self-test.
-9. Public Subutai identity gate.
-10. Desktop and browser TypeScript checks.
-11. Queue, scheduler, transfer, batch, clipboard, Site Grabber, tray/update and failure-policy tests.
-12. Release-version consistency.
-13. Full desktop production build.
+4. N0 state, journal, corruption and protocol tests.
+5. N1 metadata, redirect, transfer and SHA-256 tests.
+6. N2 `Content-Range` parser and range validation tests.
+7. Concurrent segmented byte transfer.
+8. Mid-transfer pause after nonzero progress.
+9. Durable per-segment checkpoint and exact-offset resume.
+10. ETag change refusal before resume.
+11. Whole-file byte equality, SHA-256 and atomic completion.
+12. Durable journal self-test.
+13. Public Subutai identity gate.
+14. Desktop and browser TypeScript checks.
+15. Queue, scheduler, transfer, batch, clipboard, Site Grabber, tray/update and failure-policy tests.
+16. Release-version consistency.
+17. Full desktop production build.
 
-Paid hosted CI, large resilience suites and installer packaging are retained as manual workflows. Normal native-engine and desktop regression checks run free on `subutai-windows`.
+Normal native-engine and desktop regression checks run free on `subutai-windows`. Paid hosted CI, large resilience suites and installer packaging remain manual workflows.
 
 ## Current conclusion
 
-N0 and N1 are complete. Subutai now has its own verified state/recovery foundation and its own safe Windows HTTP/HTTPS single-stream transfer path. The next milestone is N2: segmented transfer, persistent progress, pause/resume and validator-safe recovery. The existing desktop application does not switch to the new engine until N2 and the N4 integration gate are complete.
+N0, N1 and N2 are complete and runner verified. Subutai now owns its state/recovery foundation, safe Windows HTTP/HTTPS transport, concurrent segmented transfer, durable nonzero pause/resume and validator-safe recovery. The installed desktop application does not switch its direct-download path to this engine until N3 behavior and the N4 integration gate are complete.
 
 ## Remaining release-critical work
 
 ### First-party direct engine
 
-1. N2 segmented byte-range transfer.
-2. Persistent per-segment progress and verified pause/resume.
-3. ETag/Last-Modified validator checks before resume.
-4. Safe restart when remote content changes.
-5. N3 dynamic segment sizing and adaptive connection count.
-6. Network interruption, sleep/wake and process-kill recovery on the new engine.
-7. Proxy, authentication, speed limits, retries and mirror fallback on the new engine.
-8. N4 desktop, browser, queue and scheduler integration.
-9. N5 performance, installer and migration acceptance.
-10. Remove temporary release engines only after the replacement passes every gate.
+1. N3 dynamic segment sizing and adaptive connection count.
+2. Connection replacement when one range becomes slow or fails.
+3. Network interruption, sleep/wake and process-kill recovery under long-running loads.
+4. Retry/backoff, proxy, authentication, speed-limit and mirror-fallback support in the new engine.
+5. File-conflict policies and explicit restart behavior when remote content changes.
+6. N4 desktop, browser, queue and scheduler integration.
+7. N5 performance, installer and migration acceptance.
+8. Remove temporary release engines only after the replacement passes every gate.
 
 ### Product acceptance
 
 1. Clean Windows 10 and Windows 11 Setup/Portable tests.
 2. Installed Chrome, Edge and Firefox end-to-end tests.
 3. Authenticated downloads with real cookies, headers and expiring URLs.
-4. File-conflict policies: ask, rename, overwrite, skip and verified resume.
-5. Checksum input, corrupted-file quarantine and redacted diagnostics.
-6. Signed executable and installer, tagged release, updater and rollback acceptance.
-7. Long-running large-file, large-queue and repeated interruption tests.
+4. Checksum input, corrupted-file quarantine and redacted diagnostics.
+5. Signed executable and installer, tagged release, updater and rollback acceptance.
+6. Long-running large-file, large-queue and repeated interruption tests.
 
 ### First-party media
 
@@ -149,11 +168,10 @@ N0 and N1 are complete. Subutai now has its own verified state/recovery foundati
 
 ## Ordered next packages
 
-1. **N2 resumable segmented transfer**.
-2. **N3 adaptive engine**.
-3. **N4 desktop replacement**.
-4. **N5 production migration and release gate**.
-5. **M1/M2 first-party media replacement**.
+1. **N3 adaptive engine**.
+2. **N4 desktop replacement**.
+3. **N5 production migration and release gate**.
+4. **M1/M2 first-party media replacement**.
 
 ## Naming policy
 
