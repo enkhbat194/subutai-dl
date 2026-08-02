@@ -11,7 +11,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use subutai_native_engine::{
     DownloadControl, SegmentedDownloadRequest, SegmentedOutcome, TransferError, download_segmented,
-    partial_path, resume_journal_path,
+    download_segmented_with_progress, partial_path, resume_journal_path,
 };
 
 struct RangeServer {
@@ -74,8 +74,8 @@ impl Drop for RangeServer {
 }
 
 #[test]
-fn pauses_with_durable_state_then_resumes_all_segments() {
-    let data = test_data(2 * 1024 * 1024 + 137);
+fn pauses_after_real_progress_then_resumes_saved_offsets() {
+    let data = test_data(8 * 1024 * 1024 + 137);
     let server = RangeServer::start(data.clone());
     let destination = unique_path("resume-complete.bin");
     let mut request = SegmentedDownloadRequest::new("n2-resume", server.url(), &destination);
@@ -84,15 +84,22 @@ fn pauses_with_durable_state_then_resumes_all_segments() {
     request.checkpoint_bytes = 32 * 1024;
 
     let control = DownloadControl::default();
-    control.pause();
-    let paused = download_segmented(&request, &control).expect("pause transfer");
+    let mut pause_requested = false;
+    let paused = download_segmented_with_progress(&request, &control, |progress| {
+        if !pause_requested && progress.downloaded_bytes >= 256 * 1024 {
+            pause_requested = true;
+            control.pause();
+        }
+    })
+    .expect("pause transfer after progress");
     match paused {
         SegmentedOutcome::Paused {
             downloaded_bytes,
             total_bytes,
             journal_path,
         } => {
-            assert_eq!(downloaded_bytes, 0);
+            assert!(downloaded_bytes >= 256 * 1024);
+            assert!(downloaded_bytes < data.len() as u64);
             assert_eq!(total_bytes, data.len() as u64);
             assert_eq!(journal_path, resume_journal_path(&destination));
         }
@@ -245,8 +252,13 @@ fn write_response(stream: &mut TcpStream, status: &str, headers: &[(&str, String
         write!(stream, "{name}: {value}\r\n").expect("header");
     }
     write!(stream, "\r\n").expect("header end");
-    stream.write_all(body).expect("response body");
-    stream.flush().expect("flush response");
+    for chunk in body.chunks(16 * 1024) {
+        stream.write_all(chunk).expect("response body chunk");
+        stream.flush().expect("flush response chunk");
+        if body.len() > 1 {
+            thread::sleep(Duration::from_millis(1));
+        }
+    }
 }
 
 fn test_data(length: usize) -> Vec<u8> {
