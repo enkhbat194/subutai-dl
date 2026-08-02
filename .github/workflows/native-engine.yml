@@ -113,13 +113,17 @@ jobs:
             throw "pnpm did not generate pnpm-lock.yaml."
           }
 
-      - name: Preserve generated dependency lock
-        uses: actions/upload-artifact@v4
-        with:
-          name: n5-pnpm-lock
-          path: pnpm-lock.yaml
-          if-no-files-found: error
-          retention-days: 1
+      - name: Emit generated dependency lock
+        shell: powershell
+        run: |
+          $bytes = [System.IO.File]::ReadAllBytes("pnpm-lock.yaml")
+          $encoded = [Convert]::ToBase64String($bytes)
+          Write-Host "SUBUTAI_LOCKFILE_BASE64_BEGIN"
+          for ($offset = 0; $offset -lt $encoded.Length; $offset += 4000) {
+            $length = [Math]::Min(4000, $encoded.Length - $offset)
+            Write-Host $encoded.Substring($offset, $length)
+          }
+          Write-Host "SUBUTAI_LOCKFILE_BASE64_END"
 
       - name: Check public Subutai identity
         shell: powershell
