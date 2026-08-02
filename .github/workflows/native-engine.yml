@@ -33,10 +33,10 @@ on:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   native-engine:
@@ -45,10 +45,8 @@ jobs:
     timeout-minutes: 60
 
     steps:
-      - name: Checkout N2 source branch
+      - name: Checkout
         uses: actions/checkout@v4
-        with:
-          ref: ${{ github.head_ref || github.ref_name }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -68,58 +66,20 @@ jobs:
           $cargoBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           rustup toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy
           rustup default 1.97.1
+          rustc --version --verbose
+          cargo --version
 
       - name: Verify Subutai ownership policy
         shell: powershell
         run: node scripts/native-engine-policy-test.mjs
 
-      - name: Make accepted range sockets blocking
+      - name: Check native engine formatting
         shell: powershell
-        run: |
-          $path = "engines/native/tests/resumable_transfer.rs"
-          $text = [System.IO.File]::ReadAllText($path).Replace("`r`n", "`n")
-          $needle = '                    Ok((mut stream, _)) => {'
-          $replacement = @(
-            '                    Ok((mut stream, _)) => {',
-            '                        if let Err(error) = stream.set_nonblocking(false) {',
-            '                            eprintln!("range-server blocking-mode error: {error}");',
-            '                            continue;',
-            '                        }'
-          ) -join "`n"
-          if (-not $text.Contains($needle)) {
-            throw "Accepted range socket block was not found"
-          }
-          $text = $text.Replace($needle, $replacement)
-          $utf8 = New-Object System.Text.UTF8Encoding($false)
-          [System.IO.File]::WriteAllText($path, $text, $utf8)
-
-      - name: Format N2 native engine sources
-        shell: powershell
-        run: cargo fmt --manifest-path engines/native/Cargo.toml --all
-
-      - name: Save N2 formatter changes
-        shell: powershell
-        run: |
-          $changes = git status --porcelain -- engines/native
-          if ([string]::IsNullOrWhiteSpace($changes)) {
-            Write-Host "N2 formatting is already clean."
-            exit 0
-          }
-          git config user.name "Subutai Automation"
-          git config user.email "subutai-automation@users.noreply.github.com"
-          git add engines/native
-          git commit -m "Use blocking accepted sockets in N2 range tests"
-          git push origin "HEAD:${{ github.head_ref || github.ref_name }}"
+        run: cargo fmt --manifest-path engines/native/Cargo.toml --all -- --check
 
       - name: Check native engine quality
         shell: powershell
         run: cargo clippy --manifest-path engines/native/Cargo.toml --all-targets -- -D warnings
-
-      - name: Diagnose mid-transfer pause and resume
-        shell: powershell
-        run: |
-          $env:RUST_BACKTRACE = "full"
-          cargo test --manifest-path engines/native/Cargo.toml --test resumable_transfer pauses_after_real_progress_then_resumes_saved_offsets -- --nocapture --test-threads=1
 
       - name: Run native engine unit and protocol tests
         shell: powershell
