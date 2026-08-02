@@ -1,5 +1,4 @@
-use std::path::PathBuf;
-
+#[path = "core_impl.rs"]
 mod core_impl;
 
 pub use core_impl::{
@@ -14,7 +13,7 @@ pub struct JournalStore {
 }
 
 impl JournalStore {
-    pub fn new(base_path: impl Into<PathBuf>) -> Self {
+    pub fn new(base_path: impl Into<std::path::PathBuf>) -> Self {
         Self {
             inner: core_impl::JournalStore::new(base_path),
         }
