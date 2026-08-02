@@ -13,6 +13,7 @@ on:
       - "scripts/dependency-lock-policy-test.mjs"
       - "scripts/integrity-policy-test.mts"
       - "scripts/mirror-policy-test.mts"
+      - "scripts/apply-n5-failure-injection.mjs"
       - "scripts/validate-windows-package.ps1"
       - "rust-toolchain.toml"
       - "package.json"
@@ -33,6 +34,7 @@ on:
       - "scripts/dependency-lock-policy-test.mjs"
       - "scripts/integrity-policy-test.mts"
       - "scripts/mirror-policy-test.mts"
+      - "scripts/apply-n5-failure-injection.mjs"
       - "scripts/validate-windows-package.ps1"
       - "rust-toolchain.toml"
       - "package.json"
@@ -48,7 +50,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   native-engine:
@@ -59,6 +61,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -73,13 +78,39 @@ jobs:
             $rustupInstaller = Join-Path $env:RUNNER_TEMP "rustup-init.exe"
             Invoke-WebRequest "https://win.rustup.rs/x86_64" -OutFile $rustupInstaller
             & $rustupInstaller -y --profile minimal --default-toolchain none
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
           $env:PATH = "$cargoBin;$env:PATH"
           $cargoBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           rustup toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           rustup default 1.97.1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           rustc --version --verbose
           cargo --version
+
+      - name: Apply N5 failure-injection migration
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        shell: powershell
+        env:
+          HEAD_BRANCH: ${{ github.head_ref }}
+        run: |
+          node scripts/apply-n5-failure-injection.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo fmt --manifest-path engines/native/Cargo.toml --all
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add engines/native/Cargo.toml engines/native/src/lib.rs engines/native/src/resumable.rs engines/native/src/streaming_fallback.rs engines/native/src/failure_injection.rs engines/native/tests/failure_injection.rs package.json
+          git diff --cached --quiet
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "N5 failure-injection migration is already applied."
+          } else {
+            git commit -m "Wire deterministic native disk failure injection"
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            git push origin "HEAD:$env:HEAD_BRANCH"
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
 
       - name: Verify Subutai ownership policy
         shell: powershell
@@ -89,19 +120,19 @@ jobs:
         shell: powershell
         run: cargo fmt --manifest-path engines/native/Cargo.toml --all -- --check
 
-      - name: Check native engine quality
+      - name: Check native engine quality with test hooks
         shell: powershell
-        run: cargo clippy --manifest-path engines/native/Cargo.toml --all-targets -- -D warnings
+        run: cargo clippy --manifest-path engines/native/Cargo.toml --all-targets --features failure-injection -- -D warnings
 
-      - name: Run native engine unit and integration tests
+      - name: Run native engine unit integration and failure tests
         shell: powershell
-        run: cargo test --manifest-path engines/native/Cargo.toml --all-targets
+        run: cargo test --manifest-path engines/native/Cargo.toml --all-targets --features failure-injection
 
       - name: Run durable journal self-test
         shell: powershell
         run: cargo run --quiet --manifest-path engines/native/Cargo.toml --bin subutai-engine -- self-test
 
-      - name: Build release desktop host
+      - name: Build production release desktop host without test hooks
         shell: powershell
         run: cargo build --release --manifest-path engines/native/Cargo.toml --bin subutai-engine-host
 
