@@ -7,6 +7,7 @@ on:
       - "apps/desktop/**"
       - "apps/extension/**"
       - "engines/native/**"
+      - "scripts/run-real-update-acceptance-safely.ps1"
       - "scripts/real-two-installer-acceptance.ps1"
       - "scripts/real-update-state-probe.mjs"
       - "scripts/real-update-feed-server.mjs"
@@ -93,7 +94,7 @@ jobs:
 
       - name: Run real Setup A to Setup B update and rollback acceptance
         shell: powershell
-        run: ./scripts/real-two-installer-acceptance.ps1 -BaselineVersion 0.1.0 -TargetVersion 0.2.0 -Workspace artifacts/real-update-acceptance
+        run: ./scripts/run-real-update-acceptance-safely.ps1 -BaselineVersion 0.1.0 -TargetVersion 0.2.0 -Workspace artifacts/real-update-acceptance
 
       - name: Publish acceptance evidence summary
         if: always()
