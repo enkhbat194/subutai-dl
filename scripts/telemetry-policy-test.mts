@@ -15,16 +15,17 @@ function requireText(source: string, expected: string, label: string): void {
   if (!source.includes(expected)) throw new Error(`${label} is missing required telemetry contract: ${expected}`);
 }
 
-for (const field of [
-  'connection_limit',
-  'peak_connections',
-  'queued_segments',
-  'replacement_count',
-  'retry_count',
-  'elapsed_milliseconds',
-]) {
+for (const [field, progressField] of [
+  ['connection_limit', 'connection_limit'],
+  ['peak_connections', 'peak_connections'],
+  ['queued_segments', 'queued_segments'],
+  ['replacement_count', 'replacement_count'],
+  ['retry_count', 'retry_count'],
+  ['elapsed_milliseconds', 'elapsed'],
+] as const) {
   requireText(rustProtocol, `pub ${field}:`, 'Rust desktop status protocol');
-  requireText(rustHost, `${field}: progress.`, 'Rust desktop host progress mapping');
+  requireText(rustHost, `${field}:`, 'Rust desktop host telemetry field');
+  requireText(rustHost, `progress.${progressField}`, 'Rust desktop host progress source');
 }
 requireText(rustProtocol, 'DESKTOP_STATUS_PAYLOAD_SCHEMA_VERSION: u16 = 3', 'Rust status schema');
 requireText(rustProtocol, 'LEGACY_DESKTOP_STATUS_PAYLOAD_SCHEMA_VERSION', 'Rust v2 compatibility');
