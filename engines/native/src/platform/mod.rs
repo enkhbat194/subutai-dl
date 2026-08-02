@@ -1,3 +1,4 @@
+#[cfg(not(windows))]
 use std::path::Path;
 
 use crate::transfer::{HttpProbe, RequestHeader, TransferError};
