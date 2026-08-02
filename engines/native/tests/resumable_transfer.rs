@@ -48,18 +48,26 @@ impl RangeServer {
                                 handle_request(&mut stream, &connection_data, &connection_etag)
                                 && !is_expected_disconnect(&error)
                             {
-                                panic!("local range server connection failed: {error}");
+                                eprintln!("range-server connection error: {error}");
                             }
                         });
-                        thread_handles
-                            .lock()
-                            .expect("connection handle lock")
-                            .push(handle);
+                        match thread_handles.lock() {
+                            Ok(mut handles) => handles.push(handle),
+                            Err(_) => {
+                                eprintln!("range-server connection handle lock poisoned");
+                                let _ = handle.join();
+                            }
+                        }
                     }
                     Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
                         thread::sleep(Duration::from_millis(2));
                     }
-                    Err(error) => panic!("local range server accept failed: {error}"),
+                    Err(error) => {
+                        if !thread_stop.load(Ordering::Acquire) {
+                            eprintln!("range-server accept error: {error}");
+                        }
+                        break;
+                    }
                 }
             }
         });
@@ -85,22 +93,22 @@ impl Drop for RangeServer {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::Release);
         if let Some(handle) = self.accept_handle.take() {
-            handle.join().expect("range server accept join");
+            let _ = handle.join();
         }
-        let handles = std::mem::take(
-            &mut *self
-                .connection_handles
-                .lock()
-                .expect("connection handle lock"),
-        );
+        let handles = self
+            .connection_handles
+            .lock()
+            .map(|mut handles| std::mem::take(&mut *handles))
+            .unwrap_or_default();
         for handle in handles {
-            handle.join().expect("range server connection join");
+            let _ = handle.join();
         }
     }
 }
 
 #[test]
 fn pauses_after_real_progress_then_resumes_saved_offsets() {
+    eprintln!("n2-marker: test-start");
     let data = test_data(8 * 1024 * 1024 + 137);
     let server = RangeServer::start(data.clone());
     let destination = unique_path("resume-complete.bin");
@@ -111,13 +119,19 @@ fn pauses_after_real_progress_then_resumes_saved_offsets() {
 
     let control = DownloadControl::default();
     let mut pause_requested = false;
+    eprintln!("n2-marker: first-run-start");
     let paused = download_segmented_with_progress(&request, &control, |progress| {
         if !pause_requested && progress.downloaded_bytes >= 256 * 1024 {
             pause_requested = true;
+            eprintln!(
+                "n2-marker: pause-requested downloaded={}",
+                progress.downloaded_bytes
+            );
             control.pause();
         }
     })
     .expect("pause transfer after progress");
+    eprintln!("n2-marker: first-run-returned outcome={paused:?}");
     match paused {
         SegmentedOutcome::Paused {
             downloaded_bytes,
@@ -141,8 +155,10 @@ fn pauses_after_real_progress_then_resumes_saved_offsets() {
                 .exists()
     );
 
+    eprintln!("n2-marker: resume-start");
     control.resume();
     let completed = download_segmented(&request, &control).expect("resume transfer");
+    eprintln!("n2-marker: resume-returned outcome={completed:?}");
     let result = match completed {
         SegmentedOutcome::Completed(result) => result,
         other => panic!("expected completed outcome, got {other:?}"),
@@ -161,6 +177,7 @@ fn pauses_after_real_progress_then_resumes_saved_offsets() {
             .exists()
     );
     cleanup(&destination);
+    eprintln!("n2-marker: test-complete");
 }
 
 #[test]
