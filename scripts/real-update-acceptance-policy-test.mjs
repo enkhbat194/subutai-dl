@@ -25,6 +25,9 @@ for (const required of [
   'SubutaiRealUpdateSafety-',
   'com.subutai.downloadmanager.real-update-acceptance',
   "acceptanceProductName = 'Subutai Real Update Acceptance'",
+  '$package.build.productName = $acceptanceProductName',
+  '$package.build.appId = $acceptanceAppId',
+  '$package.build.nsis.shortcutName = $acceptanceProductName',
   'Set-AcceptanceAppIdentity',
   'Set-AcceptanceHarnessIdentity',
   'Replace-ExactlyOnce',
@@ -38,6 +41,9 @@ for (const required of [
   'pre-existing-state',
 ]) {
   requireText(wrapper, required, 'Real update runner safety wrapper');
+}
+if (wrapper.includes('$package | Add-Member -NotePropertyName productName')) {
+  throw new Error('Acceptance identity must mutate build.productName, not a shadow top-level package property.');
 }
 
 for (const required of [
@@ -139,4 +145,4 @@ if (!workflow.includes('workflow_dispatch:') || !workflow.includes('pull_request
   throw new Error('Real updater acceptance must support manual and pull-request execution.');
 }
 
-console.log('Subutai real two-installer updater acceptance policy passed: acceptance-only appId/product name/default install path, safety-isolated real NSIS A/B builds, loopback feed, healthy update, forced rollback, checksum rejection, durable user state, browser bridge evidence and read-only execution are locked.');
+console.log('Subutai real two-installer updater acceptance policy passed: acceptance-only appId/build.productName/default install path, safety-isolated real NSIS A/B builds, loopback feed, healthy update, forced rollback, checksum rejection, durable user state, browser bridge evidence and read-only execution are locked.');
