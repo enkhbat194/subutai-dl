@@ -7,6 +7,7 @@ on:
       - "apps/desktop/**"
       - "apps/extension/**"
       - "scripts/real-two-installer-update-acceptance.ps1"
+      - "scripts/real-update-acceptance-policy-test.mjs"
       - "scripts/loopback-update-server.mjs"
       - ".github/workflows/real-update-acceptance.yml"
       - "package.json"
@@ -63,6 +64,10 @@ jobs:
       - name: Install locked dependencies
         shell: powershell
         run: pnpm install --frozen-lockfile
+
+      - name: Verify real acceptance safety policy
+        shell: powershell
+        run: node scripts/real-update-acceptance-policy-test.mjs
 
       - name: Typecheck acceptance runtime
         shell: powershell
