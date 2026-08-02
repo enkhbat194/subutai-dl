@@ -4,10 +4,12 @@
 mod adaptive;
 mod core;
 pub mod desktop_protocol;
+mod direct_download;
 pub mod ipc;
 mod platform;
 pub mod resumable;
 mod sha256;
+mod streaming_fallback;
 pub mod transfer;
 mod transport_settings;
 
@@ -18,9 +20,10 @@ pub use desktop_protocol::{
     DesktopTaskState, decode_start_request, decode_status_event, encode_start_request,
     encode_status_event,
 };
+pub use direct_download::{download_segmented, download_segmented_with_progress};
 pub use resumable::{
     DownloadControl, SegmentedDownloadRequest, SegmentedOutcome, SegmentedProgress,
-    download_segmented, download_segmented_with_progress, resume_journal_path,
+    resume_journal_path,
 };
 pub use transfer::{
     DownloadRequest, DownloadResult, HttpProbe, RequestHeader, TransferError, TransferProgress,

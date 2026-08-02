@@ -2,6 +2,8 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
+const MAX_RETRY_DELAY: Duration = Duration::from_secs(60);
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum ProxyMode {
@@ -76,9 +78,12 @@ impl TransportSettings {
     }
 
     pub(crate) fn retry_delay(&self, attempt: u32) -> Duration {
+        let exponent = attempt.saturating_sub(1).min(31);
+        let multiplier = 1_u32.checked_shl(exponent).unwrap_or(u32::MAX);
         self.retry_base_delay
-            .checked_mul(attempt.max(1))
+            .checked_mul(multiplier)
             .unwrap_or(Duration::MAX)
+            .min(MAX_RETRY_DELAY)
     }
 }
 
@@ -141,11 +146,15 @@ mod tests {
     }
 
     #[test]
-    fn retry_delay_uses_bounded_linear_backoff() {
+    fn retry_delay_uses_bounded_exponential_backoff() {
         let settings = TransportSettings {
             retry_base_delay: Duration::from_millis(250),
             ..TransportSettings::default()
         };
-        assert_eq!(settings.retry_delay(3), Duration::from_millis(750));
+        assert_eq!(settings.retry_delay(1), Duration::from_millis(250));
+        assert_eq!(settings.retry_delay(2), Duration::from_millis(500));
+        assert_eq!(settings.retry_delay(3), Duration::from_secs(1));
+        assert_eq!(settings.retry_delay(20), MAX_RETRY_DELAY);
+        assert_eq!(settings.retry_delay(u32::MAX), MAX_RETRY_DELAY);
     }
 }
