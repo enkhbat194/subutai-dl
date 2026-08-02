@@ -1,9 +1,11 @@
 use std::error::Error;
 use std::fmt::{Display, Formatter};
+use std::time::Duration;
 
 use crate::transfer::RequestHeader;
+use crate::{ProxyMode, TransportSettings};
 
-pub const DESKTOP_PAYLOAD_SCHEMA_VERSION: u16 = 1;
+pub const DESKTOP_PAYLOAD_SCHEMA_VERSION: u16 = 2;
 const START_MAGIC: &[u8; 8] = b"SUBSTRT1";
 const STATUS_MAGIC: &[u8; 8] = b"SUBSTAT1";
 const MAX_FIELD_BYTES: usize = 1024 * 1024;
@@ -17,6 +19,7 @@ pub struct DesktopStartRequest {
     pub maximum_connections: u32,
     pub minimum_chunk_bytes: u64,
     pub checkpoint_bytes: u64,
+    pub transport: TransportSettings,
     pub headers: Vec<RequestHeader>,
 }
 
@@ -61,20 +64,7 @@ pub struct DesktopStatusEvent {
 }
 
 pub fn encode_start_request(value: &DesktopStartRequest) -> Result<Vec<u8>, DesktopProtocolError> {
-    if value.maximum_connections == 0 {
-        return Err(DesktopProtocolError::InvalidValue(
-            "maximum connection count must be greater than zero".into(),
-        ));
-    }
-    if value.minimum_chunk_bytes == 0 || value.checkpoint_bytes == 0 {
-        return Err(DesktopProtocolError::InvalidValue(
-            "chunk and checkpoint sizes must be greater than zero".into(),
-        ));
-    }
-    if value.headers.len() > MAX_HEADER_COUNT {
-        return Err(DesktopProtocolError::TooManyHeaders(value.headers.len()));
-    }
-
+    validate_start(value)?;
     let mut output = Vec::new();
     output.extend_from_slice(START_MAGIC);
     output.extend_from_slice(&DESKTOP_PAYLOAD_SCHEMA_VERSION.to_le_bytes());
@@ -84,6 +74,15 @@ pub fn encode_start_request(value: &DesktopStartRequest) -> Result<Vec<u8>, Desk
     output.extend_from_slice(&value.maximum_connections.to_le_bytes());
     output.extend_from_slice(&value.minimum_chunk_bytes.to_le_bytes());
     output.extend_from_slice(&value.checkpoint_bytes.to_le_bytes());
+    output.push(value.transport.proxy_mode as u8);
+    write_string(&mut output, &value.transport.proxy_url)?;
+    write_string(&mut output, &value.transport.proxy_username)?;
+    write_string(&mut output, &value.transport.proxy_password)?;
+    output.extend_from_slice(&value.transport.speed_limit_bytes_per_second.to_le_bytes());
+    output.extend_from_slice(&value.transport.retry_max_attempts.to_le_bytes());
+    output.extend_from_slice(&duration_millis(value.transport.retry_base_delay)?.to_le_bytes());
+    output.extend_from_slice(&duration_millis(value.transport.connect_timeout)?.to_le_bytes());
+    output.extend_from_slice(&duration_millis(value.transport.transfer_timeout)?.to_le_bytes());
     output.extend_from_slice(
         &u32::try_from(value.headers.len())
             .map_err(|_| DesktopProtocolError::TooManyHeaders(value.headers.len()))?
@@ -108,6 +107,16 @@ pub fn decode_start_request(input: &[u8]) -> Result<DesktopStartRequest, Desktop
     let maximum_connections = cursor.read_u32()?;
     let minimum_chunk_bytes = cursor.read_u64()?;
     let checkpoint_bytes = cursor.read_u64()?;
+    let proxy_mode = ProxyMode::try_from(cursor.read_u8()?)
+        .map_err(DesktopProtocolError::InvalidValue)?;
+    let proxy_url = cursor.read_string()?;
+    let proxy_username = cursor.read_string()?;
+    let proxy_password = cursor.read_string()?;
+    let speed_limit_bytes_per_second = cursor.read_u64()?;
+    let retry_max_attempts = cursor.read_u32()?;
+    let retry_base_delay = Duration::from_millis(cursor.read_u64()?);
+    let connect_timeout = Duration::from_millis(cursor.read_u64()?);
+    let transfer_timeout = Duration::from_millis(cursor.read_u64()?);
     let header_count = cursor.read_u32()? as usize;
     if header_count > MAX_HEADER_COUNT {
         return Err(DesktopProtocolError::TooManyHeaders(header_count));
@@ -130,24 +139,20 @@ pub fn decode_start_request(input: &[u8]) -> Result<DesktopStartRequest, Desktop
         maximum_connections,
         minimum_chunk_bytes,
         checkpoint_bytes,
+        transport: TransportSettings {
+            proxy_mode,
+            proxy_url,
+            proxy_username,
+            proxy_password,
+            speed_limit_bytes_per_second,
+            retry_max_attempts,
+            retry_base_delay,
+            connect_timeout,
+            transfer_timeout,
+        },
         headers,
     };
-    if value.task_id.trim().is_empty()
-        || value.url.trim().is_empty()
-        || value.destination.trim().is_empty()
-    {
-        return Err(DesktopProtocolError::InvalidValue(
-            "task id, URL and destination are required".into(),
-        ));
-    }
-    if value.maximum_connections == 0
-        || value.minimum_chunk_bytes == 0
-        || value.checkpoint_bytes == 0
-    {
-        return Err(DesktopProtocolError::InvalidValue(
-            "connection, chunk and checkpoint values must be greater than zero".into(),
-        ));
-    }
+    validate_start(&value)?;
     Ok(value)
 }
 
@@ -186,6 +191,36 @@ pub fn decode_status_event(input: &[u8]) -> Result<DesktopStatusEvent, DesktopPr
     };
     cursor.finish()?;
     Ok(value)
+}
+
+fn validate_start(value: &DesktopStartRequest) -> Result<(), DesktopProtocolError> {
+    if value.task_id.trim().is_empty()
+        || value.url.trim().is_empty()
+        || value.destination.trim().is_empty()
+    {
+        return Err(DesktopProtocolError::InvalidValue(
+            "task id, URL and destination are required".into(),
+        ));
+    }
+    if value.maximum_connections == 0
+        || value.minimum_chunk_bytes == 0
+        || value.checkpoint_bytes == 0
+    {
+        return Err(DesktopProtocolError::InvalidValue(
+            "connection, chunk and checkpoint values must be greater than zero".into(),
+        ));
+    }
+    if value.headers.len() > MAX_HEADER_COUNT {
+        return Err(DesktopProtocolError::TooManyHeaders(value.headers.len()));
+    }
+    value
+        .transport
+        .validate()
+        .map_err(DesktopProtocolError::InvalidValue)
+}
+
+fn duration_millis(value: Duration) -> Result<u64, DesktopProtocolError> {
+    u64::try_from(value.as_millis()).map_err(|_| DesktopProtocolError::ArithmeticOverflow)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -333,7 +368,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn start_request_round_trip_preserves_headers() {
+    fn start_request_round_trip_preserves_transport_settings_and_headers() {
         let value = DesktopStartRequest {
             task_id: "desktop-1".into(),
             url: "https://example.test/file.bin".into(),
@@ -341,6 +376,17 @@ mod tests {
             maximum_connections: 8,
             minimum_chunk_bytes: 1024 * 1024,
             checkpoint_bytes: 256 * 1024,
+            transport: TransportSettings {
+                proxy_mode: ProxyMode::Manual,
+                proxy_url: "http://127.0.0.1:8080".into(),
+                proxy_username: "subutai".into(),
+                proxy_password: "secret".into(),
+                speed_limit_bytes_per_second: 2 * 1024 * 1024,
+                retry_max_attempts: 7,
+                retry_base_delay: Duration::from_millis(750),
+                connect_timeout: Duration::from_secs(15),
+                transfer_timeout: Duration::from_secs(90),
+            },
             headers: vec![RequestHeader::new("Referer", "https://example.test/").unwrap()],
         };
         let encoded = encode_start_request(&value).expect("encode start");
