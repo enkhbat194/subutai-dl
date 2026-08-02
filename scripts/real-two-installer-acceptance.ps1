@@ -61,9 +61,10 @@ function Invoke-Checked {
   )
   Push-Location $WorkingDirectory
   try {
-    & $FilePath @Arguments
-    if ($LASTEXITCODE -ne 0) {
-      throw "$FilePath $($Arguments -join ' ') failed with exit code $LASTEXITCODE."
+    & $FilePath @Arguments | Out-Host
+    $exitCode = $LASTEXITCODE
+    if ($exitCode -ne 0) {
+      throw "$FilePath $($Arguments -join ' ') failed with exit code $exitCode."
     }
   } finally {
     Pop-Location
@@ -181,8 +182,19 @@ function New-UpdateFeed {
   Copy-Item -LiteralPath ([string]$TargetBuild.setupPath) -Destination $setupDestination
   Copy-Item -LiteralPath ([string]$TargetBuild.blockmapPath) -Destination (Join-Path $Destination ([string]$TargetBuild.blockmapName))
   if ($CorruptInstaller) {
-    $stream = [System.IO.File]::Open($setupDestination, [System.IO.FileMode]::Append, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
-    try { $stream.WriteByte(0x53); $stream.Flush($true) } finally { $stream.Dispose() }
+    $stream = [System.IO.File]::Open($setupDestination, [System.IO.FileMode]::Open, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)
+    try {
+      if ($stream.Length -lt 2) { throw 'Target installer is too small to corrupt deterministically.' }
+      $offset = [Math]::Min([int64]4096, $stream.Length - 1)
+      $stream.Position = $offset
+      $original = $stream.ReadByte()
+      if ($original -lt 0) { throw 'Could not read target installer byte for corruption.' }
+      $stream.Position = $offset
+      $stream.WriteByte([byte]($original -bxor 0x5A))
+      $stream.Flush($true)
+    } finally {
+      $stream.Dispose()
+    }
   }
   $releaseDate = [DateTime]::UtcNow.ToString('o')
   $latest = @"
@@ -441,7 +453,7 @@ function Restore-PreExistingState {
   foreach ($entry in $registryBackup) {
     if ($entry.existed) {
       New-Item -Path $entry.key -Force | Out-Null
-      (Get-Item -LiteralPath $entry.key).SetValue('', [string]$entry.value)
+      Set-Item -LiteralPath $entry.key -Value ([string]$entry.value) -Force
     }
   }
 }
@@ -466,8 +478,8 @@ try {
   Backup-Directory -Path $nativeMessagingDir -Name 'native-messaging'
   Remove-BrowserRegistration
 
-  $baselineBuild = Build-SetupInstaller -Version $BaselineVersion
-  $targetBuild = Build-SetupInstaller -Version $TargetVersion
+  $baselineBuild = @(Build-SetupInstaller -Version $BaselineVersion)[-1]
+  $targetBuild = @(Build-SetupInstaller -Version $TargetVersion)[-1]
   $buildEvidence.baseline = $baselineBuild
   $buildEvidence.target = $targetBuild
   Write-JsonFile -Path (Join-Path $evidenceRoot 'build-evidence.json') -Value $buildEvidence
