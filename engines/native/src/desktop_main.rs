@@ -6,9 +6,7 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 use std::thread;
 
-use subutai_native_engine::ipc::{
-    IpcFrame, IpcMessageKind, MAX_IPC_BUFFER_BYTES, decode_frame,
-};
+use subutai_native_engine::ipc::{IpcFrame, IpcMessageKind, MAX_IPC_BUFFER_BYTES, decode_frame};
 use subutai_native_engine::{
     DesktopStartRequest, DesktopStatusEvent, DesktopTaskState, DownloadControl, ENGINE_NAME,
     ENGINE_VERSION, SegmentedDownloadRequest, SegmentedOutcome, decode_start_request,

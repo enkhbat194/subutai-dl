@@ -132,12 +132,18 @@ pub fn decode_start_request(input: &[u8]) -> Result<DesktopStartRequest, Desktop
         checkpoint_bytes,
         headers,
     };
-    if value.task_id.trim().is_empty() || value.url.trim().is_empty() || value.destination.trim().is_empty() {
+    if value.task_id.trim().is_empty()
+        || value.url.trim().is_empty()
+        || value.destination.trim().is_empty()
+    {
         return Err(DesktopProtocolError::InvalidValue(
             "task id, URL and destination are required".into(),
         ));
     }
-    if value.maximum_connections == 0 || value.minimum_chunk_bytes == 0 || value.checkpoint_bytes == 0 {
+    if value.maximum_connections == 0
+        || value.minimum_chunk_bytes == 0
+        || value.checkpoint_bytes == 0
+    {
         return Err(DesktopProtocolError::InvalidValue(
             "connection, chunk and checkpoint values must be greater than zero".into(),
         ));
@@ -205,13 +211,25 @@ impl Display for DesktopProtocolError {
             Self::UnsupportedSchema(version) => {
                 write!(formatter, "unsupported desktop payload schema {version}")
             }
-            Self::InvalidTaskState(state) => write!(formatter, "invalid desktop task state {state}"),
-            Self::FieldTooLarge(size) => write!(formatter, "desktop payload field is too large: {size}"),
-            Self::TooManyHeaders(count) => write!(formatter, "too many desktop request headers: {count}"),
+            Self::InvalidTaskState(state) => {
+                write!(formatter, "invalid desktop task state {state}")
+            }
+            Self::FieldTooLarge(size) => {
+                write!(formatter, "desktop payload field is too large: {size}")
+            }
+            Self::TooManyHeaders(count) => {
+                write!(formatter, "too many desktop request headers: {count}")
+            }
             Self::InvalidUtf8 => write!(formatter, "desktop payload string is not UTF-8"),
-            Self::InvalidHeader(message) => write!(formatter, "invalid desktop request header: {message}"),
-            Self::InvalidValue(message) => write!(formatter, "invalid desktop payload value: {message}"),
-            Self::TrailingBytes(count) => write!(formatter, "desktop payload has {count} trailing bytes"),
+            Self::InvalidHeader(message) => {
+                write!(formatter, "invalid desktop request header: {message}")
+            }
+            Self::InvalidValue(message) => {
+                write!(formatter, "invalid desktop payload value: {message}")
+            }
+            Self::TrailingBytes(count) => {
+                write!(formatter, "desktop payload has {count} trailing bytes")
+            }
             Self::ArithmeticOverflow => write!(formatter, "desktop payload arithmetic overflowed"),
         }
     }
@@ -232,8 +250,8 @@ fn write_string(output: &mut Vec<u8>, value: &str) -> Result<(), DesktopProtocol
     if bytes.len() > MAX_FIELD_BYTES {
         return Err(DesktopProtocolError::FieldTooLarge(bytes.len()));
     }
-    let length = u32::try_from(bytes.len())
-        .map_err(|_| DesktopProtocolError::FieldTooLarge(bytes.len()))?;
+    let length =
+        u32::try_from(bytes.len()).map_err(|_| DesktopProtocolError::FieldTooLarge(bytes.len()))?;
     output.extend_from_slice(&length.to_le_bytes());
     output.extend_from_slice(bytes);
     Ok(())
@@ -295,7 +313,8 @@ impl<'a> Cursor<'a> {
         if length > MAX_FIELD_BYTES {
             return Err(DesktopProtocolError::FieldTooLarge(length));
         }
-        String::from_utf8(self.take(length)?.to_vec()).map_err(|_| DesktopProtocolError::InvalidUtf8)
+        String::from_utf8(self.take(length)?.to_vec())
+            .map_err(|_| DesktopProtocolError::InvalidUtf8)
     }
 
     fn finish(&self) -> Result<(), DesktopProtocolError> {
