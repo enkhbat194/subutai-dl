@@ -54,7 +54,7 @@ export interface NativeFrame {
   payload: Buffer;
 }
 
-export function encodeNativeFrame(requestId: bigint, kind: NativeMessageKind, payload = Buffer.alloc(0)): Buffer {
+export function encodeNativeFrame(requestId: bigint, kind: NativeMessageKind, payload: Buffer<ArrayBufferLike> = Buffer.alloc(0)): Buffer {
   if (payload.length > MAX_IPC_PAYLOAD_BYTES) throw new Error(`Native IPC payload is too large: ${payload.length}`);
   const bodyLength = FIXED_BODY_BYTES + payload.length;
   const output = Buffer.allocUnsafe(4 + bodyLength);
