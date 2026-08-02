@@ -1,175 +1,197 @@
 # Subutai — Authoritative Project Status
 
-Last audited: 2026-08-02  
-Source of truth: `main`, merged pull requests, the active N5 acceptance pull request, and executable Windows-runner evidence.
+Last audited: 2026-08-03  
+Source of truth: `main`, merged pull requests, source code, and executable Windows-runner evidence.
 
 ## Status definitions
 
-- **Implemented** — source exists and is connected to its intended runtime path.
-- **Automated verified** — deterministic tests and build checks passed.
-- **Runner verified** — checks passed on the actual `subutai-windows` self-hosted Windows computer.
-- **Physical-browser verified** — manually accepted through an installed browser and installed desktop application.
-- **Release-ready** — signed, tagged, clean-machine install/update/rollback accepted.
+- **Implemented** — source exists and is connected to the intended runtime path.
+- **Automated verified** — deterministic tests and builds passed.
+- **Runner verified** — checks passed on the `subutai-windows` self-hosted Windows computer.
+- **Physical verified** — manually accepted through an installed browser and installed desktop application.
+- **Clean-machine verified** — accepted on clean Windows 10/11 without development tooling.
+- **Release-ready** — signed, tagged, and accepted through the real update and rollback channel.
 
-## Product capability inventory
+## Current conclusion
 
-| # | Capability | Implemented | Automated verified | Runner verified | Physical-browser verified |
+Subutai is a feature-complete engineering build with strong automated Windows acceptance. It is **not yet a signed Direct 1.0 stable release**.
+
+- Normal HTTP/HTTPS downloads use Subutai's first-party Rust native engine.
+- Desktop, browser queue, scheduler, pause/resume, integrity and recovery paths are integrated.
+- Setup and Portable packages build, launch, install and uninstall on the current Windows runner.
+- Transactional update and automatic rollback are implemented and deterministic local two-build acceptance passes.
+- Temporary `yt-dlp`, `FFmpeg` and `ffprobe` binaries remain for media downloads until M1/M2.
+- Physical browser acceptance, clean Windows 10/11 acceptance, a real end-user update channel, code signing and real published-version rollback remain pending.
+
+## Repository baseline
+
+| Item | Current value |
+|---|---|
+| Product | Subutai / Subutai Download Manager |
+| Default branch | `main` |
+| Audited main commit | `b98229b76464f5c56cbf1d6e6fb582b1c82040cd` |
+| Application version | `0.1.0` |
+| Desktop | Electron + React + TypeScript |
+| Direct engine | First-party Rust `subutai-engine-host.exe` |
+| Media path | Temporary `yt-dlp` + `FFmpeg` + `ffprobe` |
+| Windows outputs | NSIS Setup + Portable |
+| Stable public release | Not published |
+| Code signing | Pending |
+
+## Capability matrix
+
+| # | Capability | Implemented | Automated | Runner | Physical |
 |---|---|---:|---:|---:|---:|
 | 1 | Chrome, Edge and Firefox integration | Yes | Yes | Partial | Pending |
 | 2 | Browser interception and right-click actions | Yes | Yes | Partial | Pending |
 | 3 | Cookie, header, login and referer forwarding | Yes | Yes | Yes | Pending |
-| 4 | Subutai video/media system | Yes | Yes | Partial | Pending |
-| 5 | Playlist, subtitles, audio formats, 4K, HLS/DASH through the temporary media path | Yes | Yes | Partial | Pending |
+| 4 | Direct HTTP/HTTPS downloads | Yes | Yes | Yes | Pending |
+| 5 | Media, playlist, subtitle, audio-only, 4K, HLS and DASH through temporary tools | Yes | Yes | Partial | Pending |
 | 6 | Persistent queue and scheduler | Yes | Yes | Yes | Pending |
 | 7 | Proxy, speed limit, retry and timeout policy | Yes | Yes | Yes | Pending |
 | 8 | Batch and numbered URL downloads | Yes | Yes | Yes | Pending |
 | 9 | Clipboard monitoring | Yes | Yes | Yes | Pending |
 | 10 | Site Grabber | Yes | Yes | Yes | Pending |
-| 11 | Tray, notifications and automatic-update integration | Yes | Yes | Partial | Pending |
-| 12 | Large-file, crash and network interruption resilience | Yes | Yes | Partial | Pending |
-
-All original capability groups exist. This does not yet mean the product is a signed Direct 1.0 stable release.
+| 11 | Tray, notifications and update UI integration | Yes | Yes | Partial | Pending |
+| 12 | Crash, process-kill and network interruption recovery | Yes | Yes | Yes | Pending |
+| 13 | Transactional update and automatic rollback | Yes | Yes | Yes | Pending real channel |
+| 14 | Setup, Portable, install and uninstall | Yes | Yes | Yes | Pending clean machine |
 
 ## First-party native direct engine
 
-Direct HTTP/HTTPS downloads now use Subutai’s first-party Rust engine. The Windows release path rejects the replaced direct-download executable and requires `subutai-engine-host.exe`.
-
-Temporary `yt-dlp` and `FFmpeg` binaries remain only for the media path until M1/M2 replace that scope. They do not perform normal direct downloads.
-
-| Package | Scope | Source | Windows checks | Main status |
-|---|---|---:|---:|---:|
-| N0 | State, range planning, durable journal and versioned IPC | Complete | PASS | PR #15 merged |
-| N1 | HTTP/HTTPS probe, safe single-stream transfer and SHA-256 | Complete | PASS | PR #16 merged |
-| N2 | Segmented transfer, pause/resume and validator-safe recovery | Complete | PASS | PR #17 merged |
-| N3 | Adaptive connections, dynamic chunking and slow-range replacement | Complete | PASS | PR #18 merged |
-| N4 | Desktop, browser queue and scheduler replacement integration | Complete | PASS | PR #19 merged |
-| N5 | Direct 1.0 production gate | In progress | Current gates PASS | N5.1–N5.5 implemented |
-| M1 | First-party HLS/DASH media core | Pending | Pending | Pending |
-| M2 | Maintained website adapters | Pending | Pending | Pending |
-
-## N5 completed engineering packages
-
-### N5.1 — release path migration, PR #20
-
-- Removed the replaced direct-download engine from release installation and packaging.
-- Required `subutai-engine-host.exe` in Windows package validation.
-- Added a negative package assertion preventing the legacy direct executable from entering Setup or Portable builds.
-- Kept only temporary media tooling until M1/M2.
-
-### N5.2 — reproducible dependency graph, PR #21
-
-- Committed the pnpm v9 lockfile.
-- Pinned pnpm `10.15.0`.
-- Enforced `pnpm install --frozen-lockfile` in CI and release workflows.
-- Added a dependency-lock policy gate.
-
-### N5.3 — native transfer settings, PR #22
-
-- Versioned desktop IPC now carries proxy mode, endpoint, private credentials, speed limits, retry policy and timeouts.
-- Direct downloads support proxy off, Windows system proxy and explicit HTTP proxy.
-- WinHTTP applies connect and transfer timeouts.
-- Proxy challenge handling covers Windows Negotiate, NTLM, Digest and Basic schemes.
-- One shared limiter caps aggregate segmented throughput.
-- A real Windows acceptance test verified manual proxy routing, speed limiting and exact final bytes.
-
-### N5.4 — integrity and conflict policies, PR #23
-
-- Added rename, overwrite, skip and verified-resume destination policies.
-- Added expected SHA-256 validation before queueing and after native completion.
-- Mismatched completed files move to a unique `.subutai.corrupt` quarantine path.
-- Changed remote content can trigger one clean product-layer restart.
-- Public diagnostics redact authorization, proxy authorization, cookies, URL credentials and sensitive query values.
-
-### N5.5 — Windows production acceptance, PR #24
-
-- Replaced the obsolete direct-engine resilience suite with first-party Subutai process-kill and network-drop recovery tests.
-- Added checksum-verified, pinned temporary media-tool provisioning without Chocolatey.
-- Built Setup and Portable packages on the actual Windows runner.
-- Fixed the packaged Electron preload contract by emitting and loading sandbox-compatible `index.cjs`.
-- Verified the unpacked packaged application launches with its renderer API connected.
-- Verified Portable launch through the portable wrapper.
-- Verified silent Setup installation into an isolated directory.
-- Verified packaged native engine and browser-extension resources.
-- Verified Chrome, Edge and Firefox native-messaging registry manifests point to the installed Subutai executable.
-- Verified the installed application launches successfully.
-- Verified silent uninstall removes the executable, registry keys and native-messaging manifests.
-- Stable release workflow now requires the same native resilience, package launch and install/uninstall acceptance before publication.
-
-### N5.5 executable evidence
-
-The final check-only runs on `subutai-windows` passed:
-
-1. Native ownership policy, Rust formatting and Clippy with warnings as errors.
-2. All native unit and integration tests.
-3. Durable journal self-test and release native-host build.
-4. Frozen dependency installation and release-engine policy.
-5. Integrity, conflict, quarantine and diagnostic-redaction policy tests.
-6. Desktop and browser TypeScript contracts.
-7. Queue, transfer, batch, clipboard, Site Grabber, system and failure/recovery tests.
-8. Clean 16 MiB segmented transfer with exact SHA-256.
-9. Forced process termination after persisted progress, followed by exact resume.
-10. Network socket drop and same-port recovery, followed by exact completion.
-11. Setup and Portable package production build.
-12. Packaged application launch with CommonJS preload and renderer API.
-13. Portable-wrapper launch acceptance.
-14. Silent Setup install and installed-app launch.
-15. Chrome, Edge and Firefox native-messaging registration checks.
-16. Silent uninstall and browser-bridge cleanup.
-
-No tag, GitHub Release, deployment or signing was performed by the N5.5 acceptance workflow.
+| Package | Scope | Main status |
+|---|---|---|
+| N0 | State, range planning, dual-slot durable journal and versioned IPC | PR #15 merged |
+| N1 | WinHTTP probe, safe single-stream transfer and SHA-256 | PR #16 merged |
+| N2 | Segmented transfer, pause/resume and validator-safe recovery | PR #17 merged |
+| N3 | Adaptive connections, dynamic chunking and slow-range replacement | PR #18 merged |
+| N4 | Desktop, browser queue and scheduler replacement integration | PR #19 merged |
+| N5.1 | Native-engine release path migration | PR #20 merged |
+| N5.2 | Reproducible dependency locking | PR #21 merged |
+| N5.3 | Native proxy, speed, timeout and retry settings | PR #22 merged |
+| N5.4 | Conflict, checksum, quarantine and remote-change policies | PR #23 merged |
+| N5.5 | Setup/Portable and Windows production acceptance | PR #24 merged |
+| N5.6a | Safe no-range fallback and exponential retry | PR #25 merged |
+| N5.6b | Integrity-safe mirror fallback | PR #26 merged |
+| N5.6c | Deterministic disk/write/sync/atomic-move failure injection | PR #27 merged |
+| N5.6d | Native soak and resource telemetry | PR #28 merged |
+| N5.6e | Desktop telemetry schema v3 | PR #29 merged |
+| N5.6f | Large-file and concurrent-queue benchmark | PR #30 merged |
+| N5.6g | Two-phase Windows restart recovery harness | PR #31 merged |
+| N5.7a | Transactional updater and automatic rollback implementation | PR #32 merged |
+| M1 | First-party HLS/DASH media core | Pending |
+| M2 | Maintained browser-authenticated website adapters | Pending |
 
 ## Current direct-download truth
 
-- Normal HTTP/HTTPS direct downloads use the first-party Subutai Rust engine.
-- The replaced direct-download executable is forbidden from release resources.
-- Pause, resume, cancel, process restart, network interruption, remote-validator safety, checksum verification and atomic completion are automated and Windows-runner verified.
-- Proxy, speed limit, retry and timeout settings reach the native transport through private versioned IPC.
-- Setup and Portable packaging, launch, install and uninstall are Windows-runner verified on the current runner machine.
-- Media-site extraction still uses temporary `yt-dlp` and `FFmpeg` tooling until M1/M2.
+Implemented and automated/runner verified:
 
-## Why N5 is not yet marked release-ready
+- WinHTTP HTTP/HTTPS transport;
+- redirect and metadata probe;
+- segmented and safe no-range download routes;
+- adaptive worker limits and dynamic chunks;
+- exact pause/resume offsets;
+- ETag, Last-Modified, remote-size and Content-Range safety;
+- `.subutai.part` and dual-slot durable resume journal;
+- whole-file SHA-256 and atomic completion;
+- proxy, speed limit, timeout and retry settings;
+- checksum-enforced mirror fallback;
+- process-kill and network-drop recovery;
+- deterministic disk-space, write, sync and destination-move failure handling;
+- persisted native telemetry;
+- Setup and Portable packaging with the first-party native host.
 
-The locked N5 definition includes gates that cannot honestly be inferred from the current single-machine acceptance run.
+Not implemented or not yet accepted:
 
-### Remaining engineering gates
+- explicit HTTP/2 enablement and protocol-used telemetry;
+- HTTP/3 enablement and fallback matrix;
+- IOCP/asynchronous WinHTTP rewrite;
+- clean Windows 10/11 acceptance;
+- physical end-to-end browser interception acceptance.
 
-1. Complete the remaining Direct 1.0 correctness matrix, including explicit mirror/fallback behavior and additional no-range/authentication edge cases.
-2. Add deterministic disk-full, destination-loss and write-failure acceptance.
-3. Add sleep/wake and actual Windows restart recovery evidence beyond process-kill recovery.
-4. Add long-running large-file and large-queue soak tests with memory, handle and file-descriptor monitoring.
-5. Add reproducible performance benchmark records: throughput, first-byte time, CPU, memory, disk rate, connection history, retries and final SHA-256.
-6. Persist and expose connection/retry/replacement telemetry in product diagnostics.
-7. Add a user-facing `ask` conflict flow; current API defaults use safe automatic policies.
+HTTP/2, HTTP/3 and IOCP are optimization/research packages, not Direct 1.0 blockers unless profiling demonstrates a correctness or performance need.
 
-### Remaining external release gates
+## Transactional updater and rollback
 
-1. Clean Windows 10 x64 acceptance.
-2. Clean Windows 11 x64 acceptance independent of the development runner state.
-3. Manual installed Chrome, Edge and Firefox end-to-end interception acceptance.
-4. Real authenticated downloads using cookies, headers and expiring URLs.
-5. A real code-signing certificate and protected signing secrets.
-6. Signed installer and executable verification.
-7. Tagged stable release, updater download, upgrade and rollback acceptance.
+PR #32 implemented:
 
-Signing cannot be completed without an externally issued certificate and repository secrets. Clean-machine and physical-browser acceptance require the corresponding machines/browsers; they are not replaced by compile success.
+- atomic durable update transaction journal;
+- verified previous Setup installer cache with bounded retention;
+- staged target installer verification;
+- renderer, preload, native host, browser bridge and SQLite startup-health confirmation;
+- external watchdog;
+- bounded failed-startup detection;
+- one-attempt verified silent rollback;
+- intentional-exit handling;
+- settings, database, queue and partial-download preservation;
+- Chrome, Edge and Firefox native-messaging restoration;
+- checksum mismatch and corrupt-journal fail-safe behavior;
+- deterministic local previous/target build acceptance.
 
-## Current conclusion
+The current acceptance does **not** prove:
 
-N0 through N4 are complete and merged. N5.1 through N5.5 are implemented and Windows-runner verified. The direct-download runtime and release package no longer use the replaced direct engine.
+- update from an independently published previous production installer;
+- public end-user update distribution;
+- real update and rollback after a Windows reboot;
+- signed installer rollback;
+- overnight updater/rollback soak.
 
-N5 as a whole remains **in progress**, not release-ready, until the remaining correctness, soak, clean-machine, physical-browser, signing and updater/rollback gates pass.
+## Release distribution decision required
 
-## Ordered next packages
+The source repository is private while the desktop package currently declares a GitHub release provider. Direct 1.0 must select and accept an end-user distribution design that does not embed a personal access token in the application.
 
-1. **N5.6 — correctness, failure injection, benchmark and soak matrix**.
-2. **N5.7 — clean Windows/browser, signing, stable updater and rollback acceptance**.
-3. **M1 — first-party HLS/DASH media core**.
-4. **M2 — maintained browser-authenticated website adapters**.
+Allowed candidate designs:
+
+1. a public binary-only GitHub release repository while source remains private;
+2. a generic HTTPS update server such as object storage/CDN;
+3. a private personal channel only for owner-operated machines, with credentials supplied outside the application.
+
+No design is considered accepted until a real `0.1.0 -> 0.1.1` update and a failed-target rollback pass through that channel.
+
+## Remaining Direct 1.0 release gates
+
+See [`DIRECT_1_0_RELEASE_GATE.md`](DIRECT_1_0_RELEASE_GATE.md) for the ordered acceptance matrix.
+
+Highest-priority remaining gates:
+
+1. choose and implement the real update distribution channel;
+2. perform installed Chrome, Edge and Firefox end-to-end acceptance;
+3. perform real authenticated/cookie/referer/expiring-URL downloads;
+4. complete clean Windows 11 acceptance;
+5. complete clean Windows 10 acceptance;
+6. perform real two-version update, failed startup and rollback;
+7. configure code signing and verify signed outputs;
+8. fix release-quality warnings and add product icon assets;
+9. publish a draft prerelease only after every required gate passes.
+
+## Known release-quality debt
+
+- application and installer icon assets are not configured;
+- restart/resilience scripts have emitted FileHandle garbage-collection warnings and should close handles explicitly;
+- GitHub Actions dependencies emit Node runtime deprecation warnings;
+- packaged Electron currently emits the Node SQLite experimental warning;
+- the richer user-facing `ask` destination-conflict flow remains pending;
+- diagnostics export and clear updater/rollback evidence should be exposed for support.
+
+These are tracked defects or hardening tasks. A green automated workflow does not erase them.
+
+## Required next package order
+
+1. **S0 — status reset and release-gate documentation**.
+2. **U1 — real update distribution architecture and acceptance**.
+3. **A1 — physical desktop/browser/media acceptance**.
+4. **UX1 — release-quality UI, diagnostics and defect fixes**.
+5. **C1 — clean Windows 11 and Windows 10 acceptance**.
+6. **R1 — real two-version update and rollback acceptance**.
+7. **S1 — code signing and draft prerelease**.
+8. **P1 — protocol observability, HTTP/2 first; HTTP/3 only afterward**.
+9. **M1/M2 — first-party media core and maintained adapters after Direct 1.0**.
+10. **T1 — measured Tauri feasibility spike after Direct 1.0; no migration commitment**.
 
 ## Naming policy
 
 - Product: **Subutai**.
 - Formal name where required: **Subutai Download Manager**.
 - Executable and artifact prefix: **Subutai**.
-- Public UI, notifications, extension, installer and public errors expose only Subutai product identity.
-- Temporary component names may appear only in technical provisioning, license and removal policy code; they are never part of the public product identity.
+- Public UI, notifications, extensions, installer and public errors expose only Subutai product identity.
+- Temporary component names may appear only in technical provisioning, license and removal-policy code.
