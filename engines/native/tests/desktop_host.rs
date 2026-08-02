@@ -13,8 +13,8 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use subutai_native_engine::ipc::{IpcFrame, IpcMessageKind, decode_frame};
 use subutai_native_engine::{
-    DesktopStartRequest, DesktopStatusEvent, DesktopTaskState, RequestHeader,
-    decode_status_event, encode_start_request,
+    DesktopStartRequest, DesktopStatusEvent, DesktopTaskState, RequestHeader, decode_status_event,
+    encode_start_request,
 };
 
 const HOST_PATH: &str = env!("CARGO_BIN_EXE_subutai-engine-host");
@@ -138,7 +138,10 @@ fn desktop_host_forwards_headers_pauses_and_resumes_in_a_new_process() {
     assert_eq!(completed.completed_bytes, data.len() as u64);
     drop(resumed_input);
     assert!(resumed_child.wait().expect("wait resumed host").success());
-    assert_eq!(fs::read(&destination).expect("read resumed destination"), data);
+    assert_eq!(
+        fs::read(&destination).expect("read resumed destination"),
+        data
+    );
     assert!(server.header_seen());
     assert!(!partial_path(&destination).exists());
     assert!(!journal_slot_exists(&destination));
@@ -187,8 +190,8 @@ fn spawn_host(start: &DesktopStartRequest) -> (Child, ChildStdin, Receiver<IpcFr
     let mut input = child.stdin.take().expect("desktop host stdin");
     let mut output = child.stdout.take().expect("desktop host stdout");
     let payload = encode_start_request(start).expect("encode desktop start request");
-    let frame = IpcFrame::new(1, IpcMessageKind::StartRequest, payload)
-        .expect("build desktop start frame");
+    let frame =
+        IpcFrame::new(1, IpcMessageKind::StartRequest, payload).expect("build desktop start frame");
     input
         .write_all(&frame.encode().expect("encode desktop start frame"))
         .expect("write desktop start frame");
@@ -216,7 +219,10 @@ fn send_control(input: &mut ChildStdin, request_id: u64, kind: IpcMessageKind) {
 fn wait_for_active_progress(events: &Receiver<IpcFrame>, minimum_bytes: u64) -> DesktopStatusEvent {
     let deadline = std::time::Instant::now() + Duration::from_secs(20);
     loop {
-        assert!(std::time::Instant::now() < deadline, "desktop host active progress timed out");
+        assert!(
+            std::time::Instant::now() < deadline,
+            "desktop host active progress timed out"
+        );
         let frame = events
             .recv_timeout(Duration::from_millis(500))
             .expect("receive desktop host frame");
@@ -236,7 +242,10 @@ fn wait_for_active_progress(events: &Receiver<IpcFrame>, minimum_bytes: u64) -> 
 fn wait_for_state(events: &Receiver<IpcFrame>, expected: DesktopTaskState) -> DesktopStatusEvent {
     let deadline = std::time::Instant::now() + Duration::from_secs(30);
     loop {
-        assert!(std::time::Instant::now() < deadline, "desktop host state {expected:?} timed out");
+        assert!(
+            std::time::Instant::now() < deadline,
+            "desktop host state {expected:?} timed out"
+        );
         let frame = events
             .recv_timeout(Duration::from_millis(500))
             .expect("receive desktop host frame");
@@ -268,11 +277,7 @@ fn read_frame(input: &mut impl Read) -> Result<IpcFrame, String> {
     decode_frame(&encoded).map_err(|error| error.to_string())
 }
 
-fn handle_request(
-    stream: &mut TcpStream,
-    data: &[u8],
-    header_seen: &AtomicBool,
-) -> io::Result<()> {
+fn handle_request(stream: &mut TcpStream, data: &[u8], header_seen: &AtomicBool) -> io::Result<()> {
     let request = read_request(stream)?;
     let mut lines = request.split("\r\n");
     let request_line = lines
@@ -286,7 +291,10 @@ fn handle_request(
         .next()
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "missing path"))?;
     if path != "/desktop-host.bin" {
-        return Err(io::Error::new(io::ErrorKind::InvalidData, "unexpected path"));
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "unexpected path",
+        ));
     }
     let headers = lines
         .filter_map(|line| line.split_once(':'))
@@ -314,7 +322,10 @@ fn handle_request(
         return write_response(stream, "200 OK", &response_headers, &[], false);
     }
     if method != "GET" {
-        return Err(io::Error::new(io::ErrorKind::InvalidData, "unexpected method"));
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "unexpected method",
+        ));
     }
     let range = header("range")
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "missing range"))?;
@@ -349,7 +360,10 @@ fn parse_range(value: &str, total: usize) -> io::Result<(usize, usize)> {
         .parse::<usize>()
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "invalid range end"))?;
     if start > end || end >= total {
-        return Err(io::Error::new(io::ErrorKind::InvalidData, "range outside file"));
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "range outside file",
+        ));
     }
     Ok((start, end))
 }
@@ -361,14 +375,20 @@ fn read_request(stream: &mut TcpStream) -> io::Result<String> {
     loop {
         let read = stream.read(&mut buffer)?;
         if read == 0 {
-            return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "request ended early"));
+            return Err(io::Error::new(
+                io::ErrorKind::UnexpectedEof,
+                "request ended early",
+            ));
         }
         bytes.extend_from_slice(&buffer[..read]);
         if bytes.windows(4).any(|window| window == b"\r\n\r\n") {
             break;
         }
         if bytes.len() >= 64 * 1024 {
-            return Err(io::Error::new(io::ErrorKind::InvalidData, "request too large"));
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "request too large",
+            ));
         }
     }
     String::from_utf8(bytes)
