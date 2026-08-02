@@ -149,7 +149,7 @@ jobs:
         env:
           SUBUTAI_BENCHMARK_LARGE_MIB: 128
           SUBUTAI_BENCHMARK_QUEUE_JOBS: 12
-          SUBUTAI_BENCHMARK_QUEUE_MIB: 4
+          SUBUTAI_BENCHMARK_QUEUE_MIB: 16
           SUBUTAI_BENCHMARK_CONCURRENCY: 3
           SUBUTAI_BENCHMARK_SEGMENTS: 8
           SUBUTAI_BENCHMARK_REPORT: artifacts/n5/native-large-queue-report.json
