@@ -64,24 +64,6 @@ jobs:
         with:
           node-version: 22
 
-      - name: Apply N5 WinHTTP settings migration
-        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
-        shell: powershell
-        env:
-          HEAD_BRANCH: ${{ github.head_ref }}
-        run: |
-          node scripts/apply-n5-winhttp-settings.mjs
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add engines/native/src/platform/windows.rs
-          git diff --cached --quiet
-          if ($LASTEXITCODE -eq 0) {
-            Write-Host "N5 WinHTTP migration is already applied."
-          } else {
-            git commit -m "Apply proxy authentication and native timeouts"
-            git push origin "HEAD:$env:HEAD_BRANCH"
-          }
-
       - name: Install pinned Rust toolchain
         shell: powershell
         run: |
@@ -97,6 +79,24 @@ jobs:
           rustup default 1.97.1
           rustc --version --verbose
           cargo --version
+
+      - name: Format N5 native sources
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        shell: powershell
+        env:
+          HEAD_BRANCH: ${{ github.head_ref }}
+        run: |
+          cargo fmt --manifest-path engines/native/Cargo.toml --all
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add engines/native
+          git diff --cached --quiet
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "N5 native sources are already formatted."
+          } else {
+            git commit -m "Format N5 native transfer settings"
+            git push origin "HEAD:$env:HEAD_BRANCH"
+          }
 
       - name: Verify Subutai ownership policy
         shell: powershell
