@@ -30,7 +30,7 @@ export async function prepareDownloadDestination(input: {
   directory: string;
   filename: string;
   policy: FileConflictPolicy;
-  expectedSha256?: string;
+  expectedSha256?: string | undefined;
 }): Promise<DestinationDecision> {
   const expectedSha256 = normalizeSha256(input.expectedSha256);
   const initialPath = join(input.directory, input.filename);
