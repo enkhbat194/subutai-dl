@@ -1,14 +1,14 @@
 # Subutai — Authoritative Project Status
 
 Last audited: 2026-08-02
-Source of truth: `main` plus merged PRs #3–#13. Native-engine work is tracked separately until its checks pass and it is merged.
+Source of truth: `main` plus merged PRs #3–#13 and N0 PR #15.
 
 ## Status definitions
 
 - **Implemented** — production source is present on `main`.
 - **Automated verified** — build, policy and smoke checks exist and have passed.
-- **Runner verified** — exercised on GitHub Linux/Windows runners.
-- **Physical-device verified** — manually accepted on a real Windows PC and installed browsers.
+- **Runner verified** — exercised on an automated runner.
+- **Physical-device verified** — accepted on a real Windows PC and installed browsers.
 - **Release-ready** — signed, tagged, install/update/rollback accepted and supported.
 
 ## Requested feature inventory
@@ -34,7 +34,7 @@ Subutai is being moved from temporary external download/media engines to first-p
 
 | Package | Purpose | Source written | Executable checks | Merged to main |
 |---|---|---:|---:|---:|
-| N0 | Core state, range planning, durable journal and desktop/engine protocol | Yes | Blocked by GitHub jobs not starting | No |
+| N0 | Core state, range planning, durable journal and desktop/engine protocol | Yes | Windows self-hosted PASS | Yes — PR #15 |
 | N1 | Real HTTP/HTTPS probing and single-file transfer | No | No | No |
 | N2 | Segmented transfer, pause/resume and safe recovery | No | No | No |
 | N3 | Adaptive connections and dynamic chunking | No | No | No |
@@ -43,29 +43,45 @@ Subutai is being moved from temporary external download/media engines to first-p
 | M1 | First-party HLS/DASH media core | No | No | No |
 | M2 | Maintained website adapters | No | No | No |
 
-### N0 completed source work
+### N0 completed and verified work
 
-- Rust core crate with no third-party crate dependencies.
+- First-party Rust core crate with no third-party crate dependencies.
 - Download job and segment states with legal transition checks.
 - Deterministic byte-range planning with no gaps or overlaps.
+- Overflow-safe planning up to the maximum supported integer file size.
 - Versioned binary job journal with corruption detection.
-- Two alternating recovery copies; a damaged newest copy can fall back to the previous valid copy.
+- Two alternating recovery copies; a damaged newest copy falls back to the previous valid copy.
+- Both damaged copies are preserved and never silently overwritten.
 - Disk-backed save, sync, read-back and cleanup self-test.
 - Versioned local desktop/engine message format with request IDs and payload limits.
 - Partial-read and multiple-message stream handling.
+- Truncation, byte-corruption and deterministic arbitrary-input tests.
 - Fixed binary example tests to detect accidental format changes.
-- Separate Linux and Windows native-engine workflow.
+- Automated policy gate forbidding third-party crates, foreign product identities and unsafe Rust in the native-engine directory.
+- Pinned Rust 1.97.1 toolchain and committed Cargo.lock.
+- Free self-hosted Windows runner named `subutai-windows`.
 
-### N0 current blocker
+### N0 verification evidence
 
-GitHub is creating the jobs but ending them before the first command starts. The job records contain no steps and no compile log. Therefore N0 is **not** marked verified or merged yet. This is treated as a testing-service blocker, not as evidence that the source passed or failed.
+The final N0 run on the real Windows self-hosted runner passed all of the following:
 
-Active clean PR: **#15 — Build Subutai Native Engine N0 foundation**.
-Obsolete mixed-history PR #14 was closed without merging.
+1. Subutai ownership policy.
+2. Rust formatter check.
+3. Clippy static checks with every warning treated as an error.
+4. Native-engine unit and protocol tests.
+5. Durable journal disk recovery self-test.
+6. Desktop dependency installation.
+7. Public Subutai identity gate.
+8. Desktop/browser TypeScript checks.
+9. Queue, scheduler, transfer, batch, clipboard, Site Grabber, tray/update and failure-policy tests.
+10. Release-version consistency.
+11. Full desktop production build.
+
+Linux portability verification remains useful but is not a release blocker for the Windows-first product. It will be run later using a free self-hosted Linux environment. Paid GitHub-hosted CI, large resilience runs and installer packaging are retained as manual workflows rather than running automatically.
 
 ## Current conclusion
 
-The original 12 capability groups are implemented on `main` and have automated coverage. This does **not** yet mean Subutai is production-complete or fully equal to a mature commercial download manager. The remaining work is physical Windows/browser acceptance, product hardening, unified UX and replacement of temporary runtime engines with first-party Subutai engines.
+The original 12 capability groups are implemented and have automated coverage. N0, the first-party native-engine foundation, is now implemented and verified on the actual Windows target platform. This does **not** yet mean Subutai is production-complete or fully equal to a mature commercial download manager. The next core milestone is N1: real HTTP/HTTPS probing and safe single-stream transfer.
 
 ## Product-quality gaps before production release
 
@@ -80,13 +96,13 @@ The original 12 capability groups are implemented on `main` and have automated c
 
 ### P0 — First-party native engine
 
-1. Finish and verify N0 on Linux and Windows.
-2. Build N1 HTTP/HTTPS probe and safe single-stream download.
-3. Build N2 segmented transfer and verified resume.
-4. Build N3 adaptive chunking and connection control.
-5. Integrate the new engine into the desktop and browser flow in N4.
-6. Complete N5 acceptance, performance and release migration.
-7. Remove temporary third-party engine executables from final release resources only after the native replacement passes every gate.
+1. Build N1 HTTP/HTTPS probe and safe single-stream download.
+2. Build N2 segmented transfer and verified resume.
+3. Build N3 adaptive chunking and connection control.
+4. Integrate the new engine into the desktop and browser flow in N4.
+5. Complete N5 acceptance, performance and release migration.
+6. Remove temporary third-party engine executables from final release resources only after the native replacement passes every gate.
+7. Add a free self-hosted Linux portability runner when available.
 
 ### P1 — Commercial-grade direct-download behavior
 
@@ -125,13 +141,12 @@ The original 12 capability groups are implemented on `main` and have automated c
 
 ## Ordered next execution packages
 
-1. **N0 verification and merge** — compile, static checks, tests and disk recovery self-test on Linux and Windows.
-2. **N1 safe transfer** — HTTP/HTTPS metadata probe, redirects, single-stream transfer, temporary file and atomic completion.
-3. **N2 resumable transfer** — segments, persistent progress, validators and interruption recovery.
-4. **N3 adaptive engine** — dynamic chunks, adaptive connections, writer queue and mirror failover.
-5. **N4 desktop replacement** — connect the first-party engine to Subutai's queue, browser, settings and package.
-6. **N5 release gate** — Windows acceptance, performance tests, signing and removal of temporary release engines.
-7. **M1/M2 media replacement** — first-party media core followed by prioritized site adapters.
+1. **N1 safe transfer** — HTTP/HTTPS metadata probe, redirects, single-stream transfer, temporary file and atomic completion.
+2. **N2 resumable transfer** — segments, persistent progress, validators and interruption recovery.
+3. **N3 adaptive engine** — dynamic chunks, adaptive connections, writer queue and mirror failover.
+4. **N4 desktop replacement** — connect the first-party engine to Subutai's queue, browser, settings and package.
+5. **N5 release gate** — Windows acceptance, performance tests, signing and removal of temporary release engines.
+6. **M1/M2 media replacement** — first-party media core followed by prioritized site adapters.
 
 ## Naming policy
 
