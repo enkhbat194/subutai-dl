@@ -39,6 +39,8 @@ jobs:
     steps:
       - name: Checkout exact commit
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -94,7 +96,9 @@ jobs:
 
       - name: Run real Setup A to Setup B update and rollback acceptance
         shell: powershell
-        run: ./scripts/run-real-update-acceptance-safely.ps1 -BaselineVersion 0.1.0 -TargetVersion 0.2.0 -Workspace artifacts/real-update-acceptance
+        run: |
+          $env:GITHUB_SHA = "${{ github.event.pull_request.head.sha || github.sha }}"
+          ./scripts/run-real-update-acceptance-safely.ps1 -BaselineVersion 0.1.0 -TargetVersion 0.2.0 -Workspace artifacts/real-update-acceptance
 
       - name: Publish acceptance evidence summary
         if: always()
@@ -112,9 +116,10 @@ jobs:
 
       - name: Preserve private acceptance evidence
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
-          name: subutai-real-update-acceptance-${{ github.sha }}
+          name: subutai-real-update-acceptance-${{ github.event.pull_request.head.sha || github.sha }}
           path: |
             artifacts/real-update-acceptance/evidence/**/*.json
             artifacts/real-update-acceptance/logs/**/*.log
