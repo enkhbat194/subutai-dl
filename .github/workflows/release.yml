@@ -71,6 +71,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           pnpm test:integrity
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          pnpm test:mirror
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           pnpm test:brand
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           pnpm test:production-acceptance
