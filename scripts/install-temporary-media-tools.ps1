@@ -33,6 +33,23 @@ function Get-VerifiedDownload {
   }
 }
 
+function Test-ToolVersion {
+  param(
+    [Parameter(Mandatory = $true)][string]$Executable,
+    [Parameter(Mandatory = $true)][string[]]$Arguments,
+    [Parameter(Mandatory = $true)][string]$Label
+  )
+
+  $output = & $Executable @Arguments 2>&1
+  $exitCode = $LASTEXITCODE
+  if ($exitCode -ne 0) {
+    throw "$Label version check failed with exit code $exitCode."
+  }
+  $firstLine = $output | Select-Object -First 1
+  if (-not $firstLine) { throw "$Label version check returned no output." }
+  Write-Host $firstLine
+}
+
 try {
   Remove-Item $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
   New-Item -ItemType Directory -Force -Path $tempRoot, $EngineDir | Out-Null
@@ -66,9 +83,9 @@ try {
     throw "Legacy direct-download engine must not enter Subutai resources."
   }
 
-  & (Join-Path $EngineDir "yt-dlp.exe") --version | Write-Host
-  & (Join-Path $EngineDir "ffmpeg.exe") -version 2>&1 | Select-Object -First 1 | Write-Host
-  & (Join-Path $EngineDir "ffprobe.exe") -version 2>&1 | Select-Object -First 1 | Write-Host
+  Test-ToolVersion -Executable (Join-Path $EngineDir "yt-dlp.exe") -Arguments @("--version") -Label "yt-dlp"
+  Test-ToolVersion -Executable (Join-Path $EngineDir "ffmpeg.exe") -Arguments @("-version") -Label "FFmpeg"
+  Test-ToolVersion -Executable (Join-Path $EngineDir "ffprobe.exe") -Arguments @("-version") -Label "FFprobe"
 
   Write-Host "Pinned temporary media tools installed and checksum verified."
 } finally {
