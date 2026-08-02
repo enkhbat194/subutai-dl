@@ -44,7 +44,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   native-engine:
@@ -55,9 +55,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -79,24 +76,6 @@ jobs:
           rustup default 1.97.1
           rustc --version --verbose
           cargo --version
-
-      - name: Format N5 native sources
-        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
-        shell: powershell
-        env:
-          HEAD_BRANCH: ${{ github.head_ref }}
-        run: |
-          cargo fmt --manifest-path engines/native/Cargo.toml --all
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add engines/native
-          git diff --cached --quiet
-          if ($LASTEXITCODE -eq 0) {
-            Write-Host "N5 native sources are already formatted."
-          } else {
-            git commit -m "Format N5 native transfer settings"
-            git push origin "HEAD:$env:HEAD_BRANCH"
-          }
 
       - name: Verify Subutai ownership policy
         shell: powershell
