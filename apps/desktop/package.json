@@ -9,7 +9,8 @@
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
-    "build:win": "pnpm --filter @subutai/extension build && electron-vite build && electron-builder --win nsis portable",
+    "build:native-host": "cargo build --release --manifest-path ../../engines/native/Cargo.toml --bin subutai-engine-host",
+    "build:win": "pnpm --filter @subutai/extension build && pnpm build:native-host && electron-vite build && electron-builder --win nsis portable",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -26,7 +27,6 @@
     "@vitejs/plugin-react": "^5.0.2",
     "electron": "^37.3.1",
     "electron-builder": "^26.0.12",
-    "electron-vite": "^4.0.0",
     "typescript": "^5.9.2",
     "vite": "^7.1.3"
   },
@@ -45,7 +45,11 @@
       {
         "from": "resources/engines/win32-x64",
         "to": "engines",
-        "filter": ["**/*"]
+        "filter": ["**/*", "!aria2c.exe"]
+      },
+      {
+        "from": "../../engines/native/target/release/subutai-engine-host.exe",
+        "to": "engines/subutai-engine-host.exe"
       },
       {
         "from": "resources/native-messaging",
