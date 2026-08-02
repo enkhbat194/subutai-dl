@@ -9,7 +9,6 @@ on:
       - "docs/NATIVE_ENGINE_IPC.md"
       - "docs/PROJECT_STATUS.md"
       - "scripts/native-engine-policy-test.mjs"
-      - "scripts/apply-n4-buffer-fix.mjs"
       - "rust-toolchain.toml"
       - "package.json"
       - "pnpm-lock.yaml"
@@ -24,7 +23,6 @@ on:
       - "docs/NATIVE_ENGINE_IPC.md"
       - "docs/PROJECT_STATUS.md"
       - "scripts/native-engine-policy-test.mjs"
-      - "scripts/apply-n4-buffer-fix.mjs"
       - "rust-toolchain.toml"
       - "package.json"
       - "pnpm-lock.yaml"
@@ -57,26 +55,6 @@ jobs:
         with:
           node-version: 22
 
-      - name: Apply N4 Buffer type fix
-        shell: powershell
-        run: |
-          node scripts/apply-n4-buffer-fix.mjs
-          Remove-Item scripts/apply-n4-buffer-fix.mjs
-
-      - name: Save N4 Buffer type fix
-        shell: powershell
-        run: |
-          $changes = git status --porcelain
-          if ([string]::IsNullOrWhiteSpace($changes)) {
-            Write-Host "N4 Buffer type fix is already applied."
-            exit 0
-          }
-          git config user.name "Subutai Automation"
-          git config user.email "subutai-automation@users.noreply.github.com"
-          git add -A
-          git commit -m "Accept Node Buffer variants in N4 IPC"
-          git push origin "HEAD:${{ github.head_ref || github.ref_name }}"
-
       - name: Install pinned Rust toolchain
         shell: powershell
         run: |
@@ -93,6 +71,24 @@ jobs:
           rustc --version --verbose
           cargo --version
 
+      - name: Format N4 native sources
+        shell: powershell
+        run: cargo fmt --manifest-path engines/native/Cargo.toml --all
+
+      - name: Save N4 formatter changes
+        shell: powershell
+        run: |
+          $changes = git status --porcelain -- engines/native
+          if ([string]::IsNullOrWhiteSpace($changes)) {
+            Write-Host "N4 native formatting is already clean."
+            exit 0
+          }
+          git config user.name "Subutai Automation"
+          git config user.email "subutai-automation@users.noreply.github.com"
+          git add engines/native
+          git commit -m "Format N4 desktop host integration test"
+          git push origin "HEAD:${{ github.head_ref || github.ref_name }}"
+
       - name: Verify Subutai ownership policy
         shell: powershell
         run: node scripts/native-engine-policy-test.mjs
@@ -105,13 +101,17 @@ jobs:
         shell: powershell
         run: cargo clippy --manifest-path engines/native/Cargo.toml --all-targets -- -D warnings
 
-      - name: Run native engine unit and protocol tests
+      - name: Run native engine unit and integration tests
         shell: powershell
         run: cargo test --manifest-path engines/native/Cargo.toml --all-targets
 
       - name: Run durable journal self-test
         shell: powershell
         run: cargo run --quiet --manifest-path engines/native/Cargo.toml --bin subutai-engine -- self-test
+
+      - name: Build release desktop host
+        shell: powershell
+        run: cargo build --release --manifest-path engines/native/Cargo.toml --bin subutai-engine-host
 
       - name: Enable pnpm
         shell: powershell
