@@ -10,6 +10,7 @@ on:
       - "docs/PROJECT_STATUS.md"
       - "scripts/native-engine-policy-test.mjs"
       - "scripts/native-soak-benchmark.mjs"
+      - "scripts/publish-native-soak-summary.mjs"
       - "scripts/release-engine-policy-test.mjs"
       - "scripts/dependency-lock-policy-test.mjs"
       - "scripts/integrity-policy-test.mts"
@@ -31,6 +32,7 @@ on:
       - "docs/PROJECT_STATUS.md"
       - "scripts/native-engine-policy-test.mjs"
       - "scripts/native-soak-benchmark.mjs"
+      - "scripts/publish-native-soak-summary.mjs"
       - "scripts/release-engine-policy-test.mjs"
       - "scripts/dependency-lock-policy-test.mjs"
       - "scripts/integrity-policy-test.mts"
@@ -126,6 +128,12 @@ jobs:
           SUBUTAI_SOAK_REPORT: artifacts/n5/native-soak-report.json
         run: pnpm test:native-soak
 
+      - name: Publish native soak telemetry
+        shell: powershell
+        env:
+          SUBUTAI_SOAK_REPORT: artifacts/n5/native-soak-report.json
+        run: node scripts/publish-native-soak-summary.mjs
+
       - name: Check public Subutai identity
         shell: powershell
         run: pnpm test:brand
@@ -185,12 +193,3 @@ jobs:
       - name: Build Subutai desktop
         shell: powershell
         run: pnpm build
-
-      - name: Preserve native soak telemetry
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: Subutai-Native-Soak-Telemetry
-          path: artifacts/n5/native-soak-report.json
-          if-no-files-found: warn
-          retention-days: 14
