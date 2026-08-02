@@ -87,7 +87,10 @@ fn run_probe(mut args: impl Iterator<Item = String>) -> Result<(), String> {
     println!("final_url={}", probe.final_url);
     println!("status={}", probe.status_code);
     println!("content_length={}", optional_u64(probe.content_length));
-    println!("content_range={}", optional_text(probe.content_range.as_deref()));
+    println!(
+        "content_range={}",
+        optional_text(probe.content_range.as_deref())
+    );
     println!("accepts_byte_ranges={}", probe.accepts_byte_ranges);
     println!("etag={}", optional_text(probe.etag.as_deref()));
     println!(
