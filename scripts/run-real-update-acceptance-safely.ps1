@@ -57,9 +57,13 @@ function Replace-ExactlyOnce {
 function Set-AcceptanceAppIdentity {
   $package = Get-Content -LiteralPath $desktopPackagePath -Raw | ConvertFrom-Json
   if ($null -eq $package.build) { throw 'Desktop package has no electron-builder configuration.' }
+  if ($null -eq $package.build.nsis) { throw 'Desktop package has no NSIS configuration.' }
   $package.build.productName = $acceptanceProductName
   $package.build.appId = $acceptanceAppId
   $package.build.nsis.shortcutName = $acceptanceProductName
+  $package.build.nsis.oneClick = $false
+  $package.build.nsis | Add-Member -NotePropertyName perMachine -NotePropertyValue $false -Force
+  $package.build.nsis | Add-Member -NotePropertyName allowElevation -NotePropertyValue $false -Force
   Write-Utf8NoBom -Path $desktopPackagePath -Content (($package | ConvertTo-Json -Depth 40) + "`n")
 }
 
