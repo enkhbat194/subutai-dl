@@ -15,9 +15,11 @@ $harness = Join-Path $repoRoot 'scripts\real-two-installer-acceptance.ps1'
 $desktopPackagePath = Join-Path $repoRoot 'apps\desktop\package.json'
 $acceptanceAppId = 'com.subutai.downloadmanager.real-update-acceptance'
 $acceptanceProductName = 'Subutai Real Update Acceptance'
+# electron-builder one-click per-user installers derive APP_FILENAME from the sanitized package name.
+$acceptanceInstallDirectoryName = '@subutaidesktop'
 $workspacePath = [System.IO.Path]::GetFullPath((Join-Path $repoRoot $Workspace))
 $safetyRoot = Join-Path $env:RUNNER_TEMP ("SubutaiRealUpdateSafety-" + [guid]::NewGuid().ToString('N'))
-$installDir = Join-Path $env:LOCALAPPDATA "Programs\$acceptanceProductName"
+$installDir = Join-Path $env:LOCALAPPDATA "Programs\$acceptanceInstallDirectoryName"
 $userDataDir = Join-Path $env:APPDATA $acceptanceProductName
 $updaterRoot = Join-Path $env:LOCALAPPDATA 'Subutai\Updater'
 $nativeMessagingDir = Join-Path $env:LOCALAPPDATA 'Subutai Download Manager\NativeMessaging'
@@ -72,7 +74,7 @@ function Set-AcceptanceHarnessIdentity {
   $content = $harnessOriginal
   $content = Replace-ExactlyOnce -Content $content `
     -Before "`$installDir = Join-Path `$env:LOCALAPPDATA 'Programs\SubutaiRealUpdateAcceptance'" `
-    -After "`$installDir = Join-Path `$env:LOCALAPPDATA 'Programs\Subutai Real Update Acceptance'" `
+    -After "`$installDir = Join-Path `$env:LOCALAPPDATA 'Programs\@subutaidesktop'" `
     -Label 'Acceptance install directory'
   $content = Replace-ExactlyOnce -Content $content `
     -Before "`$userDataDir = Join-Path `$env:APPDATA 'Subutai Download Manager'" `
