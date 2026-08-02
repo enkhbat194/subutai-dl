@@ -73,6 +73,7 @@ jobs:
           HEAD_BRANCH: ${{ github.head_ref }}
         run: |
           node scripts/apply-n5-integrity-runtime.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add apps/desktop/src/main/subutai-runtime.ts
