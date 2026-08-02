@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use crate::platform;
+use crate::platform::ResponseReader;
 use crate::sha256::Sha256;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -322,9 +323,9 @@ pub(crate) fn probe_from_headers(
             .map(|(_, value)| value.trim().to_string())
     };
 
-    let content_length = header("content-length")
-        .and_then(|value| value.parse::<u64>().ok())
-        .or_else(|| header("content-range").and_then(parse_content_range_total));
+    let content_length = header("content-range")
+        .and_then(parse_content_range_total)
+        .or_else(|| header("content-length").and_then(|value| value.parse::<u64>().ok()));
     let content_disposition = header("content-disposition");
 
     HttpProbe {
