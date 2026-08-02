@@ -6,7 +6,7 @@ use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{self, Receiver};
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -223,9 +223,13 @@ fn wait_for_active_progress(events: &Receiver<IpcFrame>, minimum_bytes: u64) -> 
             std::time::Instant::now() < deadline,
             "desktop host active progress timed out"
         );
-        let frame = events
-            .recv_timeout(Duration::from_millis(500))
-            .expect("receive desktop host frame");
+        let frame = match events.recv_timeout(Duration::from_millis(500)) {
+            Ok(frame) => frame,
+            Err(RecvTimeoutError::Timeout) => continue,
+            Err(RecvTimeoutError::Disconnected) => {
+                panic!("desktop host event stream disconnected before the expected state")
+            }
+        };
         if frame.kind != IpcMessageKind::StatusEvent {
             continue;
         }
@@ -246,9 +250,13 @@ fn wait_for_state(events: &Receiver<IpcFrame>, expected: DesktopTaskState) -> De
             std::time::Instant::now() < deadline,
             "desktop host state {expected:?} timed out"
         );
-        let frame = events
-            .recv_timeout(Duration::from_millis(500))
-            .expect("receive desktop host frame");
+        let frame = match events.recv_timeout(Duration::from_millis(500)) {
+            Ok(frame) => frame,
+            Err(RecvTimeoutError::Timeout) => continue,
+            Err(RecvTimeoutError::Disconnected) => {
+                panic!("desktop host event stream disconnected before the expected state")
+            }
+        };
         if frame.kind != IpcMessageKind::StatusEvent {
             continue;
         }
