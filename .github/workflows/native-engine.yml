@@ -73,22 +73,47 @@ jobs:
         shell: powershell
         run: node scripts/native-engine-policy-test.mjs
 
+      - name: Apply N1 compile cleanup
+        shell: powershell
+        run: |
+          $path = "engines/native/src/transfer.rs"
+          $text = [System.IO.File]::ReadAllText($path).Replace("`r`n", "`n")
+          if (-not $text.Contains("use crate::platform::ResponseReader;")) {
+            $text = $text.Replace(
+              "use crate::platform;`n",
+              "use crate::platform;`nuse crate::platform::ResponseReader;`n"
+            )
+          }
+          $old = @(
+            '    let content_length = header("content-length")',
+            '        .and_then(|value| value.parse::<u64>().ok())',
+            '        .or_else(|| header("content-range").and_then(parse_content_range_total));'
+          ) -join "`n"
+          $new = @(
+            '    let content_length = header("content-range")',
+            '        .and_then(parse_content_range_total)',
+            '        .or_else(|| header("content-length").and_then(|value| value.parse::<u64>().ok()));'
+          ) -join "`n"
+          $text = $text.Replace($old, $new)
+          $utf8 = New-Object System.Text.UTF8Encoding($false)
+          [System.IO.File]::WriteAllText($path, $text, $utf8)
+
       - name: Format N1 native engine sources
         shell: powershell
         run: cargo fmt --manifest-path engines/native/Cargo.toml --all
 
-      - name: Save formatter changes
+      - name: Save cleanup and formatter changes
         shell: powershell
         run: |
           $changes = git status --porcelain -- engines/native
           if ([string]::IsNullOrWhiteSpace($changes)) {
-            Write-Host "N1 formatting is already clean."
+            Write-Host "N1 sources are already clean."
             exit 0
           }
           git config user.name "Subutai Automation"
           git config user.email "subutai-automation@users.noreply.github.com"
           git add engines/native
-          git commit -m "Format N1 native transfer sources"
+          git commit -m "Resolve N1 transfer compile checks"
           git push origin "HEAD:${{ github.head_ref || github.ref_name }}"
 
       - name: Check native engine quality
