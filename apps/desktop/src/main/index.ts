@@ -8,6 +8,7 @@ import {
   recordHealthyRealUpdateAcceptance,
   recordRolledBackRealUpdateAcceptance,
   shouldFailRealUpdateAcceptanceHealth,
+  startRealUpdateAcceptanceDriver,
 } from './system/real-update-acceptance';
 import { verifyUpdatedDesktopHealth } from './system/update-health';
 import { installTransactionalUpdaterGuard } from './system/transactional-updater';
@@ -96,6 +97,7 @@ async function startDesktop(): Promise<void> {
   }
 
   await loadDesktopRuntimes();
+  startRealUpdateAcceptanceDriver();
 
   if (startupTransaction) {
     try {
