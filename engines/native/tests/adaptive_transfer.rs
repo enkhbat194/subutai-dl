@@ -10,8 +10,7 @@ use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use subutai_native_engine::{
-    DownloadControl, SegmentedDownloadRequest, SegmentedOutcome,
-    download_segmented_with_progress,
+    DownloadControl, SegmentedDownloadRequest, SegmentedOutcome, download_segmented_with_progress,
 };
 
 struct AdaptiveServer {
@@ -162,11 +161,7 @@ fn replaces_a_slow_range_and_scales_connections() {
     cleanup(&destination);
 }
 
-fn handle_request(
-    stream: &mut TcpStream,
-    data: &[u8],
-    slow_served: &AtomicBool,
-) -> io::Result<()> {
+fn handle_request(stream: &mut TcpStream, data: &[u8], slow_served: &AtomicBool) -> io::Result<()> {
     let request = read_request(stream)?;
     let mut lines = request.split("\r\n");
     let request_line = lines
@@ -180,7 +175,10 @@ fn handle_request(
         .next()
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "missing path"))?;
     if path != "/adaptive.bin" {
-        return Err(io::Error::new(io::ErrorKind::InvalidData, "unexpected path"));
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "unexpected path",
+        ));
     }
     let headers = lines
         .filter_map(|line| line.split_once(':'))
@@ -205,7 +203,10 @@ fn handle_request(
         return write_response(stream, "200 OK", &response_headers, &[], false);
     }
     if method != "GET" {
-        return Err(io::Error::new(io::ErrorKind::InvalidData, "unexpected method"));
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "unexpected method",
+        ));
     }
 
     let range = header("range")
@@ -236,7 +237,10 @@ fn parse_range(value: &str, total: usize) -> io::Result<(usize, usize)> {
         .parse::<usize>()
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "invalid range end"))?;
     if start > end || end >= total {
-        return Err(io::Error::new(io::ErrorKind::InvalidData, "range outside file"));
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "range outside file",
+        ));
     }
     Ok((start, end))
 }
