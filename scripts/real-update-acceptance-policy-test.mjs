@@ -4,6 +4,7 @@ import { join } from 'node:path';
 const root = process.cwd();
 const read = (...parts) => readFileSync(join(root, ...parts), 'utf8');
 const wrapper = read('scripts', 'run-real-update-acceptance-safely.ps1');
+const monitor = read('scripts', 'run-real-update-acceptance-monitored.ps1');
 const harness = read('scripts', 'real-two-installer-acceptance.ps1');
 const stateProbe = read('scripts', 'real-update-state-probe.mjs');
 const feedServer = read('scripts', 'real-update-feed-server.mjs');
@@ -63,6 +64,23 @@ if (wrapper.includes('$package | Add-Member -NotePropertyName productName')) {
 }
 if (wrapper.includes('Subutai Real Update Acceptance.exe')) {
   throw new Error('Real acceptance must retain the production controlled executable filename.');
+}
+
+for (const required of [
+  'run-real-update-acceptance-safely.ps1',
+  "ScenarioTimeoutSeconds = 240",
+  "evidence\\live-updater-state",
+  "update-transaction.json",
+  "watchdog-evidence.json",
+  "real-two-installer-acceptance.json",
+  "@subutaidesktop-updater",
+  'Get-CimInstance Win32_Process',
+  'Capture-LiveState',
+  'Start-Sleep -Milliseconds 250',
+  'installedVersion',
+  'updaterFiles',
+]) {
+  requireText(monitor, required, 'Real update live-state monitor');
 }
 
 requireText(updateJournal, "'subutai download manager.exe'", 'TypeScript controlled executable validator');
@@ -157,7 +175,8 @@ for (const required of [
   'runs-on: [self-hosted, Windows, X64, subutai]',
   'contents: read',
   'pnpm test:real-update-policy',
-  './scripts/run-real-update-acceptance-safely.ps1',
+  './scripts/run-real-update-acceptance-monitored.ps1',
+  '-ScenarioTimeoutSeconds 240',
   'real-two-installer-acceptance-report.json',
   'Print bounded acceptance diagnostics',
   "Get-Content -LiteralPath $file.FullName -Tail 400",
@@ -182,4 +201,4 @@ if (!workflow.includes('workflow_dispatch:') || !workflow.includes('pull_request
   throw new Error('Real updater acceptance must support manual and pull-request execution.');
 }
 
-console.log('Subutai real two-installer updater acceptance policy passed: acceptance-only appId with the production controlled executable identity, one-click per-user non-elevating NSIS install, deterministic sanitized-package install path, dynamic packaged executable browser registration, isolated runner state, real A/B builds, loopback feed, healthy update, forced rollback, checksum rejection, durable user state, browser bridge evidence, bounded console diagnostics and read-only execution are locked.');
+console.log('Subutai real two-installer updater acceptance policy passed: acceptance-only appId with the production controlled executable identity, one-click per-user non-elevating NSIS install, deterministic sanitized-package install path, dynamic packaged executable browser registration, isolated runner state, live transaction/watchdog snapshots, real A/B builds, loopback feed, healthy update, forced rollback, checksum rejection, durable user state, browser bridge evidence, bounded console diagnostics and read-only execution are locked.');
