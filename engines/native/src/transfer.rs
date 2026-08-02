@@ -216,14 +216,11 @@ where
         return Err(TransferError::HttpStatus(metadata.status_code));
     }
 
-    let parent = request
-        .destination
-        .parent()
-        .ok_or_else(|| TransferError::MissingParent(request.destination.clone()))?;
-    fs::create_dir_all(parent)?;
+    let parent = destination_parent(&request.destination)?;
+    fs::create_dir_all(&parent)?;
 
     if let Some(required) = metadata.content_length {
-        let available = platform::available_disk_space(parent)?;
+        let available = platform::available_disk_space(&parent)?;
         if available < required {
             return Err(TransferError::InsufficientDiskSpace {
                 required,
@@ -236,10 +233,6 @@ where
         .create_new(true)
         .write(true)
         .open(&partial)?;
-    if let Some(length) = metadata.content_length {
-        file.set_len(length)?;
-        file.set_len(0)?;
-    }
 
     let started = Instant::now();
     let mut downloaded = 0_u64;
@@ -304,6 +297,14 @@ fn validate_destination(destination: &Path) -> Result<(), TransferError> {
     Ok(())
 }
 
+fn destination_parent(destination: &Path) -> Result<PathBuf, TransferError> {
+    match destination.parent() {
+        Some(parent) if !parent.as_os_str().is_empty() => Ok(parent.to_path_buf()),
+        Some(_) => Ok(std::env::current_dir()?),
+        None => Err(TransferError::MissingParent(destination.to_path_buf())),
+    }
+}
+
 pub fn partial_path(destination: &Path) -> PathBuf {
     let mut value = destination.as_os_str().to_os_string();
     value.push(".subutai.part");
@@ -351,7 +352,9 @@ fn parse_content_range_total(value: String) -> Option<u64> {
 
 fn suggested_filename_from_disposition(value: &str) -> Option<String> {
     for part in value.split(';').skip(1) {
-        let (name, raw_value) = part.trim().split_once('=')?;
+        let Some((name, raw_value)) = part.trim().split_once('=') else {
+            continue;
+        };
         if name.eq_ignore_ascii_case("filename*") {
             let encoded = raw_value.trim_matches('"');
             let encoded = encoded.split_once("''").map_or(encoded, |(_, rest)| rest);
@@ -412,7 +415,7 @@ fn sanitize_filename(value: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{RequestHeader, probe_from_headers};
+    use super::{RequestHeader, probe_from_headers, suggested_filename_from_disposition};
 
     #[test]
     fn rejects_header_injection() {
@@ -439,6 +442,17 @@ mod tests {
         assert_eq!(
             probe.suggested_filename.as_deref(),
             Some("Subutai Guide.pdf")
+        );
+    }
+
+    #[test]
+    fn skips_malformed_disposition_parts_before_filename() {
+        assert_eq!(
+            suggested_filename_from_disposition(
+                "attachment; malformed; filename=Subutai-N1.bin"
+            )
+            .as_deref(),
+            Some("Subutai-N1.bin")
         );
     }
 }
