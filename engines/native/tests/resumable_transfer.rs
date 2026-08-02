@@ -41,6 +41,10 @@ impl RangeServer {
             while !thread_stop.load(Ordering::Acquire) {
                 match listener.accept() {
                     Ok((mut stream, _)) => {
+                        if let Err(error) = stream.set_nonblocking(false) {
+                            eprintln!("range-server blocking-mode error: {error}");
+                            continue;
+                        }
                         let connection_data = Arc::clone(&thread_data);
                         let connection_etag = Arc::clone(&thread_etag);
                         let handle = thread::spawn(move || {
