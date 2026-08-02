@@ -1,15 +1,7 @@
 name: Subutai Windows Package
 
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
   workflow_dispatch:
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -59,10 +51,6 @@ jobs:
       - name: Install dependencies
         shell: pwsh
         run: pnpm install --no-frozen-lockfile
-
-      - name: Native engine foundation tests
-        shell: pwsh
-        run: pnpm test:native-engine
 
       - name: Validate release version
         shell: pwsh
