@@ -1,0 +1,114 @@
+name: Subutai Windows Restart Recovery
+
+on:
+  workflow_dispatch:
+    inputs:
+      phase:
+        description: "Two-phase restart recovery action"
+        required: true
+        default: status
+        type: choice
+        options:
+          - prepare
+          - verify
+          - status
+          - cleanup
+      require_boot_change:
+        description: "Verify that Windows actually restarted between prepare and verify"
+        required: true
+        default: true
+        type: boolean
+      payload_mib:
+        description: "Deterministic recovery payload size in MiB"
+        required: true
+        default: "64"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: subutai-windows-restart-recovery
+  cancel-in-progress: false
+
+jobs:
+  restart-recovery:
+    name: restart-recovery-${{ inputs.phase }}
+    runs-on: [self-hosted, Windows, X64, subutai]
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install pinned Rust toolchain
+        if: inputs.phase == 'prepare' || inputs.phase == 'verify'
+        shell: powershell
+        run: |
+          $cargoBin = Join-Path $env:USERPROFILE ".cargo\bin"
+          if (-not (Get-Command rustup -ErrorAction SilentlyContinue)) {
+            $rustupInstaller = Join-Path $env:RUNNER_TEMP "rustup-init.exe"
+            Invoke-WebRequest "https://win.rustup.rs/x86_64" -OutFile $rustupInstaller
+            & $rustupInstaller -y --profile minimal --default-toolchain none
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          $env:PATH = "$cargoBin;$env:PATH"
+          $cargoBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          rustup toolchain install 1.97.1 --profile minimal
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          rustup default 1.97.1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          rustc --version --verbose
+          cargo --version
+
+      - name: Build production native CLI
+        if: inputs.phase == 'prepare' || inputs.phase == 'verify'
+        shell: powershell
+        run: cargo build --release --manifest-path engines/native/Cargo.toml --bin subutai-engine
+
+      - name: Prepare durable restart state
+        if: inputs.phase == 'prepare'
+        shell: powershell
+        env:
+          SUBUTAI_RESTART_FILE_MIB: ${{ inputs.payload_mib }}
+        run: node scripts/restart-recovery-harness.mjs prepare
+
+      - name: Verify recovery after restart
+        if: inputs.phase == 'verify'
+        shell: powershell
+        env:
+          SUBUTAI_RESTART_FILE_MIB: ${{ inputs.payload_mib }}
+          REQUIRE_BOOT_CHANGE: ${{ inputs.require_boot_change }}
+        run: |
+          $arguments = @("scripts/restart-recovery-harness.mjs", "verify")
+          if ($env:REQUIRE_BOOT_CHANGE -eq "true") {
+            $arguments += "--require-boot-change"
+          }
+          node @arguments
+
+      - name: Show durable restart state
+        if: inputs.phase == 'status'
+        shell: powershell
+        env:
+          SUBUTAI_RESTART_FILE_MIB: ${{ inputs.payload_mib }}
+        run: node scripts/restart-recovery-harness.mjs status
+
+      - name: Clean durable restart state
+        if: inputs.phase == 'cleanup'
+        shell: powershell
+        env:
+          SUBUTAI_RESTART_FILE_MIB: ${{ inputs.payload_mib }}
+        run: node scripts/restart-recovery-harness.mjs cleanup
+
+      - name: Print operator boundary
+        if: inputs.phase == 'prepare'
+        shell: powershell
+        run: |
+          Write-Host "Restart Windows manually. This workflow never invokes restart or sleep commands."
+          Write-Host "After boot, relaunch the self-hosted runner with run.cmd if it is not installed as a Windows service."
+          Write-Host "Then dispatch this workflow with phase=verify and require_boot_change=true."
