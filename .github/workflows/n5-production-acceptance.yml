@@ -7,6 +7,7 @@ on:
       - "engines/native/**"
       - "apps/**"
       - "packages/**"
+      - "scripts/mirror-policy-test.mts"
       - "scripts/resilience-download-test.mjs"
       - "scripts/install-temporary-media-tools.ps1"
       - "scripts/n5-windows-acceptance.ps1"
@@ -87,6 +88,8 @@ jobs:
           pnpm test:release-engine
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           pnpm test:integrity
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          pnpm test:mirror
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           pnpm test:brand
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
