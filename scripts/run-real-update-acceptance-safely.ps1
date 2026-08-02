@@ -12,6 +12,8 @@ if ($env:OS -ne 'Windows_NT') { throw 'Real update acceptance safety wrapper req
 
 $repoRoot = (Resolve-Path '.').Path
 $harness = Join-Path $repoRoot 'scripts\real-two-installer-acceptance.ps1'
+$desktopPackagePath = Join-Path $repoRoot 'apps\desktop\package.json'
+$acceptanceAppId = 'com.subutai.downloadmanager.real-update-acceptance'
 $workspacePath = [System.IO.Path]::GetFullPath((Join-Path $repoRoot $Workspace))
 $safetyRoot = Join-Path $env:RUNNER_TEMP ("SubutaiRealUpdateSafety-" + [guid]::NewGuid().ToString('N'))
 $installDir = Join-Path $env:LOCALAPPDATA 'Programs\SubutaiRealUpdateAcceptance'
@@ -27,6 +29,20 @@ $directoryState = @()
 $registryState = @()
 $primaryFailure = $null
 $restorationFailures = New-Object System.Collections.Generic.List[string]
+$desktopPackageOriginal = Get-Content -LiteralPath $desktopPackagePath -Raw
+
+function Write-Utf8NoBom {
+  param([Parameter(Mandatory = $true)][string]$Path, [Parameter(Mandatory = $true)][string]$Content)
+  $encoding = New-Object System.Text.UTF8Encoding($false)
+  [System.IO.File]::WriteAllText($Path, $Content, $encoding)
+}
+
+function Set-AcceptanceAppIdentity {
+  $package = Get-Content -LiteralPath $desktopPackagePath -Raw | ConvertFrom-Json
+  if ($null -eq $package.build) { throw 'Desktop package has no electron-builder configuration.' }
+  $package.build.appId = $acceptanceAppId
+  Write-Utf8NoBom -Path $desktopPackagePath -Content (($package | ConvertTo-Json -Depth 40) + "`n")
+}
 
 function Stop-SubutaiProcesses {
   Get-Process -Name 'Subutai Download Manager' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
@@ -86,6 +102,7 @@ try {
   Capture-Directory -Path $userDataDir -Name 'user-data'
   Capture-Directory -Path $updaterRoot -Name 'updater'
   Capture-Directory -Path $nativeMessagingDir -Name 'native-messaging'
+  Set-AcceptanceAppIdentity
 
   & $harness `
     -BaselineVersion $BaselineVersion `
@@ -109,6 +126,7 @@ try {
   try { Remove-BrowserRegistration } catch { $restorationFailures.Add("Remove acceptance browser registration: $($_.Exception.Message)") }
   try { Restore-DirectoryState } catch { $restorationFailures.Add("Restore directories: $($_.Exception.Message)") }
   try { Restore-RegistryState } catch { $restorationFailures.Add("Restore registry: $($_.Exception.Message)") }
+  try { Write-Utf8NoBom -Path $desktopPackagePath -Content $desktopPackageOriginal } catch { $restorationFailures.Add("Restore desktop package: $($_.Exception.Message)") }
   try { Remove-Item -LiteralPath (Join-Path $workspacePath 'pre-existing-state') -Recurse -Force -ErrorAction SilentlyContinue } catch { $restorationFailures.Add("Remove nested backup: $($_.Exception.Message)") }
   try { Remove-Item -LiteralPath $safetyRoot -Recurse -Force -ErrorAction SilentlyContinue } catch { $restorationFailures.Add("Remove safety backup: $($_.Exception.Message)") }
 }
