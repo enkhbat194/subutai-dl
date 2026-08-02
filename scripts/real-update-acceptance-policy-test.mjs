@@ -145,6 +145,9 @@ for (const required of [
   'pnpm test:real-update-policy',
   './scripts/run-real-update-acceptance-safely.ps1',
   'real-two-installer-acceptance-report.json',
+  'Print bounded acceptance diagnostics',
+  "Get-Content -LiteralPath $file.FullName -Tail 400",
+  'No real-update diagnostic files were produced.',
   'if: always()',
 ]) {
   requireText(workflow, required, 'Real updater acceptance workflow');
@@ -165,4 +168,4 @@ if (!workflow.includes('workflow_dispatch:') || !workflow.includes('pull_request
   throw new Error('Real updater acceptance must support manual and pull-request execution.');
 }
 
-console.log('Subutai real two-installer updater acceptance policy passed: acceptance-only one-click per-user non-elevating NSIS identity, deterministic sanitized-package install path, dynamic packaged executable browser registration, isolated silent baseline install, real A/B builds, loopback feed, healthy update, forced rollback, checksum rejection, durable user state, browser bridge evidence and read-only execution are locked.');
+console.log('Subutai real two-installer updater acceptance policy passed: acceptance-only one-click per-user non-elevating NSIS identity, deterministic sanitized-package install path, dynamic packaged executable browser registration, isolated silent baseline install, real A/B builds, loopback feed, healthy update, forced rollback, checksum rejection, durable user state, browser bridge evidence, bounded console diagnostics and read-only execution are locked.');
