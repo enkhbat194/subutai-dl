@@ -14,9 +14,21 @@ $ffmpegSha256 = "43f9f3491b86264a3b4104935283955002fd8a1413377c7d04a4c484576d6c1
 
 $tempBase = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { [System.IO.Path]::GetTempPath() }
 $tempRoot = Join-Path $tempBase "SubutaiTemporaryMediaTools"
-$ytDlpDownload = Join-Path $tempRoot "yt-dlp.exe"
-$ffmpegArchive = Join-Path $tempRoot "$ffmpegBuild.zip"
+$cacheRoot = Join-Path $env:USERPROFILE ".cache\subutai-media-tools"
+$ytDlpDownload = Join-Path $cacheRoot "yt-dlp-$ytDlpVersion.exe"
+$ffmpegArchive = Join-Path $cacheRoot "$ffmpegBuild.zip"
 $ffmpegExtract = Join-Path $tempRoot "ffmpeg"
+
+function Test-ExpectedHash {
+  param(
+    [Parameter(Mandatory = $true)][string]$Path,
+    [Parameter(Mandatory = $true)][string]$ExpectedSha256
+  )
+
+  if (-not (Test-Path $Path)) { return $false }
+  $actual = (Get-FileHash -Path $Path -Algorithm SHA256).Hash.ToLowerInvariant()
+  return $actual -eq $ExpectedSha256.ToLowerInvariant()
+}
 
 function Get-VerifiedDownload {
   param(
@@ -25,11 +37,20 @@ function Get-VerifiedDownload {
     [Parameter(Mandatory = $true)][string]$ExpectedSha256
   )
 
+  if (Test-ExpectedHash -Path $Destination -ExpectedSha256 $ExpectedSha256) {
+    Write-Host "Using checksum-verified cached media asset: $Destination"
+    return
+  }
+
+  Remove-Item $Destination -Force -ErrorAction SilentlyContinue
   Invoke-WebRequest -Uri $Url -OutFile $Destination -UseBasicParsing
-  $actual = (Get-FileHash -Path $Destination -Algorithm SHA256).Hash.ToLowerInvariant()
-  $expected = $ExpectedSha256.ToLowerInvariant()
-  if ($actual -ne $expected) {
-    throw "Downloaded media tool checksum mismatch for $Url. Expected $expected; received $actual."
+  if (-not (Test-ExpectedHash -Path $Destination -ExpectedSha256 $ExpectedSha256)) {
+    $actual = if (Test-Path $Destination) {
+      (Get-FileHash -Path $Destination -Algorithm SHA256).Hash.ToLowerInvariant()
+    } else {
+      "missing"
+    }
+    throw "Downloaded media tool checksum mismatch for $Url. Expected $ExpectedSha256; received $actual."
   }
 }
 
@@ -52,7 +73,7 @@ function Test-ToolVersion {
 
 try {
   Remove-Item $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
-  New-Item -ItemType Directory -Force -Path $tempRoot, $EngineDir | Out-Null
+  New-Item -ItemType Directory -Force -Path $tempRoot, $cacheRoot, $EngineDir | Out-Null
   Get-ChildItem $EngineDir -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force
 
   Get-VerifiedDownload -Url $ytDlpUrl -Destination $ytDlpDownload -ExpectedSha256 $ytDlpSha256
