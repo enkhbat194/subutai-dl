@@ -65,22 +65,66 @@ jobs:
         shell: powershell
         run: node scripts/native-engine-policy-test.mjs
 
+      - name: Apply N0 static-check cleanup
+        shell: powershell
+        run: |
+          $utf8 = New-Object System.Text.UTF8Encoding($false)
+
+          $ipcPath = "engines/native/src/ipc.rs"
+          $ipc = [System.IO.File]::ReadAllText($ipcPath).Replace("`r`n", "`n")
+          $ipc = $ipc.Replace(
+            "fn try_from(value: u8) -> Result<Self, Self::Error> {",
+            "fn try_from(value: u8) -> Result<Self, IpcError> {"
+          )
+          [System.IO.File]::WriteAllText($ipcPath, $ipc, $utf8)
+
+          $corePath = "engines/native/src/core.rs"
+          $core = [System.IO.File]::ReadAllText($corePath).Replace("`r`n", "`n")
+          $core = $core.Replace(
+            "    encode_manifest, is_supported_http_url,`n};",
+            "    encode_manifest, is_supported_http_url, plan_ranges,`n};"
+          )
+          $corePattern = '(?s)\npub fn plan_ranges\(.*?\n\}\n\n(?=#\[derive\(Debug, Clone\)\]\npub struct JournalStore)'
+          $core = [System.Text.RegularExpressions.Regex]::Replace($core, $corePattern, "`n")
+          [System.IO.File]::WriteAllText($corePath, $core, $utf8)
+
+          $implPath = "engines/native/src/core_impl.rs"
+          $impl = [System.IO.File]::ReadAllText($implPath).Replace("`r`n", "`n")
+          $oldPlan = @'
+    let maximum_useful_segments = total_size
+        .checked_add(minimum_segment_size - 1)
+        .ok_or(PlanError::ArithmeticOverflow)?
+        / minimum_segment_size;
+'@
+          $newPlan = @'
+    let complete_groups = total_size / minimum_segment_size;
+    let maximum_useful_segments = complete_groups
+        .checked_add(if total_size.is_multiple_of(minimum_segment_size) {
+            0
+        } else {
+            1
+        })
+        .ok_or(PlanError::ArithmeticOverflow)?;
+'@
+          $impl = $impl.Replace($oldPlan.Replace("`r`n", "`n"), $newPlan.Replace("`r`n", "`n"))
+          [System.IO.File]::WriteAllText($implPath, $impl, $utf8)
+
       - name: Format native engine sources
         shell: powershell
         run: cargo fmt --manifest-path engines/native/Cargo.toml --all
 
-      - name: Save formatter changes
+      - name: Save cleanup and formatter changes
         shell: powershell
         run: |
           $changes = git status --porcelain -- engines/native
           if ([string]::IsNullOrWhiteSpace($changes)) {
-            Write-Host "Native engine formatting is already clean."
+            Write-Host "Native engine source is already clean."
             exit 0
           }
           git config user.name "Subutai Automation"
           git config user.email "subutai-automation@users.noreply.github.com"
           git add engines/native
-          git commit -m "Format native engine sources"
+          git commit -m "Resolve native engine static checks"
           git push origin "HEAD:${{ github.head_ref || github.ref_name }}"
 
       - name: Static checks
