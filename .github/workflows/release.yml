@@ -16,7 +16,7 @@ permissions:
 jobs:
   release-windows:
     runs-on: windows-latest
-    timeout-minutes: 170
+    timeout-minutes: 180
     env:
       RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
     steps:
@@ -65,6 +65,8 @@ jobs:
         run: |
           pnpm test:native-engine
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          pnpm test:restart-policy
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           pnpm test:telemetry
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           pnpm test:release-engine
@@ -86,9 +88,17 @@ jobs:
           pnpm test:failure-policy
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Build production native CLI for extended benchmarks
+      - name: Build production native CLI for recovery and extended benchmarks
         shell: pwsh
         run: cargo build --release --manifest-path engines/native/Cargo.toml --bin subutai-engine
+
+      - name: Run two-phase restart recovery harness self-test
+        shell: pwsh
+        env:
+          SUBUTAI_RESTART_WORKSPACE: ${{ runner.temp }}\subutai-restart-harness-release
+          SUBUTAI_RESTART_FILE_MIB: 32
+          SUBUTAI_RESTART_MINIMUM_PROGRESS_MIB: 4
+        run: pnpm test:native-restart-harness
 
       - name: Run extended native resource soak benchmark
         shell: pwsh
