@@ -1,0 +1,122 @@
+name: Subutai Real Two-Installer Update Acceptance
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "apps/desktop/**"
+      - "apps/extension/**"
+      - "engines/native/**"
+      - "scripts/real-two-installer-acceptance.ps1"
+      - "scripts/real-update-state-probe.mjs"
+      - "scripts/real-update-feed-server.mjs"
+      - "scripts/real-update-acceptance-policy-test.mjs"
+      - "scripts/updater-rollback-acceptance.mjs"
+      - "scripts/updater-two-build-acceptance.mjs"
+      - "scripts/updater-transaction-test.mts"
+      - "scripts/updater-rollback-policy-test.mjs"
+      - "scripts/install-temporary-media-tools.ps1"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/real-update-acceptance.yml"
+      - ".github/workflows/release.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  real-two-installer-acceptance:
+    name: real-update-subutai-windows
+    runs-on: [self-hosted, Windows, X64, subutai]
+    timeout-minutes: 180
+
+    steps:
+      - name: Checkout exact commit
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install pinned Rust toolchain
+        shell: powershell
+        run: |
+          $cargoBin = Join-Path $env:USERPROFILE ".cargo\bin"
+          if (-not (Get-Command rustup -ErrorAction SilentlyContinue)) {
+            $rustupInstaller = Join-Path $env:RUNNER_TEMP "rustup-init.exe"
+            Invoke-WebRequest "https://win.rustup.rs/x86_64" -OutFile $rustupInstaller
+            & $rustupInstaller -y --profile minimal --default-toolchain none
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          $env:PATH = "$cargoBin;$env:PATH"
+          $cargoBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          rustup toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          rustup default 1.97.1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          rustc --version --verbose
+          cargo --version
+
+      - name: Enable pnpm
+        shell: powershell
+        run: |
+          corepack enable
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          pnpm --version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Install locked dependencies
+        shell: powershell
+        run: pnpm install --frozen-lockfile
+
+      - name: Install pinned temporary media tools
+        shell: powershell
+        run: ./scripts/install-temporary-media-tools.ps1
+
+      - name: Verify updater and real acceptance policies
+        shell: powershell
+        run: |
+          pnpm test:updater-policy
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          pnpm test:updater-acceptance
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          pnpm test:real-update-policy
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          pnpm typecheck
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run real Setup A to Setup B update and rollback acceptance
+        shell: powershell
+        run: ./scripts/real-two-installer-acceptance.ps1 -BaselineVersion 0.1.0 -TargetVersion 0.2.0 -Workspace artifacts/real-update-acceptance
+
+      - name: Publish acceptance evidence summary
+        if: always()
+        shell: powershell
+        run: |
+          $report = "artifacts/real-update-acceptance/evidence/real-two-installer-acceptance-report.json"
+          if (Test-Path $report) {
+            "## Subutai real two-installer acceptance" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+            '```json' | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+            Get-Content $report -Raw | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+            '```' | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+          } else {
+            "Real two-installer acceptance report was not produced." | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+          }
+
+      - name: Preserve private acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: subutai-real-update-acceptance-${{ github.sha }}
+          path: |
+            artifacts/real-update-acceptance/evidence/**/*.json
+            artifacts/real-update-acceptance/logs/**/*.log
+            artifacts/real-update-acceptance/logs/**/*server-state.json
+          if-no-files-found: warn
+          retention-days: 30
