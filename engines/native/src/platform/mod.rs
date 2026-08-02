@@ -4,6 +4,8 @@ use std::path::Path;
 #[cfg(not(windows))]
 use crate::transfer::RequestHeader;
 use crate::transfer::{HttpProbe, TransferError};
+#[cfg(not(windows))]
+use crate::TransportSettings;
 
 #[cfg(windows)]
 mod windows;
@@ -35,6 +37,7 @@ pub(crate) fn open_response(
     _method: &str,
     _url: &str,
     _headers: &[RequestHeader],
+    _settings: &TransportSettings,
 ) -> Result<UnsupportedResponse, TransferError> {
     Err(TransferError::UnsupportedPlatform)
 }
