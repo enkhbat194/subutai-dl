@@ -445,7 +445,15 @@ async function removeDownload(id: string, deleteFile = false): Promise<void> {
   store?.remove(id);
   if (deleteFile) {
     await rm(join(job.destination, job.filename), { force: true });
-    if (job.engine !== 'media') await rm(join(job.destination, `${job.filename}.aria2`), { force: true });
+    if (job.engine !== 'media') {
+      const destinationPath = join(job.destination, job.filename);
+      await Promise.all([
+        `${destinationPath}.subutai.part`,
+        `${destinationPath}.subutai.job`,
+        `${destinationPath}.subutai.job.a`,
+        `${destinationPath}.subutai.job.b`,
+      ].map((path) => rm(path, { force: true })));
+    }
   }
   broadcastAll();
   void processQueue();
