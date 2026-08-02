@@ -25,8 +25,13 @@ function requireText(source, expected, label) {
   }
 }
 
-if (/aria2(?:c\.exe)?/iu.test(releaseWorkflow)) {
-  throw new Error('Release workflow must not install, copy or package the replaced direct-download engine.');
+const prohibitedReleasePatterns = [
+  /choco\s+install[^\r\n]*aria2/iu,
+  /Get-ChildItem[^\r\n]*aria2/iu,
+  /Copy-Item[^\r\n]*aria2/iu,
+];
+if (prohibitedReleasePatterns.some((pattern) => pattern.test(releaseWorkflow))) {
+  throw new Error('Release workflow must not install or copy the replaced direct-download engine.');
 }
 if (existsSync(legacyResourcePath)) {
   throw new Error(`Legacy direct-download resource still exists: ${legacyResourcePath}`);
@@ -36,6 +41,7 @@ requireText(releaseWorkflow, 'choco install yt-dlp ffmpeg', 'Release workflow');
 requireText(releaseWorkflow, 'pnpm test:native-engine', 'Release workflow');
 requireText(releaseWorkflow, 'pnpm test:release-engine', 'Release workflow');
 requireText(releaseWorkflow, 'pnpm --filter @subutai/desktop build:win', 'Release workflow');
+requireText(releaseWorkflow, 'Legacy direct-download engine must not enter', 'Release workflow negative assertion');
 requireText(packageValidation, 'subutai-engine-host.exe', 'Windows package validation');
 requireText(packageValidation, 'aria2c.exe', 'Windows package validation negative assertion');
 requireText(packageValidation, 'Legacy direct-download engine must not be packaged', 'Windows package validation');
