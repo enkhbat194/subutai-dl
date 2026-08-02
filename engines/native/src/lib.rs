@@ -3,6 +3,7 @@
 
 mod adaptive;
 mod core;
+pub mod desktop_protocol;
 pub mod ipc;
 mod platform;
 pub mod resumable;
@@ -11,6 +12,11 @@ pub mod transfer;
 
 pub use adaptive::AdaptivePolicy;
 pub use core::*;
+pub use desktop_protocol::{
+    DESKTOP_PAYLOAD_SCHEMA_VERSION, DesktopProtocolError, DesktopStartRequest, DesktopStatusEvent,
+    DesktopTaskState, decode_start_request, decode_status_event, encode_start_request,
+    encode_status_event,
+};
 pub use resumable::{
     DownloadControl, SegmentedDownloadRequest, SegmentedOutcome, SegmentedProgress,
     download_segmented, download_segmented_with_progress, resume_journal_path,
