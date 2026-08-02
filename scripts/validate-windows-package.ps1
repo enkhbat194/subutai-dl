@@ -88,51 +88,65 @@ $checksumPath = Join-Path $releasePath "SHA256SUMS.txt"
 Set-Content -Path $checksumPath -Value $checksumLines -Encoding ascii
 
 if ($LaunchSmoke) {
+  Get-Process -Name "Subutai Download Manager" -ErrorAction SilentlyContinue |
+    Stop-Process -Force -ErrorAction SilentlyContinue
+  Start-Sleep -Milliseconds 750
+  if (Get-Process -Name "Subutai Download Manager" -ErrorAction SilentlyContinue) {
+    throw "A stale Subutai process still holds the single-instance lock before packaged launch smoke."
+  }
+
   $stdoutPath = Join-Path $releasePath "launch-smoke.stdout.log"
   $stderrPath = Join-Path $releasePath "launch-smoke.stderr.log"
   $diagnosticPath = Join-Path $releasePath "launch-smoke.runtime.log"
   Remove-Item $stdoutPath, $stderrPath, $diagnosticPath -Force -ErrorAction SilentlyContinue
 
-  $env:ELECTRON_ENABLE_LOGGING = "1"
-  $env:SUBUTAI_SMOKE_LOG = $diagnosticPath
-  $process = Start-Process `
-    -FilePath $appExecutable `
-    -ArgumentList "--subutai-smoke-test" `
-    -RedirectStandardOutput $stdoutPath `
-    -RedirectStandardError $stderrPath `
-    -PassThru
+  $previousElectronLogging = $env:ELECTRON_ENABLE_LOGGING
+  $previousSmokeLog = $env:SUBUTAI_SMOKE_LOG
+  try {
+    $env:ELECTRON_ENABLE_LOGGING = "1"
+    $env:SUBUTAI_SMOKE_LOG = $diagnosticPath
+    $process = Start-Process `
+      -FilePath $appExecutable `
+      -ArgumentList "--subutai-smoke-test" `
+      -RedirectStandardOutput $stdoutPath `
+      -RedirectStandardError $stderrPath `
+      -PassThru
 
-  if (-not $process.WaitForExit(25000)) {
-    Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
-    if (Test-Path $diagnosticPath) { Get-Content $diagnosticPath | Write-Host }
-    if (Test-Path $stderrPath) { Get-Content $stderrPath | Write-Host }
-    throw "Packaged Subutai app did not finish its launch smoke test within 25 seconds."
-  }
+    if (-not $process.WaitForExit(25000)) {
+      Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+      if (Test-Path $diagnosticPath) { Get-Content $diagnosticPath | Write-Host }
+      if (Test-Path $stderrPath) { Get-Content $stderrPath | Write-Host }
+      throw "Packaged Subutai app did not finish its launch smoke test within 25 seconds."
+    }
 
-  $process.WaitForExit()
-  $process.Refresh()
-  $stdout = if (Test-Path $stdoutPath) { Get-Content $stdoutPath -Raw } else { "" }
-  $stderr = if (Test-Path $stderrPath) { Get-Content $stderrPath -Raw } else { "" }
-  $diagnostic = if (Test-Path $diagnosticPath) { Get-Content $diagnosticPath -Raw } else { "" }
+    $process.WaitForExit()
+    $process.Refresh()
+    $stdout = if (Test-Path $stdoutPath) { Get-Content $stdoutPath -Raw } else { "" }
+    $stderr = if (Test-Path $stderrPath) { Get-Content $stderrPath -Raw } else { "" }
+    $diagnostic = if (Test-Path $diagnosticPath) { Get-Content $diagnosticPath -Raw } else { "" }
 
-  if ($diagnostic) {
-    Write-Host "Subutai runtime smoke log:"
-    Write-Host $diagnostic
-  }
-  if ($stdout) { Write-Host "Subutai smoke stdout:`n$stdout" }
-  if ($stderr) { Write-Host "Subutai smoke stderr:`n$stderr" }
+    if ($diagnostic) {
+      Write-Host "Subutai runtime smoke log:"
+      Write-Host $diagnostic
+    }
+    if ($stdout) { Write-Host "Subutai smoke stdout:`n$stdout" }
+    if ($stderr) { Write-Host "Subutai smoke stderr:`n$stderr" }
 
-  if ($null -ne $process.ExitCode -and $process.ExitCode -ne 0) {
-    throw "Packaged Subutai app launch smoke failed with exit code $($process.ExitCode)."
-  }
-  if (-not $diagnostic) {
-    throw "Packaged Subutai app did not produce its runtime smoke log."
-  }
-  if ($diagnostic -notmatch "Launch smoke completed successfully") {
-    throw "Packaged Subutai app exited without completing its runtime smoke sequence."
-  }
-  if ($stderr -match "Unable to load preload script|ENOENT.*preload|Uncaught TypeError") {
-    throw "Packaged Subutai app started with a preload or renderer contract failure."
+    if ($null -ne $process.ExitCode -and $process.ExitCode -ne 0) {
+      throw "Packaged Subutai app launch smoke failed with exit code $($process.ExitCode)."
+    }
+    if (-not $diagnostic) {
+      throw "Packaged Subutai app did not produce its runtime smoke log."
+    }
+    if ($diagnostic -notmatch "Launch smoke completed successfully") {
+      throw "Packaged Subutai app exited without completing its runtime smoke sequence."
+    }
+    if ($stderr -match "Unable to load preload script|ENOENT.*preload|Uncaught TypeError") {
+      throw "Packaged Subutai app started with a preload or renderer contract failure."
+    }
+  } finally {
+    $env:ELECTRON_ENABLE_LOGGING = $previousElectronLogging
+    $env:SUBUTAI_SMOKE_LOG = $previousSmokeLog
   }
 }
 
