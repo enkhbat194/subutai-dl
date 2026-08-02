@@ -100,8 +100,14 @@ pub enum TransferError {
     DestinationExists(PathBuf),
     PartialFileExists(PathBuf),
     MissingParent(PathBuf),
-    InsufficientDiskSpace { required: u64, available: u64 },
-    SizeMismatch { expected: u64, actual: u64 },
+    InsufficientDiskSpace {
+        required: u64,
+        available: u64,
+    },
+    SizeMismatch {
+        expected: u64,
+        actual: u64,
+    },
     MissingContentLength,
     ByteRangesUnsupported,
     InvalidContentRange(String),
@@ -111,7 +117,15 @@ pub enum TransferError {
     ResumeMismatch(String),
     Journal(String),
     WorkerPanic,
-    Windows { operation: &'static str, code: u32 },
+    AdaptiveRetriesExhausted {
+        segment: usize,
+        attempts: u32,
+        reason: String,
+    },
+    Windows {
+        operation: &'static str,
+        code: u32,
+    },
     Io(std::io::Error),
     Protocol(String),
 }
@@ -189,6 +203,14 @@ impl Display for TransferError {
             Self::WorkerPanic => {
                 write!(formatter, "segmented transfer worker stopped unexpectedly")
             }
+            Self::AdaptiveRetriesExhausted {
+                segment,
+                attempts,
+                reason,
+            } => write!(
+                formatter,
+                "adaptive transfer exhausted {attempts} attempts for segment {segment}: {reason}"
+            ),
             Self::Windows { operation, code } => write!(
                 formatter,
                 "Windows operation {operation} failed with error {code}"

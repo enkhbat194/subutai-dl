@@ -112,10 +112,7 @@ impl AdaptiveGate {
         unfinished_chunks: usize,
     ) -> Self {
         let maximum_connections = maximum_connections.max(1).min(unfinished_chunks.max(1));
-        let connection_limit = policy
-            .minimum_connections
-            .max(1)
-            .min(maximum_connections);
+        let connection_limit = policy.minimum_connections.max(1).min(maximum_connections);
         Self {
             policy,
             maximum_connections,
@@ -169,8 +166,7 @@ impl AdaptiveGate {
             return false;
         }
         let nanos = elapsed.as_nanos().max(1);
-        let rate = ((u128::from(bytes) * 1_000_000_000) / nanos)
-            .min(u128::from(u64::MAX)) as u64;
+        let rate = ((u128::from(bytes) * 1_000_000_000) / nanos).min(u128::from(u64::MAX)) as u64;
         rate < self.policy.slow_bytes_per_second
     }
 
