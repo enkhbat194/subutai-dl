@@ -14,10 +14,11 @@ $repoRoot = (Resolve-Path '.').Path
 $harness = Join-Path $repoRoot 'scripts\real-two-installer-acceptance.ps1'
 $desktopPackagePath = Join-Path $repoRoot 'apps\desktop\package.json'
 $acceptanceAppId = 'com.subutai.downloadmanager.real-update-acceptance'
+$acceptanceProductName = 'Subutai Real Update Acceptance'
 $workspacePath = [System.IO.Path]::GetFullPath((Join-Path $repoRoot $Workspace))
 $safetyRoot = Join-Path $env:RUNNER_TEMP ("SubutaiRealUpdateSafety-" + [guid]::NewGuid().ToString('N'))
-$installDir = Join-Path $env:LOCALAPPDATA 'Programs\SubutaiRealUpdateAcceptance'
-$userDataDir = Join-Path $env:APPDATA 'Subutai Download Manager'
+$installDir = Join-Path $env:LOCALAPPDATA "Programs\$acceptanceProductName"
+$userDataDir = Join-Path $env:APPDATA $acceptanceProductName
 $updaterRoot = Join-Path $env:LOCALAPPDATA 'Subutai\Updater'
 $nativeMessagingDir = Join-Path $env:LOCALAPPDATA 'Subutai Download Manager\NativeMessaging'
 $registryKeys = @(
@@ -40,12 +41,15 @@ function Write-Utf8NoBom {
 function Set-AcceptanceAppIdentity {
   $package = Get-Content -LiteralPath $desktopPackagePath -Raw | ConvertFrom-Json
   if ($null -eq $package.build) { throw 'Desktop package has no electron-builder configuration.' }
+  $package.productName = $acceptanceProductName
   $package.build.appId = $acceptanceAppId
   Write-Utf8NoBom -Path $desktopPackagePath -Content (($package | ConvertTo-Json -Depth 40) + "`n")
 }
 
 function Stop-SubutaiProcesses {
-  Get-Process -Name 'Subutai Download Manager' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+  foreach ($name in @('Subutai Download Manager', $acceptanceProductName)) {
+    Get-Process -Name $name -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+  }
   Start-Sleep -Milliseconds 500
 }
 
@@ -99,7 +103,7 @@ try {
     }
   }
   Stop-SubutaiProcesses
-  Capture-Directory -Path $userDataDir -Name 'user-data'
+  Capture-Directory -Path $userDataDir -Name 'acceptance-user-data'
   Capture-Directory -Path $updaterRoot -Name 'updater'
   Capture-Directory -Path $nativeMessagingDir -Name 'native-messaging'
   Set-AcceptanceAppIdentity
@@ -108,7 +112,8 @@ try {
     -BaselineVersion $BaselineVersion `
     -TargetVersion $TargetVersion `
     -Workspace $Workspace `
-    -ScenarioTimeoutSeconds $ScenarioTimeoutSeconds
+    -ScenarioTimeoutSeconds $ScenarioTimeoutSeconds `
+    -AcceptanceProductName $acceptanceProductName
 } catch {
   $primaryFailure = $_
 } finally {
