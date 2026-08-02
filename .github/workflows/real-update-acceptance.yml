@@ -8,6 +8,7 @@ on:
       - "apps/extension/**"
       - "engines/native/**"
       - "scripts/run-real-update-acceptance-safely.ps1"
+      - "scripts/run-real-update-acceptance-monitored.ps1"
       - "scripts/real-two-installer-acceptance.ps1"
       - "scripts/real-update-state-probe.mjs"
       - "scripts/real-update-feed-server.mjs"
@@ -98,7 +99,7 @@ jobs:
         shell: powershell
         run: |
           $env:GITHUB_SHA = "${{ github.event.pull_request.head.sha || github.sha }}"
-          ./scripts/run-real-update-acceptance-safely.ps1 -BaselineVersion 0.1.0 -TargetVersion 0.2.0 -Workspace artifacts/real-update-acceptance
+          ./scripts/run-real-update-acceptance-monitored.ps1 -BaselineVersion 0.1.0 -TargetVersion 0.2.0 -Workspace artifacts/real-update-acceptance -ScenarioTimeoutSeconds 240
 
       - name: Publish acceptance evidence summary
         if: always()
