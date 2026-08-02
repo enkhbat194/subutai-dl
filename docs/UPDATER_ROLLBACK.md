@@ -57,4 +57,4 @@ Automated Windows acceptance covers:
 7. Chrome, Edge and Firefox registration evidence;
 8. existing Setup, Portable, installed launch and uninstall regression through the existing N5 gates.
 
-The current Windows gate is a deterministic local transaction/watchdog fixture representing old and new versions; it does not yet execute two independently published production installers. It does not claim public GitHub update-channel acceptance. Clean Windows 10/11 machines, a real published previous release, real reboot acceptance, code signing and overnight update soak remain pending until performed.
+The Windows gate builds two distinct local Rust fixture executables for the previous and target versions, exercises healthy startup and failed-startup rollback through the production watchdog, and verifies browser registration plus user-data preservation. It does not yet execute two independently published production installers and does not claim public GitHub update-channel acceptance. Clean Windows 10/11 machines, a real published previous release, real reboot acceptance, code signing and overnight update soak remain pending until performed.
