@@ -57,7 +57,7 @@ function Replace-ExactlyOnce {
 function Set-AcceptanceAppIdentity {
   $package = Get-Content -LiteralPath $desktopPackagePath -Raw | ConvertFrom-Json
   if ($null -eq $package.build) { throw 'Desktop package has no electron-builder configuration.' }
-  $package.productName = $acceptanceProductName
+  $package | Add-Member -NotePropertyName productName -NotePropertyValue $acceptanceProductName -Force
   $package.build.appId = $acceptanceAppId
   Write-Utf8NoBom -Path $desktopPackagePath -Content (($package | ConvertTo-Json -Depth 40) + "`n")
 }
