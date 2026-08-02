@@ -11,6 +11,8 @@ on:
       - "scripts/resilience-download-test.mjs"
       - "scripts/native-soak-benchmark.mjs"
       - "scripts/publish-native-soak-summary.mjs"
+      - "scripts/native-large-queue-benchmark.mjs"
+      - "scripts/publish-native-large-queue-summary.mjs"
       - "scripts/install-temporary-media-tools.ps1"
       - "scripts/n5-windows-acceptance.ps1"
       - "scripts/production-acceptance-policy-test.mjs"
@@ -32,7 +34,7 @@ jobs:
   windows-acceptance:
     name: n5-subutai-windows
     runs-on: [self-hosted, Windows, X64, subutai]
-    timeout-minutes: 100
+    timeout-minutes: 110
 
     steps:
       - name: Checkout
@@ -85,6 +87,8 @@ jobs:
         run: |
           pnpm test:native-engine
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          pnpm test:telemetry
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           pnpm test:dependency-lock
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           pnpm test:release-engine
@@ -100,7 +104,7 @@ jobs:
           pnpm typecheck
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Build production native CLI for soak
+      - name: Build production native CLI for benchmarks
         shell: powershell
         run: cargo build --release --manifest-path engines/native/Cargo.toml --bin subutai-engine
 
@@ -118,6 +122,23 @@ jobs:
         env:
           SUBUTAI_SOAK_REPORT: artifacts/n5/native-soak-report.json
         run: node scripts/publish-native-soak-summary.mjs
+
+      - name: Run native large-file and queue benchmark
+        shell: powershell
+        env:
+          SUBUTAI_BENCHMARK_LARGE_MIB: 128
+          SUBUTAI_BENCHMARK_QUEUE_JOBS: 12
+          SUBUTAI_BENCHMARK_QUEUE_MIB: 16
+          SUBUTAI_BENCHMARK_CONCURRENCY: 3
+          SUBUTAI_BENCHMARK_SEGMENTS: 8
+          SUBUTAI_BENCHMARK_REPORT: artifacts/n5/native-large-queue-report.json
+        run: pnpm test:native-large-queue
+
+      - name: Publish native large-file and queue telemetry
+        shell: powershell
+        env:
+          SUBUTAI_BENCHMARK_REPORT: artifacts/n5/native-large-queue-report.json
+        run: node scripts/publish-native-large-queue-summary.mjs
 
       - name: Run native process and network resilience
         shell: powershell
