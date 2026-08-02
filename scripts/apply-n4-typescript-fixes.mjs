@@ -1,12 +1,15 @@
 import { readFile, writeFile } from 'node:fs/promises';
 
 async function replaceRequired(path, before, after, alreadyApplied) {
-  const source = await readFile(path, 'utf8');
+  const source = (await readFile(path, 'utf8')).replace(/\r\n/gu, '\n');
   if (source.includes(before)) {
     await writeFile(path, source.replace(before, after), 'utf8');
     return;
   }
-  if (alreadyApplied && source.includes(alreadyApplied)) return;
+  if (alreadyApplied && source.includes(alreadyApplied)) {
+    await writeFile(path, source, 'utf8');
+    return;
+  }
   throw new Error(`Required N4 TypeScript block was not found in ${path}`);
 }
 
