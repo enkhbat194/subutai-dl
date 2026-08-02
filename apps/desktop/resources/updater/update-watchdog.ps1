@@ -64,6 +64,30 @@ function Write-Evidence {
   Write-AtomicJson -Path $evidencePath -Value $evidence
 }
 
+function Get-JournalProperty {
+  param(
+    [Parameter(Mandatory = $true)]$Journal,
+    [Parameter(Mandatory = $true)][string]$Name
+  )
+  $property = $Journal.PSObject.Properties[$Name]
+  if ($null -eq $property) { return $null }
+  return $property.Value
+}
+
+function Set-JournalProperty {
+  param(
+    [Parameter(Mandatory = $true)]$Journal,
+    [Parameter(Mandatory = $true)][string]$Name,
+    $Value
+  )
+  $property = $Journal.PSObject.Properties[$Name]
+  if ($null -eq $property) {
+    $Journal | Add-Member -MemberType NoteProperty -Name $Name -Value $Value
+    return
+  }
+  $property.Value = $Value
+}
+
 function Read-Journal {
   if (Test-Path -LiteralPath $transactionFullPath -PathType Leaf) {
     try { return Get-Content -LiteralPath $transactionFullPath -Raw | ConvertFrom-Json }
@@ -140,7 +164,7 @@ function Set-FailedSafe {
   param([Parameter(Mandatory = $true)]$Journal, [Parameter(Mandatory = $true)][string]$Reason)
   $Journal.updateState = 'failed-safe'
   $Journal.rollbackState = 'blocked'
-  $Journal.lastError = Protect-ErrorText $Reason
+  Set-JournalProperty -Journal $Journal -Name 'lastError' -Value (Protect-ErrorText $Reason)
   Save-Journal $Journal
   Write-Evidence -Outcome 'failed-safe' -ErrorText $Reason
 }
@@ -192,7 +216,8 @@ try {
       Write-Evidence -Outcome "no-action-$state"
       exit 0
     }
-    if (-not [string]::IsNullOrWhiteSpace([string]$journal.intentionalExitAt)) {
+    $intentionalExitAt = Get-JournalProperty -Journal $journal -Name 'intentionalExitAt'
+    if (-not [string]::IsNullOrWhiteSpace([string]$intentionalExitAt)) {
       Write-Evidence -Outcome 'intentional-exit-no-rollback'
       exit 0
     }
@@ -212,7 +237,7 @@ try {
   $journal.rollbackAttemptCount = 1
   $journal.rollbackState = 'running'
   $journal.updateState = 'rollback-running'
-  $journal.rollbackStartedAt = [DateTime]::UtcNow.ToString('o')
+  Set-JournalProperty -Journal $journal -Name 'rollbackStartedAt' -Value ([DateTime]::UtcNow.ToString('o'))
   Save-Journal $journal
 
   $previousInstaller = Get-FullPath ([string]$journal.previousInstallerPath)
@@ -268,8 +293,8 @@ try {
   Assert-Journal $journal
   $journal.updateState = 'rolled-back'
   $journal.rollbackState = 'succeeded'
-  $journal.rollbackCompletedAt = [DateTime]::UtcNow.ToString('o')
-  $journal.lastError = 'New version did not pass startup health confirmation; previous verified version restored.'
+  Set-JournalProperty -Journal $journal -Name 'rollbackCompletedAt' -Value ([DateTime]::UtcNow.ToString('o'))
+  Set-JournalProperty -Journal $journal -Name 'lastError' -Value 'New version did not pass startup health confirmation; previous verified version restored.'
   Save-Journal $journal
   Write-Evidence -Outcome 'rolled-back'
 
