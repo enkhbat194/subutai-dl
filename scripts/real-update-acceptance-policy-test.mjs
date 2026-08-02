@@ -36,7 +36,6 @@ for (const required of [
   'Capture-Directory',
   'Restore-DirectoryState',
   'Remove-BrowserRegistration',
-  "-ArgumentList @('/S')",
   'real-two-installer-acceptance.ps1',
   'pre-existing-state',
 ]) {
@@ -50,6 +49,7 @@ for (const required of [
   "BaselineVersion = '0.1.0'",
   "TargetVersion = '0.2.0'",
   "'Programs\\SubutaiRealUpdateAcceptance'",
+  "-ArgumentList @('/S', \"/D=$installDir\")",
   'electron-builder',
   "'--win', 'nsis'",
   "'--publish', 'never'",
@@ -145,4 +145,4 @@ if (!workflow.includes('workflow_dispatch:') || !workflow.includes('pull_request
   throw new Error('Real updater acceptance must support manual and pull-request execution.');
 }
 
-console.log('Subutai real two-installer updater acceptance policy passed: acceptance-only appId/build.productName/default install path, safety-isolated real NSIS A/B builds, loopback feed, healthy update, forced rollback, checksum rejection, durable user state, browser bridge evidence and read-only execution are locked.');
+console.log('Subutai real two-installer updater acceptance policy passed: acceptance-only appId/build.productName, explicit isolated silent install path, safety-isolated real NSIS A/B builds, loopback feed, healthy update, forced rollback, checksum rejection, durable user state, browser bridge evidence and read-only execution are locked.');
