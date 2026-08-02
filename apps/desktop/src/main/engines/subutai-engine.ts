@@ -2,6 +2,7 @@ import type {
   DownloadRequestHeaders,
   MediaDownloadOptions,
   MediaProbeResult,
+  NativeTransferTelemetry,
   SubutaiEngineHealth,
   TransferSettings,
 } from '@subutai/shared';
@@ -16,6 +17,7 @@ export interface SubutaiTaskStatus {
   completedLength: string;
   downloadSpeed: string;
   connections: string;
+  telemetry?: NativeTransferTelemetry;
   errorCode?: string;
   errorMessage?: string;
   files?: Array<{ path: string; length: string; completedLength: string; selected: string }>;

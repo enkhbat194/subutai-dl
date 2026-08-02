@@ -6,6 +6,8 @@ use crate::transfer::RequestHeader;
 use crate::{ProxyMode, TransportSettings};
 
 pub const DESKTOP_PAYLOAD_SCHEMA_VERSION: u16 = 2;
+pub const DESKTOP_STATUS_PAYLOAD_SCHEMA_VERSION: u16 = 3;
+const LEGACY_DESKTOP_STATUS_PAYLOAD_SCHEMA_VERSION: u16 = 2;
 const START_MAGIC: &[u8; 8] = b"SUBSTRT1";
 const STATUS_MAGIC: &[u8; 8] = b"SUBSTAT1";
 const MAX_FIELD_BYTES: usize = 1024 * 1024;
@@ -58,6 +60,12 @@ pub struct DesktopStatusEvent {
     pub completed_bytes: u64,
     pub bytes_per_second: u64,
     pub active_connections: u32,
+    pub connection_limit: u32,
+    pub peak_connections: u32,
+    pub queued_segments: u32,
+    pub replacement_count: u64,
+    pub retry_count: u64,
+    pub elapsed_milliseconds: u64,
     pub file_path: String,
     pub error_code: String,
     pub error_message: String,
@@ -159,13 +167,19 @@ pub fn decode_start_request(input: &[u8]) -> Result<DesktopStartRequest, Desktop
 pub fn encode_status_event(value: &DesktopStatusEvent) -> Result<Vec<u8>, DesktopProtocolError> {
     let mut output = Vec::new();
     output.extend_from_slice(STATUS_MAGIC);
-    output.extend_from_slice(&DESKTOP_PAYLOAD_SCHEMA_VERSION.to_le_bytes());
+    output.extend_from_slice(&DESKTOP_STATUS_PAYLOAD_SCHEMA_VERSION.to_le_bytes());
     write_string(&mut output, &value.task_id)?;
     output.push(value.state as u8);
     output.extend_from_slice(&value.total_bytes.to_le_bytes());
     output.extend_from_slice(&value.completed_bytes.to_le_bytes());
     output.extend_from_slice(&value.bytes_per_second.to_le_bytes());
     output.extend_from_slice(&value.active_connections.to_le_bytes());
+    output.extend_from_slice(&value.connection_limit.to_le_bytes());
+    output.extend_from_slice(&value.peak_connections.to_le_bytes());
+    output.extend_from_slice(&value.queued_segments.to_le_bytes());
+    output.extend_from_slice(&value.replacement_count.to_le_bytes());
+    output.extend_from_slice(&value.retry_count.to_le_bytes());
+    output.extend_from_slice(&value.elapsed_milliseconds.to_le_bytes());
     write_string(&mut output, &value.file_path)?;
     write_string(&mut output, &value.error_code)?;
     write_string(&mut output, &value.error_message)?;
@@ -177,14 +191,50 @@ pub fn decode_status_event(input: &[u8]) -> Result<DesktopStatusEvent, DesktopPr
     if cursor.take(STATUS_MAGIC.len())? != STATUS_MAGIC {
         return Err(DesktopProtocolError::InvalidMagic);
     }
-    read_schema(&mut cursor)?;
+    let schema = cursor.read_u16()?;
+    if schema != DESKTOP_STATUS_PAYLOAD_SCHEMA_VERSION
+        && schema != LEGACY_DESKTOP_STATUS_PAYLOAD_SCHEMA_VERSION
+    {
+        return Err(DesktopProtocolError::UnsupportedSchema(schema));
+    }
+    let task_id = cursor.read_string()?;
+    let state = DesktopTaskState::try_from(cursor.read_u8()?)?;
+    let total_bytes = cursor.read_u64()?;
+    let completed_bytes = cursor.read_u64()?;
+    let bytes_per_second = cursor.read_u64()?;
+    let active_connections = cursor.read_u32()?;
+    let (
+        connection_limit,
+        peak_connections,
+        queued_segments,
+        replacement_count,
+        retry_count,
+        elapsed_milliseconds,
+    ) = if schema == DESKTOP_STATUS_PAYLOAD_SCHEMA_VERSION {
+        (
+            cursor.read_u32()?,
+            cursor.read_u32()?,
+            cursor.read_u32()?,
+            cursor.read_u64()?,
+            cursor.read_u64()?,
+            cursor.read_u64()?,
+        )
+    } else {
+        (active_connections, active_connections, 0, 0, 0, 0)
+    };
     let value = DesktopStatusEvent {
-        task_id: cursor.read_string()?,
-        state: DesktopTaskState::try_from(cursor.read_u8()?)?,
-        total_bytes: cursor.read_u64()?,
-        completed_bytes: cursor.read_u64()?,
-        bytes_per_second: cursor.read_u64()?,
-        active_connections: cursor.read_u32()?,
+        task_id,
+        state,
+        total_bytes,
+        completed_bytes,
+        bytes_per_second,
+        active_connections,
+        connection_limit,
+        peak_connections,
+        queued_segments,
+        replacement_count,
+        retry_count,
+        elapsed_milliseconds,
         file_path: cursor.read_string()?,
         error_code: cursor.read_string()?,
         error_message: cursor.read_string()?,
@@ -402,12 +452,43 @@ mod tests {
             completed_bytes: 4_096,
             bytes_per_second: 2_048,
             active_connections: 3,
+            connection_limit: 5,
+            peak_connections: 6,
+            queued_segments: 7,
+            replacement_count: 8,
+            retry_count: 9,
+            elapsed_milliseconds: 10,
             file_path: r"C:\Downloads\file.bin".into(),
             error_code: String::new(),
             error_message: String::new(),
         };
         let encoded = encode_status_event(&value).expect("encode status");
         assert_eq!(decode_status_event(&encoded).expect("decode status"), value);
+    }
+
+    #[test]
+    fn status_decoder_accepts_schema_v2_without_telemetry() {
+        let mut encoded = Vec::new();
+        encoded.extend_from_slice(STATUS_MAGIC);
+        encoded.extend_from_slice(&LEGACY_DESKTOP_STATUS_PAYLOAD_SCHEMA_VERSION.to_le_bytes());
+        write_string(&mut encoded, "legacy").unwrap();
+        encoded.push(DesktopTaskState::Active as u8);
+        encoded.extend_from_slice(&100_u64.to_le_bytes());
+        encoded.extend_from_slice(&50_u64.to_le_bytes());
+        encoded.extend_from_slice(&25_u64.to_le_bytes());
+        encoded.extend_from_slice(&2_u32.to_le_bytes());
+        write_string(&mut encoded, r"C:\legacy.bin").unwrap();
+        write_string(&mut encoded, "").unwrap();
+        write_string(&mut encoded, "").unwrap();
+
+        let decoded = decode_status_event(&encoded).expect("decode legacy status");
+        assert_eq!(decoded.active_connections, 2);
+        assert_eq!(decoded.connection_limit, 2);
+        assert_eq!(decoded.peak_connections, 2);
+        assert_eq!(decoded.queued_segments, 0);
+        assert_eq!(decoded.replacement_count, 0);
+        assert_eq!(decoded.retry_count, 0);
+        assert_eq!(decoded.elapsed_milliseconds, 0);
     }
 
     #[test]
@@ -419,6 +500,12 @@ mod tests {
             completed_bytes: 1,
             bytes_per_second: 0,
             active_connections: 0,
+            connection_limit: 0,
+            peak_connections: 0,
+            queued_segments: 0,
+            replacement_count: 0,
+            retry_count: 0,
+            elapsed_milliseconds: 0,
             file_path: String::new(),
             error_code: String::new(),
             error_message: String::new(),

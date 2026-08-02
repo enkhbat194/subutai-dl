@@ -120,6 +120,16 @@ export interface BrowserNativeResponse {
   error?: string;
 }
 
+export interface NativeTransferTelemetry {
+  activeConnections: number;
+  connectionLimit: number;
+  peakConnections: number;
+  queuedSegments: number;
+  replacementCount: number;
+  retryCount: number;
+  elapsedMilliseconds: number;
+}
+
 export interface DownloadJob {
   id: string;
   url: string;
@@ -158,6 +168,7 @@ export interface DownloadJob {
   remoteRestartCount?: number;
   failureKind?: DownloadFailureKind;
   retryCount?: number;
+  nativeTelemetry?: NativeTransferTelemetry;
   lastRetryAt?: string;
   engineTaskId?: string;
   error?: string;

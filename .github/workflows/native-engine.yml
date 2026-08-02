@@ -15,6 +15,7 @@ on:
       - "scripts/dependency-lock-policy-test.mjs"
       - "scripts/integrity-policy-test.mts"
       - "scripts/mirror-policy-test.mts"
+      - "scripts/telemetry-policy-test.mts"
       - "scripts/validate-windows-package.ps1"
       - "rust-toolchain.toml"
       - "package.json"
@@ -37,6 +38,7 @@ on:
       - "scripts/dependency-lock-policy-test.mjs"
       - "scripts/integrity-policy-test.mts"
       - "scripts/mirror-policy-test.mts"
+      - "scripts/telemetry-policy-test.mts"
       - "scripts/validate-windows-package.ps1"
       - "rust-toolchain.toml"
       - "package.json"
@@ -118,6 +120,10 @@ jobs:
       - name: Install locked desktop dependencies
         shell: powershell
         run: pnpm install --frozen-lockfile
+
+      - name: Check telemetry schema v3 policies
+        shell: powershell
+        run: pnpm test:telemetry
 
       - name: Run native resource soak benchmark
         shell: powershell
