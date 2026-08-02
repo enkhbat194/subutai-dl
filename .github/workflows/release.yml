@@ -16,7 +16,7 @@ permissions:
 jobs:
   release-windows:
     runs-on: windows-latest
-    timeout-minutes: 75
+    timeout-minutes: 100
     env:
       RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
     steps:
@@ -46,32 +46,13 @@ jobs:
         shell: pwsh
         run: node scripts/validate-release-version.mjs "$env:RELEASE_TAG"
 
-      - name: Install temporary media tools
-        shell: pwsh
-        run: |
-          choco install yt-dlp ffmpeg -y --no-progress
-          $engineDir = "apps/desktop/resources/engines/win32-x64"
-          New-Item -ItemType Directory -Force $engineDir | Out-Null
-          Get-ChildItem $engineDir -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force
-
-          $ytdlp = Get-ChildItem "$env:ChocolateyInstall\lib\yt-dlp*" -Recurse -Filter yt-dlp.exe | Select-Object -First 1
-          $ffmpeg = Get-ChildItem "$env:ChocolateyInstall\lib\ffmpeg*" -Recurse -Filter ffmpeg.exe | Select-Object -First 1
-          $ffprobe = Get-ChildItem "$env:ChocolateyInstall\lib\ffmpeg*" -Recurse -Filter ffprobe.exe | Select-Object -First 1
-
-          if (-not $ytdlp) { throw "Subutai temporary media resolver was not found." }
-          if (-not $ffmpeg) { throw "Subutai temporary media processor was not found." }
-
-          Copy-Item $ytdlp.FullName "$engineDir/yt-dlp.exe"
-          Copy-Item $ffmpeg.FullName "$engineDir/ffmpeg.exe"
-          if ($ffprobe) { Copy-Item $ffprobe.FullName "$engineDir/ffprobe.exe" }
-
-          if (Test-Path "$engineDir/aria2c.exe") {
-            throw "Legacy direct-download engine must not enter a Subutai release package."
-          }
-
       - name: Install locked dependencies
         shell: pwsh
         run: pnpm install --frozen-lockfile
+
+      - name: Install pinned temporary media tools
+        shell: pwsh
+        run: ./scripts/install-temporary-media-tools.ps1
 
       - name: Verify native engine and release policies
         shell: pwsh
@@ -79,10 +60,18 @@ jobs:
           pnpm test:native-engine
           pnpm test:release-engine
           pnpm test:dependency-lock
-          pnpm typecheck
+          pnpm test:integrity
           pnpm test:brand
+          pnpm test:production-acceptance
+          pnpm typecheck
           pnpm test:system
           pnpm test:failure-policy
+
+      - name: Run native process and network resilience
+        shell: pwsh
+        env:
+          SUBUTAI_RESILIENCE_MB: 16
+        run: pnpm test:resilience
 
       - name: Build Windows installer and portable app
         shell: pwsh
@@ -91,6 +80,10 @@ jobs:
       - name: Validate release packages and launch
         shell: pwsh
         run: ./scripts/validate-windows-package.ps1 -LaunchSmoke
+
+      - name: Accept portable, installed and uninstalled release
+        shell: pwsh
+        run: ./scripts/n5-windows-acceptance.ps1
 
       - name: Preserve release artifact
         uses: actions/upload-artifact@v4

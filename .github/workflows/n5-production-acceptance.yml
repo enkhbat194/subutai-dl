@@ -1,0 +1,100 @@
+name: Subutai N5 Production Acceptance
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "engines/native/**"
+      - "apps/**"
+      - "packages/**"
+      - "scripts/resilience-download-test.mjs"
+      - "scripts/install-temporary-media-tools.ps1"
+      - "scripts/n5-windows-acceptance.ps1"
+      - "scripts/production-acceptance-policy-test.mjs"
+      - "scripts/validate-windows-package.ps1"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/n5-production-acceptance.yml"
+      - ".github/workflows/release.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  windows-acceptance:
+    name: n5-subutai-windows
+    runs-on: [self-hosted, Windows, X64, subutai]
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install pinned Rust toolchain
+        shell: powershell
+        run: |
+          $cargoBin = Join-Path $env:USERPROFILE ".cargo\bin"
+          if (-not (Get-Command rustup -ErrorAction SilentlyContinue)) {
+            $rustupInstaller = Join-Path $env:RUNNER_TEMP "rustup-init.exe"
+            Invoke-WebRequest "https://win.rustup.rs/x86_64" -OutFile $rustupInstaller
+            & $rustupInstaller -y --profile minimal --default-toolchain none
+          }
+          $env:PATH = "$cargoBin;$env:PATH"
+          $cargoBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          rustup toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy
+          rustup default 1.97.1
+          rustc --version --verbose
+          cargo --version
+
+      - name: Enable pnpm
+        shell: powershell
+        run: |
+          corepack enable
+          pnpm --version
+
+      - name: Install locked dependencies
+        shell: powershell
+        run: pnpm install --frozen-lockfile
+
+      - name: Install pinned temporary media tools
+        shell: powershell
+        run: ./scripts/install-temporary-media-tools.ps1
+
+      - name: Verify native engine and product policies
+        shell: powershell
+        run: |
+          pnpm test:native-engine
+          pnpm test:dependency-lock
+          pnpm test:release-engine
+          pnpm test:integrity
+          pnpm test:brand
+          pnpm test:production-acceptance
+          pnpm typecheck
+
+      - name: Run native process and network resilience
+        shell: powershell
+        env:
+          SUBUTAI_RESILIENCE_MB: 16
+        run: pnpm test:resilience
+
+      - name: Build Setup and Portable packages
+        shell: powershell
+        run: pnpm --filter @subutai/desktop build:win
+
+      - name: Validate packaged application
+        shell: powershell
+        run: ./scripts/validate-windows-package.ps1 -LaunchSmoke
+
+      - name: Accept portable, installed and uninstalled product
+        shell: powershell
+        run: ./scripts/n5-windows-acceptance.ps1

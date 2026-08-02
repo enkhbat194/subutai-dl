@@ -22,6 +22,7 @@
     "test:site-grabber": "node --experimental-strip-types scripts/site-grabber-test.mts",
     "test:system": "node --experimental-strip-types scripts/system-policy-test.mts",
     "test:integrity": "node --experimental-strip-types scripts/integrity-policy-test.mts",
+    "test:production-acceptance": "node scripts/production-acceptance-policy-test.mjs",
     "test:release-version": "node scripts/validate-release-version.mjs",
     "test:release-engine": "node scripts/release-engine-policy-test.mjs",
     "test:dependency-lock": "node scripts/dependency-lock-policy-test.mjs",
