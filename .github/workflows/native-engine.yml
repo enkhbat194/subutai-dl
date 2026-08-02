@@ -23,10 +23,10 @@ on:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   native-engine:
@@ -35,8 +35,10 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - name: Checkout
+      - name: Checkout source branch
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref || github.ref_name }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -67,15 +69,19 @@ jobs:
         shell: powershell
         run: cargo fmt --manifest-path engines/native/Cargo.toml --all
 
-      - name: Upload formatted native engine sources
-        uses: actions/upload-artifact@v4
-        with:
-          name: Subutai-Native-Formatted
-          path: |
-            engines/native/src
-            engines/native/tests
-          if-no-files-found: error
-          retention-days: 1
+      - name: Save formatter changes
+        shell: powershell
+        run: |
+          $changes = git status --porcelain -- engines/native
+          if ([string]::IsNullOrWhiteSpace($changes)) {
+            Write-Host "Native engine formatting is already clean."
+            exit 0
+          }
+          git config user.name "Subutai Automation"
+          git config user.email "subutai-automation@users.noreply.github.com"
+          git add engines/native
+          git commit -m "Format native engine sources"
+          git push origin "HEAD:${{ github.head_ref || github.ref_name }}"
 
       - name: Static checks
         shell: powershell
