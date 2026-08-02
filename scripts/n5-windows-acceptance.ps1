@@ -44,19 +44,59 @@ function Invoke-SmokeTest {
       -RedirectStandardError $stderrPath `
       -PassThru
 
-    if (-not $process.WaitForExit($TimeoutMilliseconds)) {
-      Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
-      throw "$Name did not finish its smoke test within $TimeoutMilliseconds ms."
+    $deadline = [DateTime]::UtcNow.AddMilliseconds($TimeoutMilliseconds)
+    $completed = $false
+    while ([DateTime]::UtcNow -lt $deadline) {
+      if (Test-Path $runtimePath) {
+        $runtime = Get-Content $runtimePath -Raw -ErrorAction SilentlyContinue
+        if ($runtime -match "Launch smoke completed successfully") {
+          $completed = $true
+          break
+        }
+      }
+
+      if ($process.HasExited) {
+        $process.WaitForExit()
+        $process.Refresh()
+        if ($null -ne $process.ExitCode -and $process.ExitCode -ne 0) {
+          $stderr = if (Test-Path $stderrPath) { Get-Content $stderrPath -Raw } else { "" }
+          throw "$Name launcher exited with $($process.ExitCode). $stderr"
+        }
+      }
+      Start-Sleep -Milliseconds 250
     }
-    $process.Refresh()
-    if ($process.ExitCode -ne 0) {
+
+    if (-not $completed) {
+      if (-not $process.HasExited) {
+        Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+      }
+      $exitCode = if ($process.HasExited) {
+        $process.WaitForExit()
+        $process.Refresh()
+        $process.ExitCode
+      } else {
+        "running"
+      }
       $stderr = if (Test-Path $stderrPath) { Get-Content $stderrPath -Raw } else { "" }
-      throw "$Name smoke test exited with $($process.ExitCode). $stderr"
+      $runtime = if (Test-Path $runtimePath) { Get-Content $runtimePath -Raw } else { "" }
+      throw "$Name did not complete its runtime smoke sequence within $TimeoutMilliseconds ms. Launcher exit=$exitCode. Runtime=$runtime Stderr=$stderr"
     }
-    if (-not (Test-Path $runtimePath)) { throw "$Name did not create a runtime smoke log." }
-    $runtime = Get-Content $runtimePath -Raw
-    if ($runtime -notmatch "Launch smoke completed successfully") {
-      throw "$Name exited without completing its runtime smoke sequence."
+
+    if (-not $process.HasExited) {
+      $null = $process.WaitForExit(5000)
+    }
+    if ($process.HasExited) {
+      $process.WaitForExit()
+      $process.Refresh()
+      if ($null -ne $process.ExitCode -and $process.ExitCode -ne 0) {
+        $stderr = if (Test-Path $stderrPath) { Get-Content $stderrPath -Raw } else { "" }
+        throw "$Name launcher exited with $($process.ExitCode) after runtime success. $stderr"
+      }
+    }
+
+    $stderr = if (Test-Path $stderrPath) { Get-Content $stderrPath -Raw } else { "" }
+    if ($stderr -match "Unable to load preload script|Cannot use import statement outside a module|Uncaught TypeError") {
+      throw "$Name completed with a preload or renderer contract failure. $stderr"
     }
   } finally {
     $env:SUBUTAI_SMOKE_LOG = $previousSmokeLog
@@ -143,7 +183,9 @@ try {
     -ArgumentList @("/S", "/D=$installDir") `
     -PassThru `
     -Wait
-  if ($installProcess.ExitCode -ne 0) {
+  $installProcess.WaitForExit()
+  $installProcess.Refresh()
+  if ($null -eq $installProcess.ExitCode -or $installProcess.ExitCode -ne 0) {
     throw "Silent Setup installation failed with exit code $($installProcess.ExitCode)."
   }
 
@@ -159,7 +201,9 @@ try {
   $uninstaller = Get-ChildItem $installDir -File -Filter "Uninstall*.exe" | Select-Object -First 1
   if (-not $uninstaller) { throw "Subutai uninstaller was not found in $installDir." }
   $uninstallProcess = Start-Process -FilePath $uninstaller.FullName -ArgumentList "/S" -PassThru -Wait
-  if ($uninstallProcess.ExitCode -ne 0) {
+  $uninstallProcess.WaitForExit()
+  $uninstallProcess.Refresh()
+  if ($null -eq $uninstallProcess.ExitCode -or $uninstallProcess.ExitCode -ne 0) {
     throw "Silent uninstall failed with exit code $($uninstallProcess.ExitCode)."
   }
 
