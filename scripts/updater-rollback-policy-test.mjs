@@ -48,6 +48,7 @@ for (const required of [
   'originalQuitAndInstall',
   'Downloaded update installer evidence is unavailable',
   'Downloaded update installer changed after staging',
+  "autoUpdater.on('update-downloaded'",
 ]) requireText(updater, required, 'Transactional updater guard');
 if (updater.indexOf('prepareUpdateTransaction') > updater.indexOf('originalQuitAndInstall(isSilent')) {
   throw new Error('Update installation must be journaled before quitAndInstall executes.');
@@ -69,6 +70,7 @@ for (const required of [
   'recordStartupHealthFailure',
   'recordIntentionalExitSync',
   'healthFailureExit = true',
+  'launchUpdateWatchdog(startupTransaction, 0)',
 ]) requireText(main, required, 'Desktop startup transaction integration');
 
 for (const required of [
@@ -77,6 +79,7 @@ for (const required of [
   'package.json',
   'RetentionCount = 4',
   'Move-Item -LiteralPath $temporary',
+  'OrdinalIgnoreCase.Equals($source, $destination)',
 ]) requireText(cacheScript, required, 'Previous-version installer cache');
 
 for (const required of [
