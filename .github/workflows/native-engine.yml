@@ -105,9 +105,21 @@ jobs:
           corepack enable
           pnpm --version
 
-      - name: Install desktop dependencies
+      - name: Generate dependency lock and install
         shell: powershell
-        run: pnpm install --no-frozen-lockfile
+        run: |
+          pnpm install --no-frozen-lockfile
+          if (-not (Test-Path "pnpm-lock.yaml")) {
+            throw "pnpm did not generate pnpm-lock.yaml."
+          }
+
+      - name: Preserve generated dependency lock
+        uses: actions/upload-artifact@v4
+        with:
+          name: n5-pnpm-lock
+          path: pnpm-lock.yaml
+          if-no-files-found: error
+          retention-days: 1
 
       - name: Check public Subutai identity
         shell: powershell
