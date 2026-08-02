@@ -4,61 +4,8 @@ mod core_impl;
 pub use core_impl::{
     ENGINE_NAME, ENGINE_VERSION, JOURNAL_SCHEMA_VERSION, JobManifest, JobState, JournalError,
     JournalSnapshot, PlanError, Segment, SegmentState, StoreError, decode_manifest,
-    encode_manifest, is_supported_http_url,
+    encode_manifest, is_supported_http_url, plan_ranges,
 };
-
-pub fn plan_ranges(
-    total_size: u64,
-    requested_segments: u32,
-    minimum_segment_size: u64,
-) -> Result<Vec<Segment>, PlanError> {
-    if total_size == 0 {
-        return Err(PlanError::EmptyFile);
-    }
-    if requested_segments == 0 {
-        return Err(PlanError::ZeroSegments);
-    }
-    if minimum_segment_size == 0 {
-        return Err(PlanError::ZeroMinimumSegmentSize);
-    }
-
-    let complete_groups = total_size / minimum_segment_size;
-    let maximum_useful_segments = complete_groups
-        .checked_add(if total_size % minimum_segment_size == 0 {
-            0
-        } else {
-            1
-        })
-        .ok_or(PlanError::ArithmeticOverflow)?;
-    let segment_count = u64::from(requested_segments)
-        .min(maximum_useful_segments)
-        .max(1);
-    let base_length = total_size / segment_count;
-    let remainder = total_size % segment_count;
-    let capacity = usize::try_from(segment_count).map_err(|_| PlanError::ArithmeticOverflow)?;
-    let mut ranges = Vec::with_capacity(capacity);
-    let mut cursor = 0_u64;
-
-    for index in 0..segment_count {
-        let extra = if index < remainder { 1 } else { 0 };
-        let length = base_length
-            .checked_add(extra)
-            .ok_or(PlanError::ArithmeticOverflow)?;
-        let end_exclusive = cursor
-            .checked_add(length)
-            .ok_or(PlanError::ArithmeticOverflow)?;
-        ranges.push(Segment {
-            start: cursor,
-            end_exclusive,
-            completed_bytes: 0,
-            state: SegmentState::Pending,
-        });
-        cursor = end_exclusive;
-    }
-
-    debug_assert_eq!(cursor, total_size);
-    Ok(ranges)
-}
 
 #[derive(Debug, Clone)]
 pub struct JournalStore {

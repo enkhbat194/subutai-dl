@@ -30,7 +30,7 @@ pub enum IpcMessageKind {
 impl TryFrom<u8> for IpcMessageKind {
     type Error = IpcError;
 
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
+    fn try_from(value: u8) -> Result<Self, IpcError> {
         match value {
             1 => Ok(Self::Hello),
             2 => Ok(Self::HelloAck),

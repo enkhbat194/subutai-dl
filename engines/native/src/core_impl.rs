@@ -316,10 +316,14 @@ pub fn plan_ranges(
         return Err(PlanError::ZeroMinimumSegmentSize);
     }
 
-    let maximum_useful_segments = total_size
-        .checked_add(minimum_segment_size - 1)
-        .ok_or(PlanError::ArithmeticOverflow)?
-        / minimum_segment_size;
+    let complete_groups = total_size / minimum_segment_size;
+    let maximum_useful_segments = complete_groups
+        .checked_add(if total_size.is_multiple_of(minimum_segment_size) {
+            0
+        } else {
+            1
+        })
+        .ok_or(PlanError::ArithmeticOverflow)?;
     let segment_count = u64::from(requested_segments)
         .min(maximum_useful_segments)
         .max(1);
