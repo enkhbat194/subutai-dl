@@ -228,10 +228,22 @@ $result | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $OutputPath -Encodi
 $ErrorActionPreference = 'Stop'
 $entries = @(Get-Content -LiteralPath $InputPath -Raw | ConvertFrom-Json)
 foreach ($entry in $entries) {
-  if (Test-Path -LiteralPath ([string]$entry.key)) { Remove-Item -LiteralPath ([string]$entry.key) -Recurse -Force }
+  $providerPath = [string]$entry.key
+  if ($providerPath -notmatch '^HKCU:\\') { throw "Unexpected registry path in snapshot: $providerPath" }
+  $subKey = $providerPath -replace '^HKCU:\\', ''
+  try {
+    [Microsoft.Win32.Registry]::CurrentUser.DeleteSubKeyTree($subKey, $false)
+  } catch [System.ArgumentException] {
+    # The key was already absent.
+  }
   if ([bool]$entry.exists) {
-    New-Item -Path ([string]$entry.key) -Force | Out-Null
-    Set-Item -Path ([string]$entry.key) -Value ([string]$entry.value)
+    $key = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey($subKey)
+    if ($null -eq $key) { throw "Failed to recreate registry key: $providerPath" }
+    try {
+      $key.SetValue('', [string]$entry.value, [Microsoft.Win32.RegistryValueKind]::String)
+    } finally {
+      $key.Dispose()
+    }
   }
 }
 `);
