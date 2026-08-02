@@ -81,10 +81,6 @@ function Set-AcceptanceHarnessIdentity {
     -Before "Get-Process -Name 'Subutai Download Manager' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue" `
     -After "foreach (`$name in @('Subutai Download Manager', 'Subutai Real Update Acceptance')) { Get-Process -Name `$name -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue }" `
     -Label 'Acceptance process cleanup'
-  $content = Replace-ExactlyOnce -Content $content `
-    -Before "  New-Item -ItemType Directory -Force -Path `$installDir | Out-Null`r`n  `$process = Start-Process -FilePath ([string]`$BaselineBuild.setupPath) -ArgumentList @('/S', `"/D=`$installDir`") -PassThru -Wait" `
-    -After "  `$process = Start-Process -FilePath ([string]`$BaselineBuild.setupPath) -ArgumentList @('/S') -PassThru -Wait" `
-    -Label 'Acceptance baseline default install'
   Write-Utf8NoBom -Path $harness -Content $content
 }
 
