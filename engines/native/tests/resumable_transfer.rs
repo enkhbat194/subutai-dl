@@ -18,7 +18,8 @@ struct RangeServer {
     base_url: String,
     etag: Arc<Mutex<String>>,
     stop: Arc<AtomicBool>,
-    handle: Option<thread::JoinHandle<()>>,
+    accept_handle: Option<thread::JoinHandle<()>>,
+    connection_handles: Arc<Mutex<Vec<thread::JoinHandle<()>>>>,
 }
 
 impl RangeServer {
@@ -31,14 +32,29 @@ impl RangeServer {
         let data = Arc::new(data);
         let etag = Arc::new(Mutex::new("\"subutai-n2-v1\"".to_string()));
         let stop = Arc::new(AtomicBool::new(false));
+        let connection_handles = Arc::new(Mutex::new(Vec::new()));
         let thread_data = Arc::clone(&data);
         let thread_etag = Arc::clone(&etag);
         let thread_stop = Arc::clone(&stop);
-        let handle = thread::spawn(move || {
+        let thread_handles = Arc::clone(&connection_handles);
+        let accept_handle = thread::spawn(move || {
             while !thread_stop.load(Ordering::Acquire) {
                 match listener.accept() {
                     Ok((mut stream, _)) => {
-                        handle_request(&mut stream, &thread_data, &thread_etag);
+                        let connection_data = Arc::clone(&thread_data);
+                        let connection_etag = Arc::clone(&thread_etag);
+                        let handle = thread::spawn(move || {
+                            if let Err(error) =
+                                handle_request(&mut stream, &connection_data, &connection_etag)
+                                && !is_expected_disconnect(&error)
+                            {
+                                panic!("local range server connection failed: {error}");
+                            }
+                        });
+                        thread_handles
+                            .lock()
+                            .expect("connection handle lock")
+                            .push(handle);
                     }
                     Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
                         thread::sleep(Duration::from_millis(2));
@@ -51,7 +67,8 @@ impl RangeServer {
             base_url: format!("http://{address}"),
             etag,
             stop,
-            handle: Some(handle),
+            accept_handle: Some(accept_handle),
+            connection_handles,
         }
     }
 
@@ -67,8 +84,17 @@ impl RangeServer {
 impl Drop for RangeServer {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::Release);
-        if let Some(handle) = self.handle.take() {
-            handle.join().expect("range server join");
+        if let Some(handle) = self.accept_handle.take() {
+            handle.join().expect("range server accept join");
+        }
+        let handles = std::mem::take(
+            &mut *self
+                .connection_handles
+                .lock()
+                .expect("connection handle lock"),
+        );
+        for handle in handles {
+            handle.join().expect("range server connection join");
         }
     }
 }
@@ -163,8 +189,12 @@ fn refuses_resume_when_remote_validator_changes() {
     cleanup_store(&resume_journal_path(&destination));
 }
 
-fn handle_request(stream: &mut TcpStream, data: &[u8], etag: &Mutex<String>) {
-    let request = read_request(stream);
+fn handle_request(
+    stream: &mut TcpStream,
+    data: &[u8],
+    etag: &Mutex<String>,
+) -> std::io::Result<()> {
+    let request = read_request(stream)?;
     let mut lines = request.split("\r\n");
     let request_line = lines.next().expect("request line");
     let mut request_parts = request_line.split_whitespace();
@@ -192,8 +222,7 @@ fn handle_request(stream: &mut TcpStream, data: &[u8], etag: &Mutex<String>) {
     if method == "HEAD" {
         let mut response_headers = common.to_vec();
         response_headers.push(("Content-Length", data.len().to_string()));
-        write_response(stream, "200 OK", &response_headers, &[]);
-        return;
+        return write_response(stream, "200 OK", &response_headers, &[]);
     }
 
     assert_eq!(method, "GET");
@@ -203,8 +232,7 @@ fn handle_request(stream: &mut TcpStream, data: &[u8], etag: &Mutex<String>) {
     if !if_range_matches {
         let mut response_headers = common.to_vec();
         response_headers.push(("Content-Length", data.len().to_string()));
-        write_response(stream, "200 OK", &response_headers, data);
-        return;
+        return write_response(stream, "200 OK", &response_headers, data);
     }
 
     let (start, end) = parse_range(range, data.len());
@@ -215,7 +243,7 @@ fn handle_request(stream: &mut TcpStream, data: &[u8], etag: &Mutex<String>) {
         "Content-Range",
         format!("bytes {start}-{end}/{}", data.len()),
     ));
-    write_response(stream, "206 Partial Content", &response_headers, body);
+    write_response(stream, "206 Partial Content", &response_headers, body)
 }
 
 fn parse_range(value: &str, total: usize) -> (usize, usize) {
@@ -228,37 +256,61 @@ fn parse_range(value: &str, total: usize) -> (usize, usize) {
     (start, end)
 }
 
-fn read_request(stream: &mut TcpStream) -> String {
-    stream
-        .set_read_timeout(Some(Duration::from_secs(5)))
-        .expect("read timeout");
+fn read_request(stream: &mut TcpStream) -> std::io::Result<String> {
+    stream.set_read_timeout(Some(Duration::from_secs(5)))?;
     let mut bytes = Vec::new();
     let mut buffer = [0_u8; 4096];
     loop {
-        let read = stream.read(&mut buffer).expect("read request");
-        assert!(read > 0, "client closed before request headers completed");
+        let read = stream.read(&mut buffer)?;
+        if read == 0 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::UnexpectedEof,
+                "client closed before request headers completed",
+            ));
+        }
         bytes.extend_from_slice(&buffer[..read]);
         if bytes.windows(4).any(|window| window == b"\r\n\r\n") {
             break;
         }
         assert!(bytes.len() < 64 * 1024, "request headers are too large");
     }
-    String::from_utf8(bytes).expect("UTF-8 request")
+    String::from_utf8(bytes).map_err(|error| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("request is not UTF-8: {error}"),
+        )
+    })
 }
 
-fn write_response(stream: &mut TcpStream, status: &str, headers: &[(&str, String)], body: &[u8]) {
-    write!(stream, "HTTP/1.1 {status}\r\n").expect("status");
+fn write_response(
+    stream: &mut TcpStream,
+    status: &str,
+    headers: &[(&str, String)],
+    body: &[u8],
+) -> std::io::Result<()> {
+    write!(stream, "HTTP/1.1 {status}\r\n")?;
     for (name, value) in headers {
-        write!(stream, "{name}: {value}\r\n").expect("header");
+        write!(stream, "{name}: {value}\r\n")?;
     }
-    write!(stream, "\r\n").expect("header end");
+    write!(stream, "\r\n")?;
     for chunk in body.chunks(16 * 1024) {
-        stream.write_all(chunk).expect("response body chunk");
-        stream.flush().expect("flush response chunk");
+        stream.write_all(chunk)?;
+        stream.flush()?;
         if body.len() > 1 {
             thread::sleep(Duration::from_millis(1));
         }
     }
+    Ok(())
+}
+
+fn is_expected_disconnect(error: &std::io::Error) -> bool {
+    matches!(
+        error.kind(),
+        std::io::ErrorKind::BrokenPipe
+            | std::io::ErrorKind::ConnectionReset
+            | std::io::ErrorKind::ConnectionAborted
+            | std::io::ErrorKind::UnexpectedEof
+    )
 }
 
 fn test_data(length: usize) -> Vec<u8> {
