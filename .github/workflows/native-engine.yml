@@ -13,6 +13,7 @@ on:
       - "scripts/dependency-lock-policy-test.mjs"
       - "scripts/integrity-policy-test.mts"
       - "scripts/mirror-policy-test.mts"
+      - "scripts/apply-n5-mirror-type-fix.mjs"
       - "scripts/validate-windows-package.ps1"
       - "rust-toolchain.toml"
       - "package.json"
@@ -33,6 +34,7 @@ on:
       - "scripts/dependency-lock-policy-test.mjs"
       - "scripts/integrity-policy-test.mts"
       - "scripts/mirror-policy-test.mts"
+      - "scripts/apply-n5-mirror-type-fix.mjs"
       - "scripts/validate-windows-package.ps1"
       - "rust-toolchain.toml"
       - "package.json"
@@ -48,7 +50,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   native-engine:
@@ -59,11 +61,35 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
+
+      - name: Apply mirror integrity result type fix
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        shell: powershell
+        env:
+          HEAD_BRANCH: ${{ github.head_ref }}
+        run: |
+          node scripts/apply-n5-mirror-type-fix.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/desktop/src/main/subutai-runtime.ts
+          git diff --cached --quiet
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "Mirror integrity result type is already current."
+          } else {
+            git commit -m "Return the mirror integrity verification result explicitly"
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            git push origin "HEAD:$env:HEAD_BRANCH"
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
 
       - name: Install pinned Rust toolchain
         shell: powershell
