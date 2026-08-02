@@ -9,6 +9,7 @@ on:
       - "docs/NATIVE_ENGINE_IPC.md"
       - "docs/PROJECT_STATUS.md"
       - "scripts/native-engine-policy-test.mjs"
+      - "scripts/apply-n4-runtime-cleanup.mjs"
       - "rust-toolchain.toml"
       - "package.json"
       - "pnpm-lock.yaml"
@@ -23,6 +24,7 @@ on:
       - "docs/NATIVE_ENGINE_IPC.md"
       - "docs/PROJECT_STATUS.md"
       - "scripts/native-engine-policy-test.mjs"
+      - "scripts/apply-n4-runtime-cleanup.mjs"
       - "rust-toolchain.toml"
       - "package.json"
       - "pnpm-lock.yaml"
@@ -55,6 +57,26 @@ jobs:
         with:
           node-version: 22
 
+      - name: Apply N4 desktop runtime cleanup
+        shell: powershell
+        run: |
+          node scripts/apply-n4-runtime-cleanup.mjs
+          Remove-Item scripts/apply-n4-runtime-cleanup.mjs
+
+      - name: Save N4 desktop runtime cleanup
+        shell: powershell
+        run: |
+          $changes = git status --porcelain
+          if ([string]::IsNullOrWhiteSpace($changes)) {
+            Write-Host "N4 desktop runtime cleanup is already applied."
+            exit 0
+          }
+          git config user.name "Subutai Automation"
+          git config user.email "subutai-automation@users.noreply.github.com"
+          git add -A
+          git commit -m "Remove legacy direct download runtime cleanup"
+          git push origin "HEAD:${{ github.head_ref || github.ref_name }}"
+
       - name: Install pinned Rust toolchain
         shell: powershell
         run: |
@@ -70,37 +92,6 @@ jobs:
           rustup default 1.97.1
           rustc --version --verbose
           cargo --version
-
-      - name: Apply N4 Rust compile fix
-        shell: powershell
-        run: |
-          $path = "engines/native/src/desktop_protocol.rs"
-          $text = [System.IO.File]::ReadAllText($path)
-          $before = 'fn try_from(value: u8) -> Result<Self, Self::Error> {'
-          $after = 'fn try_from(value: u8) -> Result<Self, DesktopProtocolError> {'
-          if (-not $text.Contains($before)) {
-            Write-Host "N4 associated type fix is already applied."
-          } else {
-            [System.IO.File]::WriteAllText($path, $text.Replace($before, $after), (New-Object System.Text.UTF8Encoding($false)))
-          }
-
-      - name: Format N4 native sources
-        shell: powershell
-        run: cargo fmt --manifest-path engines/native/Cargo.toml --all
-
-      - name: Save N4 native source fixes
-        shell: powershell
-        run: |
-          $changes = git status --porcelain -- engines/native
-          if ([string]::IsNullOrWhiteSpace($changes)) {
-            Write-Host "N4 native source is already clean."
-            exit 0
-          }
-          git config user.name "Subutai Automation"
-          git config user.email "subutai-automation@users.noreply.github.com"
-          git add engines/native
-          git commit -m "Fix N4 desktop engine compile contract"
-          git push origin "HEAD:${{ github.head_ref || github.ref_name }}"
 
       - name: Verify Subutai ownership policy
         shell: powershell
