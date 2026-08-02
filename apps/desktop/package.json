@@ -45,7 +45,7 @@
       {
         "from": "resources/engines/win32-x64",
         "to": "engines",
-        "filter": ["**/*", "!aria2c.exe"]
+        "filter": ["**/*"]
       },
       {
         "from": "../../engines/native/target/release/subutai-engine-host.exe",
