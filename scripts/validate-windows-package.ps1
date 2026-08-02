@@ -55,12 +55,28 @@ $engineDir = Join-Path $unpackedDir "resources\engines"
 if (-not (Test-Path $appExecutable)) {
   throw "Unpacked Subutai executable was not found: $appExecutable"
 }
+if (-not (Test-Path $engineDir)) {
+  throw "Packaged engine directory was not found: $engineDir"
+}
 
-foreach ($engine in @("aria2c.exe", "yt-dlp.exe", "ffmpeg.exe")) {
+$requiredEngines = @(
+  "subutai-engine-host.exe",
+  "yt-dlp.exe",
+  "ffmpeg.exe"
+)
+foreach ($engine in $requiredEngines) {
   $enginePath = Join-Path $engineDir $engine
   if (-not (Test-Path $enginePath)) {
     throw "Packaged engine is missing: $enginePath"
   }
+  if ((Get-Item $enginePath).Length -lt 64KB) {
+    throw "Packaged engine is unexpectedly small: $enginePath"
+  }
+}
+
+$legacyDirectEngine = Join-Path $engineDir "aria2c.exe"
+if (Test-Path $legacyDirectEngine) {
+  throw "Legacy direct-download engine must not be packaged: $legacyDirectEngine"
 }
 
 $checksumTargets = @($setupFiles[0], $portableFiles[0], (Get-Item $latestFile)) + $blockmaps
@@ -121,5 +137,7 @@ if ($LaunchSmoke) {
 Write-Host "Subutai Windows package validation passed."
 Write-Host "Setup: $($setupFiles[0].Name)"
 Write-Host "Portable: $($portableFiles[0].Name)"
+Write-Host "Native direct engine: subutai-engine-host.exe"
+Write-Host "Temporary media tools: yt-dlp.exe, ffmpeg.exe"
 Write-Host "Manifest: latest.yml"
 Write-Host "Checksums: SHA256SUMS.txt"

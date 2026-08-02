@@ -9,12 +9,15 @@ on:
       - "docs/NATIVE_ENGINE_IPC.md"
       - "docs/PROJECT_STATUS.md"
       - "scripts/native-engine-policy-test.mjs"
+      - "scripts/release-engine-policy-test.mjs"
+      - "scripts/validate-windows-package.ps1"
       - "rust-toolchain.toml"
       - "package.json"
       - "pnpm-lock.yaml"
       - "apps/**"
       - "packages/**"
       - ".github/workflows/native-engine.yml"
+      - ".github/workflows/release.yml"
   pull_request:
     branches: [main]
     paths:
@@ -23,12 +26,15 @@ on:
       - "docs/NATIVE_ENGINE_IPC.md"
       - "docs/PROJECT_STATUS.md"
       - "scripts/native-engine-policy-test.mjs"
+      - "scripts/release-engine-policy-test.mjs"
+      - "scripts/validate-windows-package.ps1"
       - "rust-toolchain.toml"
       - "package.json"
       - "pnpm-lock.yaml"
       - "apps/**"
       - "packages/**"
       - ".github/workflows/native-engine.yml"
+      - ".github/workflows/release.yml"
   workflow_dispatch:
 
 concurrency:
@@ -106,6 +112,10 @@ jobs:
       - name: Check public Subutai identity
         shell: powershell
         run: pnpm test:brand
+
+      - name: Check release engine packaging policy
+        shell: powershell
+        run: pnpm test:release-engine
 
       - name: Typecheck desktop and browser integration
         shell: powershell
