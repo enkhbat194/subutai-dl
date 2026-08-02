@@ -30,7 +30,9 @@ struct ProxyServer {
 impl ProxyServer {
     fn start(data: Vec<u8>) -> Self {
         let listener = TcpListener::bind("127.0.0.1:0").expect("bind proxy server");
-        listener.set_nonblocking(true).expect("set proxy nonblocking");
+        listener
+            .set_nonblocking(true)
+            .expect("set proxy nonblocking");
         let address = listener.local_addr().expect("proxy address");
         let data = Arc::new(data);
         let stop = Arc::new(AtomicBool::new(false));
@@ -196,7 +198,9 @@ fn wait_for_state(events: &Receiver<IpcFrame>, expected: DesktopTaskState) -> De
 
 fn read_frame(input: &mut impl Read) -> Result<IpcFrame, String> {
     let mut prefix = [0_u8; 4];
-    input.read_exact(&mut prefix).map_err(|error| error.to_string())?;
+    input
+        .read_exact(&mut prefix)
+        .map_err(|error| error.to_string())?;
     let body_length = u32::from_le_bytes(prefix) as usize;
     let mut encoded = Vec::with_capacity(body_length + 4);
     encoded.extend_from_slice(&prefix);
@@ -240,7 +244,10 @@ fn handle_proxy_request(mut stream: TcpStream, data: &[u8]) -> io::Result<()> {
         return write_response(&mut stream, "200 OK", &response_headers, &[]);
     }
     if method != "GET" {
-        return Err(io::Error::new(io::ErrorKind::InvalidData, "unexpected method"));
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "unexpected method",
+        ));
     }
     let range = header("range")
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "missing range"))?;
@@ -260,7 +267,10 @@ fn read_request(stream: &mut TcpStream) -> io::Result<String> {
     loop {
         let read = stream.read(&mut buffer)?;
         if read == 0 {
-            return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "request ended"));
+            return Err(io::Error::new(
+                io::ErrorKind::UnexpectedEof,
+                "request ended",
+            ));
         }
         bytes.extend_from_slice(&buffer[..read]);
         if bytes.windows(4).any(|window| window == b"\r\n\r\n") {
@@ -268,7 +278,10 @@ fn read_request(stream: &mut TcpStream) -> io::Result<String> {
                 .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "request encoding"));
         }
         if bytes.len() > 64 * 1024 {
-            return Err(io::Error::new(io::ErrorKind::InvalidData, "request too large"));
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "request too large",
+            ));
         }
     }
 }
@@ -302,7 +315,10 @@ fn parse_range(value: &str, total: usize) -> io::Result<(usize, usize)> {
         .parse::<usize>()
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "invalid end"))?;
     if start > end || end >= total {
-        return Err(io::Error::new(io::ErrorKind::InvalidData, "range outside file"));
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "range outside file",
+        ));
     }
     Ok((start, end))
 }
