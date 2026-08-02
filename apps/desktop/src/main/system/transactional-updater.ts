@@ -43,6 +43,7 @@ export function installTransactionalUpdaterGuard(): void {
   });
 
   autoUpdater.on('update-downloaded', (info) => {
+    autoUpdater.autoInstallOnAppQuit = false;
     const event = info as typeof info & { downloadedFile?: string };
     downloadedInstallerPath = event.downloadedFile?.trim() ?? '';
     downloadedVersion = info.version;
