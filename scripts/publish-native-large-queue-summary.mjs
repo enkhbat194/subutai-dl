@@ -9,6 +9,20 @@ const configuration = report.configuration;
 const large = report.largeFile;
 const queue = report.queue;
 
+for (const [condition, message] of [
+  [large.processSamples >= 2, 'large-file benchmark did not collect at least two process samples'],
+  [large.peakWorkingSetBytes > 0, 'large-file working-set telemetry is empty'],
+  [large.peakHandleCount > 0, 'large-file handle telemetry is empty'],
+  [queue.aggregateProcessSamples >= 2, 'queue benchmark did not collect at least two aggregate process samples'],
+  [queue.peakAggregateWorkingSetBytes > 0, 'queue aggregate working-set telemetry is empty'],
+  [queue.peakAggregatePrivateBytes > 0, 'queue aggregate private-memory telemetry is empty'],
+  [queue.peakAggregateHandleCount > 0, 'queue aggregate handle telemetry is empty'],
+  [queue.peakActiveProcesses === configuration.concurrency, 'queue never reached the configured concurrency'],
+  [queue.completedJobs === configuration.queueJobs, 'queue did not complete every configured job'],
+]) {
+  if (!condition) throw new Error(`Subutai large/queue telemetry validation failed: ${message}.`);
+}
+
 const markdown = [
   '## Subutai native large-file and queue benchmark',
   '',
@@ -16,11 +30,13 @@ const markdown = [
   '|---|---:|',
   `| Large file | ${formatBytes(configuration.largeBytes)} |`,
   `| Large-file throughput | ${formatRate(large.throughputBytesPerSecond)} |`,
+  `| Large-file process samples | ${large.processSamples} |`,
   `| Large-file peak working set | ${formatBytes(large.peakWorkingSetBytes)} |`,
   `| Large-file peak handles | ${large.peakHandleCount} |`,
   `| Queue jobs | ${configuration.queueJobs} |`,
   `| Queue bytes per job | ${formatBytes(configuration.queueBytesPerJob)} |`,
   `| Queue concurrency | ${configuration.concurrency} |`,
+  `| Queue aggregate samples | ${queue.aggregateProcessSamples} |`,
   `| Queue aggregate throughput | ${formatRate(queue.aggregateThroughputBytesPerSecond)} |`,
   `| Queue peak active processes | ${queue.peakActiveProcesses} |`,
   `| Queue peak aggregate working set | ${formatBytes(queue.peakAggregateWorkingSetBytes)} |`,
