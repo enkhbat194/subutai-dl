@@ -4,6 +4,7 @@
     "jsx": "react-jsx",
     "types": ["node", "react", "react-dom", "vite/client"],
     "baseUrl": ".",
+    "allowImportingTsExtensions": true,
     "paths": {
       "@subutai/shared": ["src/shared-bridge.ts"]
     }
