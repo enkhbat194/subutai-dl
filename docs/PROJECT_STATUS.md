@@ -38,7 +38,7 @@ Final Subutai releases must not require a third-party download or media executab
 |---|---|---:|---:|---:|
 | N0 | State, range planning, durable journal and desktop/engine protocol | Complete | PASS | PR #15 |
 | N1 | HTTP/HTTPS probe and safe single-stream transfer | Complete | PASS | PR #16 |
-| N2 | Segmented transfer, pause/resume and validator-safe recovery | Complete | PASS | PR #17 pending merge |
+| N2 | Segmented transfer, pause/resume and validator-safe recovery | Complete | PASS | PR #17 |
 | N3 | Adaptive connections and dynamic chunking | Pending | Pending | Pending |
 | N4 | Replace the desktop direct-download path | Pending | Pending | Pending |
 | N5 | Production acceptance and old-engine removal | Pending | Pending | Pending |
