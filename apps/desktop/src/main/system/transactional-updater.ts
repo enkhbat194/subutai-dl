@@ -2,6 +2,7 @@ import { app } from 'electron';
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import electronUpdater from 'electron-updater';
+import { realUpdateAcceptanceTransactionOptions } from './real-update-acceptance';
 import {
   armUpdateTransaction,
   launchUpdateWatchdog,
@@ -67,6 +68,7 @@ export function installTransactionalUpdaterGuard(): void {
         downloadedInstallerPath,
         installedExecutablePath: process.execPath,
         watchdogSourcePath: watchdogSourcePath(),
+        ...realUpdateAcceptanceTransactionOptions(),
       });
       const armed = await armUpdateTransaction();
       if (await sha256File(downloadedInstallerPath) !== armed.targetInstallerSha256) {
