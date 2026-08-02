@@ -212,7 +212,10 @@ fn handle_request(
                 std::io::ErrorKind::BrokenPipe
                     | std::io::ErrorKind::ConnectionReset
                     | std::io::ErrorKind::ConnectionAborted
-            ) => Ok(()),
+            ) =>
+        {
+            Ok(())
+        }
         Err(error) => Err(error),
     }
 }
