@@ -5,6 +5,11 @@ const root = process.cwd();
 const resilience = readFileSync(join(root, 'scripts', 'resilience-download-test.mjs'), 'utf8');
 const soak = readFileSync(join(root, 'scripts', 'native-soak-benchmark.mjs'), 'utf8');
 const soakSummary = readFileSync(join(root, 'scripts', 'publish-native-soak-summary.mjs'), 'utf8');
+const largeQueue = readFileSync(join(root, 'scripts', 'native-large-queue-benchmark.mjs'), 'utf8');
+const largeQueueSummary = readFileSync(
+  join(root, 'scripts', 'publish-native-large-queue-summary.mjs'),
+  'utf8',
+);
 const acceptance = readFileSync(join(root, 'scripts', 'n5-windows-acceptance.ps1'), 'utf8');
 const mediaInstaller = readFileSync(
   join(root, 'scripts', 'install-temporary-media-tools.ps1'),
@@ -48,6 +53,31 @@ for (const required of [
 }
 
 for (const required of [
+  'SUBUTAI_BENCHMARK_LARGE_MIB',
+  'SUBUTAI_BENCHMARK_QUEUE_JOBS',
+  'SUBUTAI_BENCHMARK_QUEUE_MIB',
+  'SUBUTAI_BENCHMARK_CONCURRENCY',
+  'peakAggregateWorkingSetBytes',
+  'peakAggregatePrivateBytes',
+  'peakAggregateHandleCount',
+  'aggregateProcessSamples',
+  'assertNoRecoveryFiles',
+  'native-large-queue-report.json',
+]) {
+  requireText(largeQueue, required, 'Native large-file and queue benchmark');
+}
+for (const required of [
+  'GITHUB_STEP_SUMMARY',
+  'SUBUTAI_NATIVE_LARGE_QUEUE_REPORT_BEGIN',
+  'queue.aggregateProcessSamples >= 2',
+  'queue.peakAggregateWorkingSetBytes > 0',
+  'queue.peakAggregateHandleCount > 0',
+  'Machine-readable JSON report',
+]) {
+  requireText(largeQueueSummary, required, 'Native large-file and queue summary publisher');
+}
+
+for (const required of [
   'Portable package launch acceptance passed.',
   'Installed Setup launch and browser bridge registration passed.',
   'Uninstall and browser bridge cleanup acceptance passed.',
@@ -76,6 +106,8 @@ for (const required of [
   'pnpm test:resilience',
   'pnpm test:native-soak',
   'publish-native-soak-summary.mjs',
+  'pnpm test:native-large-queue',
+  'publish-native-large-queue-summary.mjs',
   'cargo build --release --manifest-path engines/native/Cargo.toml --bin subutai-engine',
   'pnpm test:production-acceptance',
   './scripts/install-temporary-media-tools.ps1',
@@ -87,8 +119,16 @@ for (const required of [
 
 requireText(releaseWorkflow, 'SUBUTAI_SOAK_ITERATIONS: 16', 'Stable release extended soak');
 requireText(releaseWorkflow, 'SUBUTAI_SOAK_MIB: 32', 'Stable release extended soak');
+requireText(releaseWorkflow, 'SUBUTAI_BENCHMARK_LARGE_MIB: 512', 'Stable release large-file benchmark');
+requireText(releaseWorkflow, 'SUBUTAI_BENCHMARK_QUEUE_JOBS: 32', 'Stable release queue benchmark');
+requireText(releaseWorkflow, 'SUBUTAI_BENCHMARK_QUEUE_MIB: 16', 'Stable release queue benchmark');
+requireText(releaseWorkflow, 'SUBUTAI_BENCHMARK_CONCURRENCY: 8', 'Stable release queue benchmark');
 requireText(acceptanceWorkflow, 'SUBUTAI_SOAK_ITERATIONS: 8', 'N5 acceptance soak');
 requireText(acceptanceWorkflow, 'SUBUTAI_SOAK_MIB: 8', 'N5 acceptance soak');
+requireText(acceptanceWorkflow, 'SUBUTAI_BENCHMARK_LARGE_MIB: 128', 'N5 large-file benchmark');
+requireText(acceptanceWorkflow, 'SUBUTAI_BENCHMARK_QUEUE_JOBS: 12', 'N5 queue benchmark');
+requireText(acceptanceWorkflow, 'SUBUTAI_BENCHMARK_QUEUE_MIB: 16', 'N5 queue benchmark');
+requireText(acceptanceWorkflow, 'SUBUTAI_BENCHMARK_CONCURRENCY: 3', 'N5 queue benchmark');
 
 if (/\bchoco(?:latey)?\b/iu.test(releaseWorkflow) || /\bchoco(?:latey)?\b/iu.test(acceptanceWorkflow)) {
   throw new Error('Release and acceptance workflows must use checksum-verified pinned media provisioning.');
@@ -103,4 +143,4 @@ if (acceptanceWorkflow.includes('softprops/action-gh-release')) {
   throw new Error('N5 acceptance workflow must not publish a release.');
 }
 
-console.log('Subutai N5 production acceptance policy passed: native soak telemetry, resilience, pinned media tools, Setup/Portable, browser bridge, uninstall and stable release gating.');
+console.log('Subutai N5 production acceptance policy passed: native soak, large-file/queue telemetry, resilience, pinned media tools, Setup/Portable, browser bridge, uninstall and stable release gating.');
