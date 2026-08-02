@@ -13,7 +13,7 @@ on:
       - "scripts/dependency-lock-policy-test.mjs"
       - "scripts/integrity-policy-test.mts"
       - "scripts/mirror-policy-test.mts"
-      - "scripts/apply-n5-failure-injection.mjs"
+      - "scripts/apply-n5-failure-test-fix.mjs"
       - "scripts/validate-windows-package.ps1"
       - "rust-toolchain.toml"
       - "package.json"
@@ -34,7 +34,7 @@ on:
       - "scripts/dependency-lock-policy-test.mjs"
       - "scripts/integrity-policy-test.mts"
       - "scripts/mirror-policy-test.mts"
-      - "scripts/apply-n5-failure-injection.mjs"
+      - "scripts/apply-n5-failure-test-fix.mjs"
       - "scripts/validate-windows-package.ps1"
       - "rust-toolchain.toml"
       - "package.json"
@@ -89,24 +89,24 @@ jobs:
           rustc --version --verbose
           cargo --version
 
-      - name: Apply N5 failure-injection migration
+      - name: Apply failure-test connection fix
         if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
         shell: powershell
         env:
           HEAD_BRANCH: ${{ github.head_ref }}
         run: |
-          node scripts/apply-n5-failure-injection.mjs
+          node scripts/apply-n5-failure-test-fix.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cargo fmt --manifest-path engines/native/Cargo.toml --all
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add engines/native/Cargo.toml engines/native/src/lib.rs engines/native/src/resumable.rs engines/native/src/streaming_fallback.rs engines/native/src/failure_injection.rs engines/native/tests/failure_injection.rs package.json
+          git add engines/native/tests/failure_injection.rs
           git diff --cached --quiet
           if ($LASTEXITCODE -eq 0) {
-            Write-Host "N5 failure-injection migration is already applied."
+            Write-Host "Failure-test connection policy is already current."
           } else {
-            git commit -m "Wire deterministic native disk failure injection"
+            git commit -m "Align failure tests with a single native connection"
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
             git push origin "HEAD:$env:HEAD_BRANCH"
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
