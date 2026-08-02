@@ -388,7 +388,9 @@ fn set_proxy_credentials(
     .into_iter()
     .find(|scheme| supported & scheme != 0)
     .or_else(|| (first != 0).then_some(first))
-    .ok_or_else(|| TransferError::Protocol("proxy offered no supported authentication scheme".into()))?;
+    .ok_or_else(|| {
+        TransferError::Protocol("proxy offered no supported authentication scheme".into())
+    })?;
     let username = wide(username);
     let password = wide(password);
     check(

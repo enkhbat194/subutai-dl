@@ -24,7 +24,6 @@ pub use resumable::{
 };
 pub use transfer::{
     DownloadRequest, DownloadResult, HttpProbe, RequestHeader, TransferError, TransferProgress,
-    download_file, download_file_with_progress, partial_path, probe_url,
-    probe_url_with_settings,
+    download_file, download_file_with_progress, partial_path, probe_url, probe_url_with_settings,
 };
 pub use transport_settings::{ProxyMode, TransportSettings};

@@ -12,8 +12,7 @@ use crate::platform;
 use crate::platform::ResponseReader;
 use crate::sha256::Sha256;
 use crate::transfer::{
-    DownloadResult, HttpProbe, RequestHeader, TransferError, partial_path,
-    probe_url_with_settings,
+    DownloadResult, HttpProbe, RequestHeader, TransferError, partial_path, probe_url_with_settings,
 };
 use crate::transport_settings::{SharedRateLimiter, TransportSettings};
 use crate::{JobManifest, JobState, JournalStore, SegmentState, StoreError, plan_ranges};
@@ -376,7 +375,10 @@ fn validate_request(request: &SegmentedDownloadRequest) -> Result<(), TransferEr
         .adaptive
         .validate(request.requested_segments as usize)
         .map_err(TransferError::Protocol)?;
-    request.transport.validate().map_err(TransferError::Protocol)?;
+    request
+        .transport
+        .validate()
+        .map_err(TransferError::Protocol)?;
     for header in &request.headers {
         if header.name.eq_ignore_ascii_case("range") || header.name.eq_ignore_ascii_case("if-range")
         {
@@ -412,12 +414,8 @@ fn probe_segment_support_once(
         probe_url_with_settings(&request.url, &request.headers, &request.transport)?;
     let mut range_headers = request.headers.clone();
     range_headers.push(RequestHeader::new("Range", "bytes=0-0")?);
-    let response = platform::open_response(
-        "GET",
-        &request.url,
-        &range_headers,
-        &request.transport,
-    )?;
+    let response =
+        platform::open_response("GET", &request.url, &range_headers, &request.transport)?;
     let range_probe = response.metadata().clone();
     if range_probe.status_code != 206 {
         return Err(TransferError::ByteRangesUnsupported);
@@ -754,8 +752,7 @@ fn run_segment_attempt(
     }
 
     let attempt_started = Instant::now();
-    let mut response =
-        platform::open_response("GET", &request.url, &headers, &request.transport)?;
+    let mut response = platform::open_response("GET", &request.url, &headers, &request.transport)?;
     let metadata = response.metadata().clone();
     if metadata.status_code == 200 && if_range_validator(probe).is_some() {
         return Err(TransferError::RemoteChanged(

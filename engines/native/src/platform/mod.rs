@@ -2,10 +2,10 @@
 use std::path::Path;
 
 #[cfg(not(windows))]
+use crate::TransportSettings;
+#[cfg(not(windows))]
 use crate::transfer::RequestHeader;
 use crate::transfer::{HttpProbe, TransferError};
-#[cfg(not(windows))]
-use crate::TransportSettings;
 
 #[cfg(windows)]
 mod windows;

@@ -107,8 +107,8 @@ pub fn decode_start_request(input: &[u8]) -> Result<DesktopStartRequest, Desktop
     let maximum_connections = cursor.read_u32()?;
     let minimum_chunk_bytes = cursor.read_u64()?;
     let checkpoint_bytes = cursor.read_u64()?;
-    let proxy_mode = ProxyMode::try_from(cursor.read_u8()?)
-        .map_err(DesktopProtocolError::InvalidValue)?;
+    let proxy_mode =
+        ProxyMode::try_from(cursor.read_u8()?).map_err(DesktopProtocolError::InvalidValue)?;
     let proxy_url = cursor.read_string()?;
     let proxy_username = cursor.read_string()?;
     let proxy_password = cursor.read_string()?;

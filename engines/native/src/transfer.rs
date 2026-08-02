@@ -290,13 +290,12 @@ where
         return Err(TransferError::PartialFileExists(partial));
     }
 
-    request.transport.validate().map_err(TransferError::Protocol)?;
-    let mut response = platform::open_response(
-        "GET",
-        &request.url,
-        &request.headers,
-        &request.transport,
-    )?;
+    request
+        .transport
+        .validate()
+        .map_err(TransferError::Protocol)?;
+    let mut response =
+        platform::open_response("GET", &request.url, &request.headers, &request.transport)?;
     let metadata = response.metadata().clone();
     if !(200..300).contains(&metadata.status_code) {
         return Err(TransferError::HttpStatus(metadata.status_code));
