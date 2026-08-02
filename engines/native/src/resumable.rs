@@ -149,10 +149,10 @@ where
     };
 
     if request.destination.exists() {
-        if let Some(snapshot) = snapshot {
-            if snapshot.manifest.all_segments_complete() {
-                return recover_completed_download(request, &store, &partial, snapshot.manifest);
-            }
+        if let Some(snapshot) = snapshot
+            && snapshot.manifest.all_segments_complete()
+        {
+            return recover_completed_download(request, &store, &partial, snapshot.manifest);
         }
         return Err(TransferError::DestinationExists(
             request.destination.clone(),
