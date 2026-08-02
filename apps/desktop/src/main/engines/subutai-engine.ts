@@ -5,8 +5,8 @@ import type {
   SubutaiEngineHealth,
   TransferSettings,
 } from '@subutai/shared';
-import { Aria2Service } from './aria2-service';
 import { MediaService } from './media-service';
+import { NativeEngineService } from './native-engine-service';
 import { toPublicError } from './public-error';
 
 export interface SubutaiTaskStatus {
@@ -38,7 +38,7 @@ function mediaId(taskId: string): string {
 }
 
 export class SubutaiEngine {
-  private readonly directEngine = new Aria2Service();
+  private readonly directEngine = new NativeEngineService();
   private readonly mediaEngine = new MediaService();
 
   async configureTransfer(settings: TransferSettings, proxyPassword: string): Promise<void> {
