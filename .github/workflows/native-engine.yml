@@ -33,10 +33,10 @@ on:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   native-engine:
@@ -45,8 +45,10 @@ jobs:
     timeout-minutes: 60
 
     steps:
-      - name: Checkout
+      - name: Checkout N4 source branch
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref || github.ref_name }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -68,6 +70,24 @@ jobs:
           rustup default 1.97.1
           rustc --version --verbose
           cargo --version
+
+      - name: Format N4 native sources
+        shell: powershell
+        run: cargo fmt --manifest-path engines/native/Cargo.toml --all
+
+      - name: Save N4 formatter changes
+        shell: powershell
+        run: |
+          $changes = git status --porcelain -- engines/native
+          if ([string]::IsNullOrWhiteSpace($changes)) {
+            Write-Host "N4 formatting is already clean."
+            exit 0
+          }
+          git config user.name "Subutai Automation"
+          git config user.email "subutai-automation@users.noreply.github.com"
+          git add engines/native
+          git commit -m "Format N4 desktop engine sources"
+          git push origin "HEAD:${{ github.head_ref || github.ref_name }}"
 
       - name: Verify Subutai ownership policy
         shell: powershell
