@@ -32,15 +32,21 @@ jobs:
         shell: pwsh
         run: |
           rustup toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           rustup default 1.97.1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           rustc --version --verbose
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cargo --version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Enable pnpm
         shell: pwsh
         run: |
           corepack enable
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           pnpm --version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Validate release tag and package versions
         shell: pwsh
@@ -58,14 +64,23 @@ jobs:
         shell: pwsh
         run: |
           pnpm test:native-engine
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           pnpm test:release-engine
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           pnpm test:dependency-lock
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           pnpm test:integrity
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           pnpm test:brand
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           pnpm test:production-acceptance
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           pnpm typecheck
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           pnpm test:system
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           pnpm test:failure-policy
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Run native process and network resilience
         shell: pwsh
