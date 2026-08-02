@@ -1,7 +1,9 @@
 #[cfg(not(windows))]
 use std::path::Path;
 
-use crate::transfer::{HttpProbe, RequestHeader, TransferError};
+use crate::transfer::{HttpProbe, TransferError};
+#[cfg(not(windows))]
+use crate::transfer::RequestHeader;
 
 #[cfg(windows)]
 mod windows;
