@@ -210,6 +210,7 @@ fn request_without_failure(
 ) -> SegmentedDownloadRequest {
     let mut request = SegmentedDownloadRequest::new(job_id, url, destination);
     request.requested_segments = 1;
+    request.adaptive.minimum_connections = 1;
     request.minimum_segment_size = 2 * 1024 * 1024;
     request.checkpoint_bytes = 64 * 1024;
     request.transport.retry_max_attempts = 4;
