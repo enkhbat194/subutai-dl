@@ -37,7 +37,9 @@ where
     };
 
     if request.destination.exists() {
-        return Err(TransferError::DestinationExists(request.destination.clone()));
+        return Err(TransferError::DestinationExists(
+            request.destination.clone(),
+        ));
     }
 
     let probe = probe_with_retries(request)?;
@@ -121,7 +123,9 @@ where
                 });
             }
             Ok(StreamAttempt::Cancelled) => return Ok(SegmentedOutcome::Cancelled),
-            Err(error) if is_retryable(&error) && attempt < request.transport.retry_max_attempts => {
+            Err(error)
+                if is_retryable(&error) && attempt < request.transport.retry_max_attempts =>
+            {
                 last_error = Some(error);
                 reset_for_retry(&store, &partial, total_size, &mut manifest)?;
                 thread::sleep(request.transport.retry_delay(attempt));
@@ -224,9 +228,9 @@ where
         downloaded = downloaded
             .checked_add(read as u64)
             .ok_or_else(|| TransferError::Protocol("fallback progress overflowed".into()))?;
-        remaining = remaining
-            .checked_sub(read as u64)
-            .ok_or_else(|| TransferError::Protocol("fallback response exceeded expected size".into()))?;
+        remaining = remaining.checked_sub(read as u64).ok_or_else(|| {
+            TransferError::Protocol("fallback response exceeded expected size".into())
+        })?;
 
         let state = if remaining == 0 {
             SegmentState::Completed
@@ -247,8 +251,8 @@ where
 
         let elapsed = started.elapsed();
         let nanos = elapsed.as_nanos().max(1);
-        let bytes_per_second = ((u128::from(downloaded) * 1_000_000_000) / nanos)
-            .min(u128::from(u64::MAX)) as u64;
+        let bytes_per_second =
+            ((u128::from(downloaded) * 1_000_000_000) / nanos).min(u128::from(u64::MAX)) as u64;
         progress(SegmentedProgress {
             downloaded_bytes: downloaded,
             total_bytes: total_size,
@@ -284,7 +288,9 @@ fn probe_with_retries(request: &SegmentedDownloadRequest) -> Result<HttpProbe, T
     for attempt in 1..=request.transport.retry_max_attempts {
         match probe_url_with_settings(&request.url, &request.headers, &request.transport) {
             Ok(probe) => return Ok(probe),
-            Err(error) if is_retryable(&error) && attempt < request.transport.retry_max_attempts => {
+            Err(error)
+                if is_retryable(&error) && attempt < request.transport.retry_max_attempts =>
+            {
                 last_error = Some(error);
                 thread::sleep(request.transport.retry_delay(attempt));
             }

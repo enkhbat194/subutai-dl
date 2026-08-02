@@ -141,7 +141,8 @@ fn no_range_server_pauses_then_restarts_from_zero_without_mixing_bytes() {
     corrupted.sync_all().expect("sync corrupt partial");
 
     let second_control = DownloadControl::default();
-    let completed = download_segmented(&request, &second_control).expect("restart no-range fallback");
+    let completed =
+        download_segmented(&request, &second_control).expect("restart no-range fallback");
     let result = match completed {
         SegmentedOutcome::Completed(result) => result,
         other => panic!("expected completed fallback, received {other:?}"),
@@ -150,7 +151,11 @@ fn no_range_server_pauses_then_restarts_from_zero_without_mixing_bytes() {
     assert_eq!(result.downloaded_bytes, data.len() as u64);
     assert_eq!(fs::read(&destination).expect("read final fallback"), data);
     assert!(!partial.exists());
-    assert!(journal_slots(&destination).iter().all(|path| !path.exists()));
+    assert!(
+        journal_slots(&destination)
+            .iter()
+            .all(|path| !path.exists())
+    );
     assert!(server.range_requests.load(Ordering::Acquire) >= 2);
     assert!(server.streaming_gets.load(Ordering::Acquire) >= 2);
 
@@ -207,7 +212,10 @@ fn handle_request(
                     std::io::ErrorKind::BrokenPipe
                         | std::io::ErrorKind::ConnectionReset
                         | std::io::ErrorKind::ConnectionAborted
-                ) => return Ok(()),
+                ) =>
+            {
+                return Ok(());
+            }
             Err(error) => return Err(error),
         }
         stream.flush()?;
@@ -216,7 +224,11 @@ fn handle_request(
     Ok(())
 }
 
-fn write_headers(stream: &mut TcpStream, status: &str, content_length: usize) -> std::io::Result<()> {
+fn write_headers(
+    stream: &mut TcpStream,
+    status: &str,
+    content_length: usize,
+) -> std::io::Result<()> {
     write!(
         stream,
         "HTTP/1.1 {status}\r\nContent-Length: {content_length}\r\nETag: \"subutai-no-range\"\r\nLast-Modified: Sun, 02 Aug 2026 15:00:00 GMT\r\nContent-Type: application/octet-stream\r\nConnection: close\r\n\r\n"
@@ -271,8 +283,5 @@ fn unique_directory() -> PathBuf {
         .duration_since(UNIX_EPOCH)
         .expect("clock")
         .as_nanos();
-    std::env::temp_dir().join(format!(
-        "subutai-no-range-{}-{nonce}",
-        std::process::id()
-    ))
+    std::env::temp_dir().join(format!("subutai-no-range-{}-{nonce}", std::process::id()))
 }

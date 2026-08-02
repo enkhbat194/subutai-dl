@@ -18,17 +18,9 @@ pub fn download_segmented_with_progress<F>(
 where
     F: FnMut(SegmentedProgress),
 {
-    match crate::resumable::download_segmented_with_progress(
-        request,
-        control,
-        &mut progress,
-    ) {
+    match crate::resumable::download_segmented_with_progress(request, control, &mut progress) {
         Err(TransferError::ByteRangesUnsupported) => {
-            crate::streaming_fallback::download_without_ranges(
-                request,
-                control,
-                &mut progress,
-            )
+            crate::streaming_fallback::download_without_ranges(request, control, &mut progress)
         }
         result => result,
     }
