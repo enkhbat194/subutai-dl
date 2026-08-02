@@ -90,23 +90,22 @@ jobs:
 
           $implPath = "engines/native/src/core_impl.rs"
           $impl = [System.IO.File]::ReadAllText($implPath).Replace("`r`n", "`n")
-          $oldPlan = @'
-    let maximum_useful_segments = total_size
-        .checked_add(minimum_segment_size - 1)
-        .ok_or(PlanError::ArithmeticOverflow)?
-        / minimum_segment_size;
-'@
-          $newPlan = @'
-    let complete_groups = total_size / minimum_segment_size;
-    let maximum_useful_segments = complete_groups
-        .checked_add(if total_size.is_multiple_of(minimum_segment_size) {
-            0
-        } else {
-            1
-        })
-        .ok_or(PlanError::ArithmeticOverflow)?;
-'@
-          $impl = $impl.Replace($oldPlan.Replace("`r`n", "`n"), $newPlan.Replace("`r`n", "`n"))
+          $planPattern = '(?s)    let maximum_useful_segments = total_size\n        \.checked_add\(minimum_segment_size - 1\)\n        \.ok_or\(PlanError::ArithmeticOverflow\)\?\n        / minimum_segment_size;'
+          $planReplacement = @(
+            '    let complete_groups = total_size / minimum_segment_size;',
+            '    let maximum_useful_segments = complete_groups',
+            '        .checked_add(if total_size.is_multiple_of(minimum_segment_size) {',
+            '            0',
+            '        } else {',
+            '            1',
+            '        })',
+            '        .ok_or(PlanError::ArithmeticOverflow)?;'
+          ) -join "`n"
+          $impl = [System.Text.RegularExpressions.Regex]::Replace(
+            $impl,
+            $planPattern,
+            $planReplacement
+          )
           [System.IO.File]::WriteAllText($implPath, $impl, $utf8)
 
       - name: Format native engine sources
