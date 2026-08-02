@@ -23,6 +23,12 @@ import { consumeBrowserPayloadArguments } from './browser/native-messaging';
 import { SubutaiEngine, type SubutaiTaskStatus } from './engines/subutai-engine';
 import { toPublicError } from './engines/public-error';
 import {
+  isRemoteChangeFailure,
+  normalizeSha256,
+  prepareDownloadDestination,
+  verifyCompletedDownload,
+} from './integrity/download-policy';
+import {
   DEFAULT_TRANSFER_SETTINGS,
   normalizeTransferSettings,
   resolveProxyUrl,
@@ -176,6 +182,7 @@ function validateRequest(request: DownloadCreateRequest): void {
   if (!['http:', 'https:', 'ftp:', 'sftp:'].includes(parsed.protocol)) {
     throw new Error(`Одоогоор дэмжихгүй протокол: ${parsed.protocol}`);
   }
+  normalizeSha256(request.expectedSha256);
 }
 
 function isLikelyMediaUrl(url: string): boolean {
@@ -222,7 +229,32 @@ function jobMatchesSchedule(job: DownloadJob, activeScheduleIds: string[], sched
   return activeScheduleIds.includes(job.scheduleId);
 }
 
-async function assignTask(job: DownloadJob): Promise<void> {
+async function assignTask(job: DownloadJob): Promise<boolean> {
+  if (job.engine !== 'media' && !job.destinationPolicyApplied) {
+    const decision = await prepareDownloadDestination({
+      directory: job.destination,
+      filename: job.filename,
+      policy: job.fileConflictPolicy ?? 'rename',
+      expectedSha256: job.expectedSha256,
+    });
+    job.filename = decision.filename;
+    job.destinationPolicyApplied = true;
+    if (decision.outcome === 'skip') {
+      job.status = 'completed';
+      job.totalBytes = decision.totalBytes ?? null;
+      job.downloadedBytes = decision.totalBytes ?? 0;
+      job.speedBytesPerSecond = 0;
+      job.etaSeconds = 0;
+      if (decision.actualSha256) job.actualSha256 = decision.actualSha256;
+      delete job.error;
+      delete job.failureKind;
+      job.updatedAt = new Date().toISOString();
+      saveJob(job);
+      broadcastAll();
+      return false;
+    }
+  }
+
   job.status = 'resolving';
   job.updatedAt = new Date().toISOString();
   saveJob(job);
@@ -254,18 +286,19 @@ async function assignTask(job: DownloadJob): Promise<void> {
   job.status = 'queued';
   job.updatedAt = new Date().toISOString();
   saveJob(job);
+  return true;
 }
 
-async function startQueuedJob(job: DownloadJob): Promise<void> {
+async function startQueuedJob(job: DownloadJob): Promise<boolean> {
   job.pausedByScheduler = false;
   if (job.engineTaskId) {
     job.status = 'resolving';
     job.updatedAt = new Date().toISOString();
     saveJob(job);
     await engine.resume(job.engineTaskId);
-  } else {
-    await assignTask(job);
+    return true;
   }
+  return assignTask(job);
 }
 
 async function pauseForSchedule(job: DownloadJob): Promise<void> {
@@ -325,8 +358,8 @@ async function processQueue(force = false): Promise<void> {
     for (const job of candidates) {
       if (slots <= 0) break;
       try {
-        await startQueuedJob(job);
-        slots -= 1;
+        const started = await startQueuedJob(job);
+        if (started) slots -= 1;
       } catch (error) {
         markJobFailed(job, error);
         saveJob(job);
@@ -370,6 +403,14 @@ export async function createDownload(request: DownloadCreateRequest): Promise<Do
   if (request.sourcePageUrl) job.sourcePageUrl = request.sourcePageUrl;
   if (request.headers && Object.keys(request.headers).length > 0) job.headers = { ...request.headers };
   if (media) job.media = media;
+  else {
+    job.fileConflictPolicy = request.fileConflictPolicy ?? 'rename';
+    job.remoteChangePolicy = request.remoteChangePolicy ?? 'fail';
+    job.destinationPolicyApplied = false;
+    job.remoteRestartCount = 0;
+    const expectedSha256 = normalizeSha256(request.expectedSha256);
+    if (expectedSha256) job.expectedSha256 = expectedSha256;
+  }
   if (request.scheduleId) job.scheduleId = request.scheduleId;
   if (typeof request.speedLimitBytesPerSecond === 'number' && request.speedLimitBytesPerSecond > 0) {
     job.speedLimitBytesPerSecond = Math.trunc(request.speedLimitBytesPerSecond);
@@ -454,6 +495,7 @@ async function removeDownload(id: string, deleteFile = false): Promise<void> {
         `${destinationPath}.subutai.job.b`,
       ].map((path) => rm(path, { force: true })));
     }
+    if (job.quarantinePath) await rm(job.quarantinePath, { force: true });
   }
   broadcastAll();
   void processQueue();
@@ -664,11 +706,54 @@ function updateJobFromStatus(job: DownloadJob, status: SubutaiTaskStatus): void 
   if (status.playlistIndex) job.playlistIndex = status.playlistIndex;
   if (status.playlistCount) job.playlistCount = status.playlistCount;
   if (status.errorMessage) {
-    job.error = status.errorMessage;
-    job.failureKind = classifyDownloadFailure(status.errorMessage);
+    job.error = toPublicError(status.errorMessage);
+    job.failureKind = classifyDownloadFailure(job.error);
   } else if (job.status !== 'failed') {
     delete job.error;
     delete job.failureKind;
+  }
+}
+
+async function restartChangedRemote(job: DownloadJob, status: SubutaiTaskStatus): Promise<boolean> {
+  if (job.remoteChangePolicy !== 'restart'
+    || (job.remoteRestartCount ?? 0) >= 1
+    || !isRemoteChangeFailure(status.errorCode, status.errorMessage)) return false;
+
+  if (job.engineTaskId) {
+    try { await engine.cancel(job.engineTaskId); } catch { /* failed task may already be gone */ }
+  }
+  delete job.engineTaskId;
+  delete job.error;
+  delete job.failureKind;
+  delete job.actualSha256;
+  delete job.quarantinePath;
+  job.status = 'queued';
+  job.downloadedBytes = 0;
+  job.totalBytes = null;
+  job.speedBytesPerSecond = 0;
+  job.etaSeconds = null;
+  job.remoteRestartCount = (job.remoteRestartCount ?? 0) + 1;
+  job.updatedAt = new Date().toISOString();
+  return true;
+}
+
+async function verifyJobIntegrity(job: DownloadJob): Promise<void> {
+  if (job.engine === 'media' || !job.expectedSha256 || job.actualSha256) return;
+  const filePath = join(job.destination, job.filename);
+  const verification = await verifyCompletedDownload(filePath, job.expectedSha256);
+  job.actualSha256 = verification.actualSha256;
+  if (!verification.matched) {
+    if (job.engineTaskId) {
+      try { await engine.cancel(job.engineTaskId); } catch { /* completed native task may already be gone */ }
+    }
+    delete job.engineTaskId;
+    job.status = 'failed';
+    job.failureKind = 'integrity';
+    job.error = 'SHA-256 шалгалт зөрсөн. Файлыг аюулгүй тусгаарласан.';
+    if (verification.quarantinePath) job.quarantinePath = verification.quarantinePath;
+    job.speedBytesPerSecond = 0;
+    job.etaSeconds = null;
+    job.updatedAt = new Date().toISOString();
   }
 }
 
@@ -682,6 +767,11 @@ async function synchronizeJobs(): Promise<void> {
       try {
         const status = await engine.getStatus(job.engineTaskId);
         updateJobFromStatus(job, status);
+        if (job.status === 'failed') {
+          await restartChangedRemote(job, status);
+        } else if (job.status === 'completed') {
+          await verifyJobIntegrity(job);
+        }
         saveJob(job);
         changed = true;
       } catch (error) {
@@ -714,6 +804,10 @@ function restoreState(): void {
     restored.priority ??= 'normal';
     restored.queueOrder ??= order;
     restored.retryCount ??= 0;
+    restored.fileConflictPolicy ??= 'rename';
+    restored.remoteChangePolicy ??= 'fail';
+    restored.remoteRestartCount ??= 0;
+    restored.destinationPolicyApplied ??= true;
     order += 1;
     if (!['completed', 'failed', 'cancelled'].includes(restored.status)) {
       delete restored.engineTaskId;
