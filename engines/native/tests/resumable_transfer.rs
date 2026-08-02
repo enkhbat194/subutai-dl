@@ -10,8 +10,8 @@ use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use subutai_native_engine::{
-    DownloadControl, SegmentedDownloadRequest, SegmentedOutcome, TransferError,
-    download_segmented, partial_path, resume_journal_path,
+    DownloadControl, SegmentedDownloadRequest, SegmentedOutcome, TransferError, download_segmented,
+    partial_path, resume_journal_path,
 };
 
 struct RangeServer {
@@ -99,8 +99,14 @@ fn pauses_with_durable_state_then_resumes_all_segments() {
         other => panic!("expected paused outcome, got {other:?}"),
     }
     assert!(partial_path(&destination).exists());
-    assert!(resume_journal_path(&destination).with_extension("job.a").exists()
-        || resume_journal_path(&destination).with_extension("job.b").exists());
+    assert!(
+        resume_journal_path(&destination)
+            .with_extension("job.a")
+            .exists()
+            || resume_journal_path(&destination)
+                .with_extension("job.b")
+                .exists()
+    );
 
     control.resume();
     let completed = download_segmented(&request, &control).expect("resume transfer");
@@ -111,8 +117,16 @@ fn pauses_with_durable_state_then_resumes_all_segments() {
     assert_eq!(result.downloaded_bytes, data.len() as u64);
     assert_eq!(fs::read(&destination).expect("read completed file"), data);
     assert!(!partial_path(&destination).exists());
-    assert!(!resume_journal_path(&destination).with_extension("job.a").exists());
-    assert!(!resume_journal_path(&destination).with_extension("job.b").exists());
+    assert!(
+        !resume_journal_path(&destination)
+            .with_extension("job.a")
+            .exists()
+    );
+    assert!(
+        !resume_journal_path(&destination)
+            .with_extension("job.b")
+            .exists()
+    );
     cleanup(&destination);
 }
 
@@ -177,9 +191,8 @@ fn handle_request(stream: &mut TcpStream, data: &[u8], etag: &Mutex<String>) {
 
     assert_eq!(method, "GET");
     let range = header("range").expect("Range header");
-    let if_range_matches = header("if-range").is_none_or(|value| {
-        value == etag || value == "Sun, 02 Aug 2026 10:00:00 GMT"
-    });
+    let if_range_matches = header("if-range")
+        .is_none_or(|value| value == etag || value == "Sun, 02 Aug 2026 10:00:00 GMT");
     if !if_range_matches {
         let mut response_headers = common.to_vec();
         response_headers.push(("Content-Length", data.len().to_string()));
@@ -226,12 +239,7 @@ fn read_request(stream: &mut TcpStream) -> String {
     String::from_utf8(bytes).expect("UTF-8 request")
 }
 
-fn write_response(
-    stream: &mut TcpStream,
-    status: &str,
-    headers: &[(&str, String)],
-    body: &[u8],
-) {
+fn write_response(stream: &mut TcpStream, status: &str, headers: &[(&str, String)], body: &[u8]) {
     write!(stream, "HTTP/1.1 {status}\r\n").expect("status");
     for (name, value) in headers {
         write!(stream, "{name}: {value}\r\n").expect("header");
@@ -252,10 +260,7 @@ fn unique_path(name: &str) -> PathBuf {
         .duration_since(UNIX_EPOCH)
         .expect("clock")
         .as_nanos();
-    std::env::temp_dir().join(format!(
-        "subutai-n2-{}-{nonce}-{name}",
-        std::process::id()
-    ))
+    std::env::temp_dir().join(format!("subutai-n2-{}-{nonce}-{name}", std::process::id()))
 }
 
 fn cleanup(path: &Path) {

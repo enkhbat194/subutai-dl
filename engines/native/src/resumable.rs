@@ -13,9 +13,7 @@ use crate::sha256::Sha256;
 use crate::transfer::{
     DownloadResult, HttpProbe, RequestHeader, TransferError, partial_path, probe_url,
 };
-use crate::{
-    JobManifest, JobState, JournalStore, SegmentState, StoreError, plan_ranges,
-};
+use crate::{JobManifest, JobState, JournalStore, SegmentState, StoreError, plan_ranges};
 
 const CONTROL_RUNNING: u8 = 0;
 const CONTROL_PAUSED: u8 = 1;
@@ -156,7 +154,9 @@ where
                 return recover_completed_download(request, &store, &partial, snapshot.manifest);
             }
         }
-        return Err(TransferError::DestinationExists(request.destination.clone()));
+        return Err(TransferError::DestinationExists(
+            request.destination.clone(),
+        ));
     }
 
     let segment_probe = probe_segment_support(&request.url, &request.headers)?;
@@ -174,10 +174,23 @@ where
 
     let mut manifest = match snapshot {
         Some(snapshot) => {
-            validate_resume_manifest(request, &partial, total_size, &segment_probe, &snapshot.manifest)?;
+            validate_resume_manifest(
+                request,
+                &partial,
+                total_size,
+                &segment_probe,
+                &snapshot.manifest,
+            )?;
             snapshot.manifest
         }
-        None => create_manifest(request, &store, &partial, &parent, total_size, &segment_probe)?,
+        None => create_manifest(
+            request,
+            &store,
+            &partial,
+            &parent,
+            total_size,
+            &segment_probe,
+        )?,
     };
 
     if manifest.state == JobState::Completed || manifest.state == JobState::Verifying {
@@ -317,7 +330,9 @@ fn validate_request(request: &SegmentedDownloadRequest) -> Result<(), TransferEr
         return Err(TransferError::Protocol("job id is empty".into()));
     }
     if request.requested_segments == 0 {
-        return Err(TransferError::Protocol("segment count must be greater than zero".into()));
+        return Err(TransferError::Protocol(
+            "segment count must be greater than zero".into(),
+        ));
     }
     if request.minimum_segment_size == 0 {
         return Err(TransferError::Protocol(
@@ -330,8 +345,7 @@ fn validate_request(request: &SegmentedDownloadRequest) -> Result<(), TransferEr
         ));
     }
     for header in &request.headers {
-        if header.name.eq_ignore_ascii_case("range")
-            || header.name.eq_ignore_ascii_case("if-range")
+        if header.name.eq_ignore_ascii_case("range") || header.name.eq_ignore_ascii_case("if-range")
         {
             return Err(TransferError::ReservedHeader(header.name.clone()));
         }
@@ -339,10 +353,7 @@ fn validate_request(request: &SegmentedDownloadRequest) -> Result<(), TransferEr
     Ok(())
 }
 
-fn probe_segment_support(
-    url: &str,
-    headers: &[RequestHeader],
-) -> Result<HttpProbe, TransferError> {
+fn probe_segment_support(url: &str, headers: &[RequestHeader]) -> Result<HttpProbe, TransferError> {
     let general_probe = probe_url(url, headers)?;
     let mut range_headers = headers.to_vec();
     range_headers.push(RequestHeader::new("Range", "bytes=0-0")?);
@@ -489,9 +500,7 @@ fn validate_remote_validators(
     }
     if let Some(saved_last_modified) = manifest.last_modified.as_deref() {
         if probe.last_modified.as_deref() != Some(saved_last_modified) {
-            return Err(TransferError::RemoteChanged(
-                "Last-Modified changed".into(),
-            ));
+            return Err(TransferError::RemoteChanged("Last-Modified changed".into()));
         }
         return Ok(());
     }
@@ -570,10 +579,7 @@ fn run_segment_worker(
     }
 
     let mut headers = request.headers.clone();
-    headers.push(RequestHeader::new(
-        "Range",
-        format!("bytes={start}-{end}"),
-    )?);
+    headers.push(RequestHeader::new("Range", format!("bytes={start}-{end}"))?);
     if let Some(value) = if_range_validator(probe) {
         headers.push(RequestHeader::new("If-Range", value)?);
     }
@@ -700,8 +706,8 @@ fn aggregate_progress(
         .ok_or(TransferError::MissingContentLength)?;
     let elapsed = started.elapsed();
     let nanos = elapsed.as_nanos().max(1);
-    let bytes_per_second = ((u128::from(downloaded_bytes) * 1_000_000_000) / nanos)
-        .min(u128::from(u64::MAX)) as u64;
+    let bytes_per_second =
+        ((u128::from(downloaded_bytes) * 1_000_000_000) / nanos).min(u128::from(u64::MAX)) as u64;
     Ok(SegmentedProgress {
         downloaded_bytes,
         total_bytes,
@@ -927,7 +933,10 @@ mod tests {
 
     #[test]
     fn parses_content_range() {
-        assert_eq!(parse_content_range("bytes 10-19/100").unwrap(), (10, 19, 100));
+        assert_eq!(
+            parse_content_range("bytes 10-19/100").unwrap(),
+            (10, 19, 100)
+        );
         assert!(parse_content_range("bytes */100").is_err());
         assert!(parse_content_range("bytes 20-10/100").is_err());
     }

@@ -120,7 +120,10 @@ impl Display for TransferError {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::UnsupportedPlatform => {
-                write!(formatter, "native transfer is currently available on Windows")
+                write!(
+                    formatter,
+                    "native transfer is currently available on Windows"
+                )
             }
             Self::InvalidUrl(value) => write!(formatter, "invalid HTTP/HTTPS URL: {value}"),
             Self::InvalidHeaderName(name) => {
@@ -154,24 +157,38 @@ impl Display for TransferError {
                 "download size mismatch: expected {expected} bytes, received {actual} bytes"
             ),
             Self::MissingContentLength => {
-                write!(formatter, "server did not provide a stable remote file size")
+                write!(
+                    formatter,
+                    "server did not provide a stable remote file size"
+                )
             }
             Self::ByteRangesUnsupported => {
-                write!(formatter, "server does not support verified byte-range transfer")
+                write!(
+                    formatter,
+                    "server does not support verified byte-range transfer"
+                )
             }
             Self::InvalidContentRange(value) => {
                 write!(formatter, "invalid or unexpected Content-Range: {value}")
             }
             Self::ReservedHeader(name) => {
-                write!(formatter, "request header {name} is managed by the segmented engine")
+                write!(
+                    formatter,
+                    "request header {name} is managed by the segmented engine"
+                )
             }
             Self::RemoteChanged(reason) => {
-                write!(formatter, "remote file changed and cannot be resumed safely: {reason}")
+                write!(
+                    formatter,
+                    "remote file changed and cannot be resumed safely: {reason}"
+                )
             }
             Self::UnsafeResume(reason) => write!(formatter, "unsafe resume refused: {reason}"),
             Self::ResumeMismatch(reason) => write!(formatter, "saved transfer mismatch: {reason}"),
             Self::Journal(reason) => write!(formatter, "transfer journal error: {reason}"),
-            Self::WorkerPanic => write!(formatter, "segmented transfer worker stopped unexpectedly"),
+            Self::WorkerPanic => {
+                write!(formatter, "segmented transfer worker stopped unexpectedly")
+            }
             Self::Windows { operation, code } => write!(
                 formatter,
                 "Windows operation {operation} failed with error {code}"
