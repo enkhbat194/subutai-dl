@@ -1,6 +1,7 @@
+import { createReadStream } from 'node:fs';
 import { createServer } from 'node:http';
-import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
-import { basename, dirname, extname, join, resolve, sep } from 'node:path';
+import { mkdir, stat, writeFile } from 'node:fs/promises';
+import { basename, dirname, extname, resolve, sep } from 'node:path';
 
 const [rootArgument, stateFileArgument, logFileArgument = ''] = process.argv.slice(2);
 if (!rootArgument || !stateFileArgument) {
@@ -37,6 +38,27 @@ function resolveRequestPath(rawUrl) {
   return candidate;
 }
 
+function parseRange(value, size) {
+  if (!value) return null;
+  const match = /^bytes=(\d*)-(\d*)$/u.exec(value.trim());
+  if (!match || (!match[1] && !match[2])) throw new Error('Unsupported Range header.');
+  let start;
+  let end;
+  if (!match[1]) {
+    const suffixLength = Number(match[2]);
+    if (!Number.isSafeInteger(suffixLength) || suffixLength <= 0) throw new Error('Invalid suffix range.');
+    start = Math.max(0, size - suffixLength);
+    end = size - 1;
+  } else {
+    start = Number(match[1]);
+    end = match[2] ? Number(match[2]) : size - 1;
+  }
+  if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || end < start || start >= size) {
+    throw new Error('Requested byte range is outside the file.');
+  }
+  return { start, end: Math.min(end, size - 1) };
+}
+
 const server = createServer(async (request, response) => {
   try {
     if (!['GET', 'HEAD'].includes(request.method ?? '')) {
@@ -47,20 +69,35 @@ const server = createServer(async (request, response) => {
     const filePath = resolveRequestPath(request.url);
     const information = await stat(filePath);
     if (!information.isFile()) throw new Error('Requested update feed entry is not a file.');
-    const body = request.method === 'HEAD' ? null : await readFile(filePath);
-    response.writeHead(200, {
+
+    const range = parseRange(request.headers.range, information.size);
+    const start = range?.start ?? 0;
+    const end = range?.end ?? Math.max(0, information.size - 1);
+    const responseSize = information.size === 0 ? 0 : end - start + 1;
+    const status = range ? 206 : 200;
+    const headers = {
+      'Accept-Ranges': 'bytes',
       'Cache-Control': 'no-store, max-age=0',
-      'Content-Length': information.size,
+      'Content-Length': responseSize,
       'Content-Type': contentTypes.get(extname(filePath).toLowerCase()) ?? 'application/octet-stream',
       'X-Content-Type-Options': 'nosniff',
-    });
-    response.end(body);
-    await appendLog(`${request.method} /${basename(filePath)} 200 ${information.size}`);
+    };
+    if (range) headers['Content-Range'] = `bytes ${start}-${end}/${information.size}`;
+    response.writeHead(status, headers);
+    if (request.method === 'HEAD' || information.size === 0) {
+      response.end();
+    } else {
+      const stream = createReadStream(filePath, { start, end });
+      stream.on('error', (error) => response.destroy(error));
+      stream.pipe(response);
+    }
+    await appendLog(`${request.method} /${basename(filePath)} ${status} ${start}-${end}/${information.size}`);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    response.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
-    response.end('Not found');
-    await appendLog(`${request.method ?? 'UNKNOWN'} ${request.url ?? '/'} 404 ${message}`);
+    const status = message.includes('range') || message.includes('Range') ? 416 : 404;
+    response.writeHead(status, { 'Content-Type': 'text/plain; charset=utf-8' });
+    response.end(status === 416 ? 'Range not satisfiable' : 'Not found');
+    await appendLog(`${request.method ?? 'UNKNOWN'} ${request.url ?? '/'} ${status} ${message}`);
   }
 });
 
