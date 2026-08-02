@@ -16,7 +16,7 @@ permissions:
 jobs:
   release-windows:
     runs-on: windows-latest
-    timeout-minutes: 55
+    timeout-minutes: 75
     env:
       RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
     steps:
@@ -28,43 +28,58 @@ jobs:
         with:
           node-version: 22
 
+      - name: Install pinned Rust toolchain
+        shell: pwsh
+        run: |
+          rustup toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy
+          rustup default 1.97.1
+          rustc --version --verbose
+          cargo --version
+
       - name: Enable pnpm
         shell: pwsh
-        run: corepack enable
+        run: |
+          corepack enable
+          pnpm --version
 
       - name: Validate release tag and package versions
         shell: pwsh
         run: node scripts/validate-release-version.mjs "$env:RELEASE_TAG"
 
-      - name: Install Subutai download engines
+      - name: Install temporary media tools
         shell: pwsh
         run: |
-          choco install aria2 yt-dlp ffmpeg -y --no-progress
+          choco install yt-dlp ffmpeg -y --no-progress
           $engineDir = "apps/desktop/resources/engines/win32-x64"
           New-Item -ItemType Directory -Force $engineDir | Out-Null
+          Get-ChildItem $engineDir -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force
 
-          $aria = Get-ChildItem "$env:ChocolateyInstall\lib\aria2*" -Recurse -Filter aria2c.exe | Select-Object -First 1
           $ytdlp = Get-ChildItem "$env:ChocolateyInstall\lib\yt-dlp*" -Recurse -Filter yt-dlp.exe | Select-Object -First 1
           $ffmpeg = Get-ChildItem "$env:ChocolateyInstall\lib\ffmpeg*" -Recurse -Filter ffmpeg.exe | Select-Object -First 1
           $ffprobe = Get-ChildItem "$env:ChocolateyInstall\lib\ffmpeg*" -Recurse -Filter ffprobe.exe | Select-Object -First 1
 
-          if (-not $aria) { throw "Subutai direct-download engine was not found." }
-          if (-not $ytdlp) { throw "Subutai media resolver was not found." }
-          if (-not $ffmpeg) { throw "Subutai media processor was not found." }
+          if (-not $ytdlp) { throw "Subutai temporary media resolver was not found." }
+          if (-not $ffmpeg) { throw "Subutai temporary media processor was not found." }
 
-          Copy-Item $aria.FullName "$engineDir/aria2c.exe"
           Copy-Item $ytdlp.FullName "$engineDir/yt-dlp.exe"
           Copy-Item $ffmpeg.FullName "$engineDir/ffmpeg.exe"
           if ($ffprobe) { Copy-Item $ffprobe.FullName "$engineDir/ffprobe.exe" }
 
+          if (Test-Path "$engineDir/aria2c.exe") {
+            throw "Legacy direct-download engine must not enter a Subutai release package."
+          }
+
       - name: Install dependencies
         shell: pwsh
-        run: pnpm install --no-frozen-lockfile
+        run: pnpm install --frozen-lockfile
 
-      - name: Typecheck and release policies
+      - name: Verify native engine and release policies
         shell: pwsh
         run: |
+          pnpm test:native-engine
+          pnpm test:release-engine
           pnpm typecheck
+          pnpm test:brand
           pnpm test:system
           pnpm test:failure-policy
 
