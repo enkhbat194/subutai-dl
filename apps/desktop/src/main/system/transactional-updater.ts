@@ -6,6 +6,7 @@ import {
   armUpdateTransaction,
   launchUpdateWatchdog,
   prepareUpdateTransaction,
+  sha256File,
 } from './update-transaction';
 
 const { autoUpdater } = electronUpdater;
@@ -67,6 +68,9 @@ export function installTransactionalUpdaterGuard(): void {
         watchdogSourcePath: watchdogSourcePath(),
       });
       const armed = await armUpdateTransaction();
+      if (await sha256File(downloadedInstallerPath) !== armed.targetInstallerSha256) {
+        throw new Error('Downloaded update installer changed after staging; installation was blocked.');
+      }
       await launchUpdateWatchdog(armed);
       originalQuitAndInstall(isSilent ?? false, isForceRunAfter ?? true);
     })().catch(emitUpdaterError);
