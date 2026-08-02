@@ -120,7 +120,7 @@ jobs:
 
       - name: Run durable journal self-test
         shell: powershell
-        run: cargo run --quiet --manifest-path engines/native/Cargo.toml -- self-test
+        run: cargo run --quiet --manifest-path engines/native/Cargo.toml --bin subutai-engine -- self-test
 
       - name: Enable pnpm
         shell: powershell
