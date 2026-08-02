@@ -11,6 +11,7 @@ on:
       - "scripts/native-engine-policy-test.mjs"
       - "scripts/release-engine-policy-test.mjs"
       - "scripts/dependency-lock-policy-test.mjs"
+      - "scripts/integrity-policy-test.mts"
       - "scripts/validate-windows-package.ps1"
       - "rust-toolchain.toml"
       - "package.json"
@@ -29,6 +30,7 @@ on:
       - "scripts/native-engine-policy-test.mjs"
       - "scripts/release-engine-policy-test.mjs"
       - "scripts/dependency-lock-policy-test.mjs"
+      - "scripts/integrity-policy-test.mts"
       - "scripts/validate-windows-package.ps1"
       - "rust-toolchain.toml"
       - "package.json"
@@ -44,7 +46,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   native-engine:
@@ -55,11 +57,32 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
+
+      - name: Apply N5 integrity runtime migration
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        shell: powershell
+        env:
+          HEAD_BRANCH: ${{ github.head_ref }}
+        run: |
+          node scripts/apply-n5-integrity-runtime.mjs
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/desktop/src/main/subutai-runtime.ts
+          git diff --cached --quiet
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "N5 integrity runtime migration is already applied."
+          } else {
+            git commit -m "Apply download integrity and conflict policies"
+            git push origin "HEAD:$env:HEAD_BRANCH"
+          }
 
       - name: Install pinned Rust toolchain
         shell: powershell
@@ -122,6 +145,10 @@ jobs:
       - name: Check reproducible dependency policy
         shell: powershell
         run: pnpm test:dependency-lock
+
+      - name: Check integrity and redaction policies
+        shell: powershell
+        run: pnpm test:integrity
 
       - name: Typecheck desktop and browser integration
         shell: powershell
