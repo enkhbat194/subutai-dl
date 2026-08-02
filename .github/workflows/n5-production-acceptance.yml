@@ -7,7 +7,6 @@ on:
       - "engines/native/**"
       - "apps/**"
       - "packages/**"
-      - "scripts/apply-n5-preload-path-fix.mjs"
       - "scripts/resilience-download-test.mjs"
       - "scripts/install-temporary-media-tools.ps1"
       - "scripts/n5-windows-acceptance.ps1"
@@ -24,7 +23,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   windows-acceptance:
@@ -35,33 +34,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
-
-      - name: Apply packaged preload path migration
-        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
-        shell: powershell
-        env:
-          HEAD_BRANCH: ${{ github.head_ref }}
-        run: |
-          node scripts/apply-n5-preload-path-fix.mjs
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add apps/desktop/src/main/subutai-runtime.ts
-          git diff --cached --quiet
-          if ($LASTEXITCODE -eq 0) {
-            Write-Host "Packaged preload path is already current."
-          } else {
-            git commit -m "Load the emitted packaged preload module"
-            git push origin "HEAD:$env:HEAD_BRANCH"
-          }
 
       - name: Install pinned Rust toolchain
         shell: powershell
