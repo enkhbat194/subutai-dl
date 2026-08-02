@@ -34,10 +34,7 @@ fn run() -> Result<(), String> {
             }
             run_self_test()
         }
-        Some(command) => Err(format!(
-            "unknown command: {command}\n{}",
-            usage()
-        )),
+        Some(command) => Err(format!("unknown command: {command}\n{}", usage())),
         None => {
             println!("{ENGINE_NAME} {ENGINE_VERSION}");
             println!("{}", usage());
@@ -57,8 +54,7 @@ fn run_plan(mut args: impl Iterator<Item = String>) -> Result<(), String> {
     };
     if args.next().is_some() {
         return Err(
-            "usage: subutai-engine plan <total-bytes> <segments> [minimum-segment-bytes]"
-                .into(),
+            "usage: subutai-engine plan <total-bytes> <segments> [minimum-segment-bytes]".into(),
         );
     }
 
@@ -94,7 +90,10 @@ fn run_probe(mut args: impl Iterator<Item = String>) -> Result<(), String> {
         "last_modified={}",
         optional_text(probe.last_modified.as_deref())
     );
-    println!("content_type={}", optional_text(probe.content_type.as_deref()));
+    println!(
+        "content_type={}",
+        optional_text(probe.content_type.as_deref())
+    );
     println!(
         "suggested_filename={}",
         optional_text(probe.suggested_filename.as_deref())
@@ -110,9 +109,7 @@ fn run_download(mut args: impl Iterator<Item = String>) -> Result<(), String> {
         "usage: subutai-engine download <http-or-https-url> <destination>".to_string()
     })?;
     if args.next().is_some() {
-        return Err(
-            "usage: subutai-engine download <http-or-https-url> <destination>".into(),
-        );
+        return Err("usage: subutai-engine download <http-or-https-url> <destination>".into());
     }
 
     let request = DownloadRequest::new(url, &destination);
