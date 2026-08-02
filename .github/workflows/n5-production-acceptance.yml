@@ -9,6 +9,8 @@ on:
       - "packages/**"
       - "scripts/mirror-policy-test.mts"
       - "scripts/resilience-download-test.mjs"
+      - "scripts/native-soak-benchmark.mjs"
+      - "scripts/publish-native-soak-summary.mjs"
       - "scripts/install-temporary-media-tools.ps1"
       - "scripts/n5-windows-acceptance.ps1"
       - "scripts/production-acceptance-policy-test.mjs"
@@ -30,7 +32,7 @@ jobs:
   windows-acceptance:
     name: n5-subutai-windows
     runs-on: [self-hosted, Windows, X64, subutai]
-    timeout-minutes: 90
+    timeout-minutes: 100
 
     steps:
       - name: Checkout
@@ -97,6 +99,25 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           pnpm typecheck
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Build production native CLI for soak
+        shell: powershell
+        run: cargo build --release --manifest-path engines/native/Cargo.toml --bin subutai-engine
+
+      - name: Run native resource soak benchmark
+        shell: powershell
+        env:
+          SUBUTAI_SOAK_ITERATIONS: 8
+          SUBUTAI_SOAK_MIB: 8
+          SUBUTAI_SOAK_SEGMENTS: 8
+          SUBUTAI_SOAK_REPORT: artifacts/n5/native-soak-report.json
+        run: pnpm test:native-soak
+
+      - name: Publish native soak telemetry
+        shell: powershell
+        env:
+          SUBUTAI_SOAK_REPORT: artifacts/n5/native-soak-report.json
+        run: node scripts/publish-native-soak-summary.mjs
 
       - name: Run native process and network resilience
         shell: powershell
