@@ -36,6 +36,7 @@ for (const required of [
   'Cached rollback installer checksum mismatch',
   'Staged update installer checksum mismatch',
   'redactUpdateError',
+  'Local\\SubutaiUpdaterWatchdog',
 ]) requireText(transaction, required, 'Transactional updater journal');
 
 for (const required of [
@@ -46,6 +47,7 @@ for (const required of [
   'launchUpdateWatchdog',
   'originalQuitAndInstall',
   'Downloaded update installer evidence is unavailable',
+  'Downloaded update installer changed after staging',
 ]) requireText(updater, required, 'Transactional updater guard');
 if (updater.indexOf('prepareUpdateTransaction') > updater.indexOf('originalQuitAndInstall(isSilent')) {
   throw new Error('Update installation must be journaled before quitAndInstall executes.');
