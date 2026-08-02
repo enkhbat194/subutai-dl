@@ -17,6 +17,7 @@ const partialPath = join(downloads, 'acceptance.bin.subutai.part');
 const journalPath = join(downloads, 'acceptance.bin.subutai.job');
 const sentinelJobId = 'real-update-acceptance-job';
 const sentinelStateKey = 'real-update-acceptance-state';
+const sentinelUrl = 'https://example.invalid/acceptance.bin';
 const now = '2026-08-03T00:00:00.000Z';
 
 function hashBuffer(value) {
@@ -67,7 +68,7 @@ async function seed() {
   try {
     const job = {
       id: sentinelJobId,
-      url: 'https://example.invalid/acceptance.bin',
+      url: sentinelUrl,
       filename: 'acceptance.bin',
       destination: downloads,
       engine: 'subutai',
@@ -86,8 +87,9 @@ async function seed() {
       remoteChangePolicy: 'fail',
       destinationPolicyApplied: true,
       remoteRestartCount: 0,
+      mirrorUrls: [],
       mirrorIndex: 0,
-      activeSourceUrl: 'https://example.invalid/acceptance.bin',
+      activeSourceUrl: sentinelUrl,
       mirrorFallbackCount: 0,
     };
     database.prepare(`
