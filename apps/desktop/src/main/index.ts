@@ -70,7 +70,7 @@ async function startDesktop(): Promise<void> {
     startupTransaction = await beginStartupHealthAttempt(app.getVersion());
     if (startupTransaction) {
       writeSmokeLog(`Update health attempt ${startupTransaction.startupAttemptCount}/${startupTransaction.maxStartupAttempts}.`);
-      await launchUpdateWatchdog(startupTransaction);
+      await launchUpdateWatchdog(startupTransaction, 0);
     }
   } catch (error) {
     writeSmokeLog(`Update transaction warning: ${formatError(error)}`);
