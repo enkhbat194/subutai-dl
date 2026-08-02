@@ -34,7 +34,7 @@ pub enum DesktopTaskState {
 impl TryFrom<u8> for DesktopTaskState {
     type Error = DesktopProtocolError;
 
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
+    fn try_from(value: u8) -> Result<Self, DesktopProtocolError> {
         match value {
             1 => Ok(Self::Waiting),
             2 => Ok(Self::Active),
