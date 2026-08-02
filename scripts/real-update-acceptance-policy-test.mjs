@@ -28,9 +28,11 @@ for (const required of [
   '$package.build.productName = $acceptanceProductName',
   '$package.build.appId = $acceptanceAppId',
   '$package.build.nsis.shortcutName = $acceptanceProductName',
-  '$package.build.nsis.oneClick = $false',
+  '$package.build.nsis.oneClick = $true',
+  '$package.build.nsis.allowToChangeInstallationDirectory = $false',
   '-NotePropertyName perMachine -NotePropertyValue $false',
   '-NotePropertyName allowElevation -NotePropertyValue $false',
+  "-After \"  `$process = Start-Process -FilePath ([string]`$BaselineBuild.setupPath) -ArgumentList @('/S') -PassThru -Wait\"",
   'Set-AcceptanceAppIdentity',
   'Set-AcceptanceHarnessIdentity',
   'Replace-ExactlyOnce',
@@ -148,4 +150,4 @@ if (!workflow.includes('workflow_dispatch:') || !workflow.includes('pull_request
   throw new Error('Real updater acceptance must support manual and pull-request execution.');
 }
 
-console.log('Subutai real two-installer updater acceptance policy passed: acceptance-only appId/build.productName, explicit isolated silent per-user non-elevating NSIS install, real A/B builds, loopback feed, healthy update, forced rollback, checksum rejection, durable user state, browser bridge evidence and read-only execution are locked.');
+console.log('Subutai real two-installer updater acceptance policy passed: acceptance-only one-click per-user non-elevating NSIS identity, isolated silent baseline install, real A/B builds, loopback feed, healthy update, forced rollback, checksum rejection, durable user state, browser bridge evidence and read-only execution are locked.');
