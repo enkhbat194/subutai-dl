@@ -40,7 +40,7 @@ Final Subutai releases must not require a third-party download or media executab
 | N1 | HTTP/HTTPS probe and safe single-stream transfer | Complete | PASS | PR #16 |
 | N2 | Segmented transfer, pause/resume and validator-safe recovery | Complete | PASS | PR #17 |
 | N3 | Adaptive connections, dynamic chunking and range replacement | Complete | PASS | PR #18 |
-| N4 | Replace the desktop direct-download path | Complete | PASS | PR #19 pending merge |
+| N4 | Replace the desktop direct-download path | Complete | PASS | PR #19 |
 | N5 | Production acceptance and old-engine removal | Pending | Pending | Pending |
 | M1 | First-party HLS/DASH media core | Pending | Pending | Pending |
 | M2 | Maintained website adapters | Pending | Pending | Pending |
