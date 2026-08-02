@@ -43,25 +43,27 @@ const remote = {
   lastModified: 'Sun, 02 Aug 2026 18:00:00 GMT',
 };
 
-switch (command) {
-  case 'prepare':
-    await prepare();
-    break;
-  case 'verify':
-    await verify();
-    break;
-  case 'status':
-    await status();
-    break;
-  case 'cleanup':
-    await cleanup();
-    break;
-  case 'self-test':
-    await selfTest();
-    break;
-  default:
-    throw new Error('usage: restart-recovery-harness.mjs <prepare|verify|status|cleanup|self-test> [--require-boot-change]');
-}
+const execution = (async () => {
+  switch (command) {
+    case 'prepare':
+      await prepare();
+      break;
+    case 'verify':
+      await verify();
+      break;
+    case 'status':
+      await status();
+      break;
+    case 'cleanup':
+      await cleanup();
+      break;
+    case 'self-test':
+      await selfTest();
+      break;
+    default:
+      throw new Error('usage: restart-recovery-harness.mjs <prepare|verify|status|cleanup|self-test> [--require-boot-change]');
+  }
+})();
 
 async function prepare() {
   requireNativeEngine();
@@ -505,3 +507,5 @@ function integerEnv(name, fallback, minimum, maximum) {
 function formatBytes(value) {
   return `${(Number(value) / (1024 * 1024)).toFixed(1)} MiB`;
 }
+
+await execution;
