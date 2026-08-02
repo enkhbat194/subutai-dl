@@ -20,6 +20,8 @@
     "test:resilience": "node scripts/resilience-download-test.mjs",
     "test:native-soak": "node scripts/native-soak-benchmark.mjs",
     "test:native-large-queue": "node scripts/native-large-queue-benchmark.mjs",
+    "test:native-restart-harness": "node scripts/restart-recovery-harness.mjs self-test",
+    "test:restart-policy": "node scripts/restart-recovery-policy-test.mjs",
     "test:clipboard": "node --experimental-strip-types scripts/clipboard-policy-test.mts",
     "test:site-grabber": "node --experimental-strip-types scripts/site-grabber-test.mts",
     "test:system": "node --experimental-strip-types scripts/system-policy-test.mts",

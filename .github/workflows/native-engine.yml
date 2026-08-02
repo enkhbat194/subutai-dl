@@ -13,6 +13,8 @@ on:
       - "scripts/publish-native-soak-summary.mjs"
       - "scripts/native-large-queue-benchmark.mjs"
       - "scripts/publish-native-large-queue-summary.mjs"
+      - "scripts/restart-recovery-harness.mjs"
+      - "scripts/restart-recovery-policy-test.mjs"
       - "scripts/release-engine-policy-test.mjs"
       - "scripts/dependency-lock-policy-test.mjs"
       - "scripts/integrity-policy-test.mts"
@@ -25,6 +27,7 @@ on:
       - "apps/**"
       - "packages/**"
       - ".github/workflows/native-engine.yml"
+      - ".github/workflows/restart-recovery.yml"
       - ".github/workflows/release.yml"
   pull_request:
     branches: [main]
@@ -38,6 +41,8 @@ on:
       - "scripts/publish-native-soak-summary.mjs"
       - "scripts/native-large-queue-benchmark.mjs"
       - "scripts/publish-native-large-queue-summary.mjs"
+      - "scripts/restart-recovery-harness.mjs"
+      - "scripts/restart-recovery-policy-test.mjs"
       - "scripts/release-engine-policy-test.mjs"
       - "scripts/dependency-lock-policy-test.mjs"
       - "scripts/integrity-policy-test.mts"
@@ -50,6 +55,7 @@ on:
       - "apps/**"
       - "packages/**"
       - ".github/workflows/native-engine.yml"
+      - ".github/workflows/restart-recovery.yml"
       - ".github/workflows/release.yml"
   workflow_dispatch:
 
@@ -64,7 +70,7 @@ jobs:
   native-engine:
     name: subutai-windows
     runs-on: [self-hosted, Windows, X64, subutai]
-    timeout-minutes: 90
+    timeout-minutes: 100
 
     steps:
       - name: Checkout
@@ -124,6 +130,18 @@ jobs:
       - name: Install locked desktop dependencies
         shell: powershell
         run: pnpm install --frozen-lockfile
+
+      - name: Check restart recovery safety policy
+        shell: powershell
+        run: pnpm test:restart-policy
+
+      - name: Run two-phase restart recovery harness self-test
+        shell: powershell
+        env:
+          SUBUTAI_RESTART_WORKSPACE: ${{ github.workspace }}\artifacts\n5\restart-harness-self-test
+          SUBUTAI_RESTART_FILE_MIB: 32
+          SUBUTAI_RESTART_MINIMUM_PROGRESS_MIB: 4
+        run: pnpm test:native-restart-harness
 
       - name: Check telemetry schema v3 policies
         shell: powershell

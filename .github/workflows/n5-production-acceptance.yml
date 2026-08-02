@@ -13,6 +13,8 @@ on:
       - "scripts/publish-native-soak-summary.mjs"
       - "scripts/native-large-queue-benchmark.mjs"
       - "scripts/publish-native-large-queue-summary.mjs"
+      - "scripts/restart-recovery-harness.mjs"
+      - "scripts/restart-recovery-policy-test.mjs"
       - "scripts/install-temporary-media-tools.ps1"
       - "scripts/n5-windows-acceptance.ps1"
       - "scripts/production-acceptance-policy-test.mjs"
@@ -20,6 +22,7 @@ on:
       - "package.json"
       - "pnpm-lock.yaml"
       - ".github/workflows/n5-production-acceptance.yml"
+      - ".github/workflows/restart-recovery.yml"
       - ".github/workflows/release.yml"
   workflow_dispatch:
 
@@ -34,7 +37,7 @@ jobs:
   windows-acceptance:
     name: n5-subutai-windows
     runs-on: [self-hosted, Windows, X64, subutai]
-    timeout-minutes: 110
+    timeout-minutes: 120
 
     steps:
       - name: Checkout
@@ -87,6 +90,8 @@ jobs:
         run: |
           pnpm test:native-engine
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          pnpm test:restart-policy
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           pnpm test:telemetry
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           pnpm test:dependency-lock
@@ -104,9 +109,17 @@ jobs:
           pnpm typecheck
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Build production native CLI for benchmarks
+      - name: Build production native CLI for recovery and benchmarks
         shell: powershell
         run: cargo build --release --manifest-path engines/native/Cargo.toml --bin subutai-engine
+
+      - name: Run two-phase restart recovery harness self-test
+        shell: powershell
+        env:
+          SUBUTAI_RESTART_WORKSPACE: ${{ github.workspace }}\artifacts\n5\restart-harness-n5
+          SUBUTAI_RESTART_FILE_MIB: 32
+          SUBUTAI_RESTART_MINIMUM_PROGRESS_MIB: 4
+        run: pnpm test:native-restart-harness
 
       - name: Run native resource soak benchmark
         shell: powershell
