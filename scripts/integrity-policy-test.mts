@@ -12,6 +12,24 @@ import {
 } from '../apps/desktop/src/main/integrity/download-policy.ts';
 import { redactDiagnosticMessage } from '../apps/desktop/src/main/engines/public-error.ts';
 
+const runtimeSource = await readFile(
+  join(process.cwd(), 'apps', 'desktop', 'src', 'main', 'subutai-runtime.ts'),
+  'utf8',
+);
+for (const requiredRuntimeContract of [
+  'prepareDownloadDestination({',
+  "job.fileConflictPolicy = request.fileConflictPolicy ?? 'rename'",
+  "job.remoteChangePolicy = request.remoteChangePolicy ?? 'fail'",
+  'async function restartChangedRemote(',
+  'await verifyJobIntegrity(job)',
+  "job.failureKind = 'integrity'",
+]) {
+  assert.ok(
+    runtimeSource.includes(requiredRuntimeContract),
+    `desktop runtime is missing integrity contract: ${requiredRuntimeContract}`,
+  );
+}
+
 const root = await mkdtemp(join(tmpdir(), 'subutai-integrity-'));
 try {
   const source = Buffer.from('Subutai integrity acceptance data');
@@ -86,7 +104,7 @@ try {
   assert.ok(!diagnostic.includes('session-value'));
   assert.ok(diagnostic.includes('[redacted]'));
 
-  console.log('Subutai integrity policies passed: conflict handling, verified skip/resume, quarantine, remote restart detection and diagnostic redaction.');
+  console.log('Subutai integrity policies passed: runtime wiring, conflict handling, verified skip/resume, quarantine, remote restart detection and diagnostic redaction.');
 } finally {
   await rm(root, { recursive: true, force: true });
 }
