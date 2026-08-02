@@ -71,22 +71,35 @@ jobs:
           rustc --version --verbose
           cargo --version
 
+      - name: Apply N4 Rust compile fix
+        shell: powershell
+        run: |
+          $path = "engines/native/src/desktop_protocol.rs"
+          $text = [System.IO.File]::ReadAllText($path)
+          $before = 'fn try_from(value: u8) -> Result<Self, Self::Error> {'
+          $after = 'fn try_from(value: u8) -> Result<Self, DesktopProtocolError> {'
+          if (-not $text.Contains($before)) {
+            Write-Host "N4 associated type fix is already applied."
+          } else {
+            [System.IO.File]::WriteAllText($path, $text.Replace($before, $after), (New-Object System.Text.UTF8Encoding($false)))
+          }
+
       - name: Format N4 native sources
         shell: powershell
         run: cargo fmt --manifest-path engines/native/Cargo.toml --all
 
-      - name: Save N4 formatter changes
+      - name: Save N4 native source fixes
         shell: powershell
         run: |
           $changes = git status --porcelain -- engines/native
           if ([string]::IsNullOrWhiteSpace($changes)) {
-            Write-Host "N4 formatting is already clean."
+            Write-Host "N4 native source is already clean."
             exit 0
           }
           git config user.name "Subutai Automation"
           git config user.email "subutai-automation@users.noreply.github.com"
           git add engines/native
-          git commit -m "Format N4 desktop engine sources"
+          git commit -m "Fix N4 desktop engine compile contract"
           git push origin "HEAD:${{ github.head_ref || github.ref_name }}"
 
       - name: Verify Subutai ownership policy
