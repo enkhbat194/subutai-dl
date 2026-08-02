@@ -7,6 +7,7 @@ const wrapper = read('scripts', 'run-real-update-acceptance-safely.ps1');
 const harness = read('scripts', 'real-two-installer-acceptance.ps1');
 const stateProbe = read('scripts', 'real-update-state-probe.mjs');
 const feedServer = read('scripts', 'real-update-feed-server.mjs');
+const installerInclude = read('apps', 'desktop', 'build', 'installer.nsh');
 const acceptanceRuntime = read(
   'apps', 'desktop', 'src', 'main', 'system', 'real-update-acceptance.ts',
 );
@@ -25,6 +26,9 @@ for (const required of [
   'SubutaiRealUpdateSafety-',
   'com.subutai.downloadmanager.real-update-acceptance',
   "acceptanceProductName = 'Subutai Real Update Acceptance'",
+  "acceptanceInstallDirectoryName = '@subutaidesktop'",
+  'Programs\\$acceptanceInstallDirectoryName',
+  "-After \"`$installDir = Join-Path `$env:LOCALAPPDATA 'Programs\\@subutaidesktop'\"",
   '$package.build.productName = $acceptanceProductName',
   '$package.build.appId = $acceptanceAppId',
   '$package.build.nsis.shortcutName = $acceptanceProductName',
@@ -48,6 +52,17 @@ for (const required of [
 }
 if (wrapper.includes('$package | Add-Member -NotePropertyName productName')) {
   throw new Error('Acceptance identity must mutate build.productName, not a shadow top-level package property.');
+}
+
+for (const required of [
+  '${APP_EXECUTABLE_FILENAME}',
+  'cache-current-installer.ps1',
+  'register-native-host.ps1',
+]) {
+  requireText(installerInclude, required, 'NSIS installer include');
+}
+if (installerInclude.includes('$INSTDIR\\Subutai Download Manager.exe')) {
+  throw new Error('NSIS browser registration must follow the packaged executable name instead of a hard-coded product filename.');
 }
 
 for (const required of [
@@ -150,4 +165,4 @@ if (!workflow.includes('workflow_dispatch:') || !workflow.includes('pull_request
   throw new Error('Real updater acceptance must support manual and pull-request execution.');
 }
 
-console.log('Subutai real two-installer updater acceptance policy passed: acceptance-only one-click per-user non-elevating NSIS identity, isolated silent baseline install, real A/B builds, loopback feed, healthy update, forced rollback, checksum rejection, durable user state, browser bridge evidence and read-only execution are locked.');
+console.log('Subutai real two-installer updater acceptance policy passed: acceptance-only one-click per-user non-elevating NSIS identity, deterministic sanitized-package install path, dynamic packaged executable browser registration, isolated silent baseline install, real A/B builds, loopback feed, healthy update, forced rollback, checksum rejection, durable user state, browser bridge evidence and read-only execution are locked.');
