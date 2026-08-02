@@ -73,7 +73,7 @@ export function encodeNativeFrame(requestId: bigint, kind: NativeMessageKind, pa
 export class NativeFrameDecoder {
   private buffer = Buffer.alloc(0);
 
-  push(chunk: Buffer): NativeFrame[] {
+  push(chunk: Uint8Array): NativeFrame[] {
     if (chunk.length === 0) return [];
     const nextLength = this.buffer.length + chunk.length;
     if (nextLength > MAX_IPC_BUFFER_BYTES) throw new Error(`Native IPC buffer limit exceeded: ${nextLength}`);

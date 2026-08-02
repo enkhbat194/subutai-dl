@@ -152,14 +152,15 @@ export class NativeEngineService {
     task.cancelRequested = false;
     task.stderr = '';
     task.decoder = new NativeFrameDecoder();
-    task.status = {
+    const resumedStatus: NativeEngineTaskStatus = {
       ...task.status,
       status: 'waiting',
       downloadSpeed: '0',
       connections: '0',
-      errorCode: undefined,
-      errorMessage: undefined,
     };
+    delete resumedStatus.errorCode;
+    delete resumedStatus.errorMessage;
+    task.status = resumedStatus;
     await this.startTask(task);
   }
 
@@ -174,14 +175,15 @@ export class NativeEngineService {
       task.child = null;
     }
     await this.removeTaskFiles(task.request.destinationPath);
-    task.status = {
+    const removedStatus: NativeEngineTaskStatus = {
       ...task.status,
       status: 'removed',
       downloadSpeed: '0',
       connections: '0',
-      errorCode: undefined,
-      errorMessage: undefined,
     };
+    delete removedStatus.errorCode;
+    delete removedStatus.errorMessage;
+    task.status = removedStatus;
   }
 
   async stop(): Promise<void> {
@@ -414,10 +416,9 @@ function initialStatus(id: string, destinationPath: string): NativeEngineTaskSta
 }
 
 function cloneStatus(status: NativeEngineTaskStatus): NativeEngineTaskStatus {
-  return {
-    ...status,
-    files: status.files?.map((file) => ({ ...file })),
-  };
+  const clone: NativeEngineTaskStatus = { ...status };
+  if (status.files) clone.files = status.files.map((file) => ({ ...file }));
+  return clone;
 }
 
 function normalizeHeaders(headers: Record<string, string> | undefined): Record<string, string> {
