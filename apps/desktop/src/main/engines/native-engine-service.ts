@@ -5,7 +5,11 @@ import { rm } from 'node:fs/promises';
 import { basename, join, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import type { TransferSettings } from '@subutai/shared';
-import { DEFAULT_TRANSFER_SETTINGS } from '../network/transfer-policy';
+import {
+  DEFAULT_TRANSFER_SETTINGS,
+  effectiveSpeedLimit,
+  resolveNativeProxyEndpoint,
+} from '../network/transfer-policy';
 import {
   NativeFrameDecoder,
   NativeMessageKind,
@@ -268,6 +272,18 @@ export class NativeEngineService {
             maximumConnections: task.request.connections,
             minimumChunkBytes: BigInt(DEFAULT_MINIMUM_CHUNK_BYTES),
             checkpointBytes: BigInt(DEFAULT_CHECKPOINT_BYTES),
+            proxyMode: this.transferSettings.proxyMode,
+            proxyUrl: resolveNativeProxyEndpoint(this.transferSettings),
+            proxyUsername: this.transferSettings.proxyUsername,
+            proxyPassword: this.proxyPassword,
+            speedLimitBytesPerSecond: BigInt(effectiveSpeedLimit(
+              this.transferSettings,
+              task.request.speedLimitBytesPerSecond ?? 0,
+            )),
+            retryMaxAttempts: this.transferSettings.retryMaxAttempts,
+            retryBaseDelayMilliseconds: BigInt(this.transferSettings.retryBaseDelaySeconds * 1000),
+            connectTimeoutMilliseconds: BigInt(this.transferSettings.connectTimeoutSeconds * 1000),
+            transferTimeoutMilliseconds: BigInt(this.transferSettings.transferTimeoutSeconds * 1000),
             headers: task.request.headers,
           });
           child.stdin.write(encodeNativeFrame(this.nextRequestId(), NativeMessageKind.StartRequest, payload));

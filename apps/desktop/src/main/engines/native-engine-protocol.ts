@@ -2,7 +2,7 @@ const IPC_MAGIC = Buffer.from('SUBIPC01', 'ascii');
 const START_MAGIC = Buffer.from('SUBSTRT1', 'ascii');
 const STATUS_MAGIC = Buffer.from('SUBSTAT1', 'ascii');
 const IPC_PROTOCOL_VERSION = 1;
-const DESKTOP_PAYLOAD_SCHEMA_VERSION = 1;
+const DESKTOP_PAYLOAD_SCHEMA_VERSION = 2;
 const MAX_IPC_PAYLOAD_BYTES = 8 * 1024 * 1024;
 const MAX_IPC_BUFFER_BYTES = MAX_IPC_PAYLOAD_BYTES + 1024 * 1024;
 const MAX_FIELD_BYTES = 1024 * 1024;
@@ -25,6 +25,7 @@ export const enum NativeMessageKind {
 }
 
 export type NativeTaskState = 'waiting' | 'active' | 'paused' | 'complete' | 'error' | 'removed';
+export type NativeProxyMode = 'off' | 'system' | 'manual';
 
 export interface NativeStartPayload {
   taskId: string;
@@ -33,6 +34,15 @@ export interface NativeStartPayload {
   maximumConnections: number;
   minimumChunkBytes: bigint;
   checkpointBytes: bigint;
+  proxyMode: NativeProxyMode;
+  proxyUrl: string;
+  proxyUsername: string;
+  proxyPassword: string;
+  speedLimitBytesPerSecond: bigint;
+  retryMaxAttempts: number;
+  retryBaseDelayMilliseconds: bigint;
+  connectTimeoutMilliseconds: bigint;
+  transferTimeoutMilliseconds: bigint;
   headers: Record<string, string>;
 }
 
@@ -101,6 +111,18 @@ export function encodeStartPayload(value: NativeStartPayload): Buffer {
   if (!value.taskId.trim() || !value.url.trim() || !value.destination.trim()) {
     throw new Error('Native start payload requires task id, URL and destination');
   }
+  if (value.minimumChunkBytes <= 0n || value.checkpointBytes <= 0n) {
+    throw new Error('Native chunk and checkpoint sizes must be greater than zero');
+  }
+  if (value.proxyMode === 'manual' && !value.proxyUrl.trim()) {
+    throw new Error('Native manual proxy mode requires a proxy URL');
+  }
+  if (value.retryMaxAttempts < 1 || value.retryMaxAttempts > 100) {
+    throw new Error(`Invalid native retry attempt count: ${value.retryMaxAttempts}`);
+  }
+  if (value.connectTimeoutMilliseconds <= 0n || value.transferTimeoutMilliseconds <= 0n) {
+    throw new Error('Native connect and transfer timeouts must be greater than zero');
+  }
   const maximumConnections = Math.max(1, Math.min(32, Math.trunc(value.maximumConnections)));
   const headers = Object.entries(value.headers).filter(([, headerValue]) => headerValue.trim().length > 0);
   if (headers.length > 256) throw new Error(`Too many native request headers: ${headers.length}`);
@@ -111,6 +133,15 @@ export function encodeStartPayload(value: NativeStartPayload): Buffer {
   parts.push(u32(maximumConnections));
   parts.push(u64(value.minimumChunkBytes));
   parts.push(u64(value.checkpointBytes));
+  parts.push(Buffer.from([proxyModeCode(value.proxyMode)]));
+  parts.push(stringField(value.proxyUrl));
+  parts.push(stringField(value.proxyUsername));
+  parts.push(stringField(value.proxyPassword));
+  parts.push(u64(value.speedLimitBytesPerSecond));
+  parts.push(u32(Math.trunc(value.retryMaxAttempts)));
+  parts.push(u64(value.retryBaseDelayMilliseconds));
+  parts.push(u64(value.connectTimeoutMilliseconds));
+  parts.push(u64(value.transferTimeoutMilliseconds));
   parts.push(u32(headers.length));
   for (const [name, headerValue] of headers) {
     parts.push(stringField(name));
@@ -167,6 +198,14 @@ function decodeNativeFrame(frame: Buffer): NativeFrame {
   return { requestId, kind, payload: Buffer.from(frame.subarray(28, payloadEnd)) };
 }
 
+function proxyModeCode(value: NativeProxyMode): number {
+  switch (value) {
+    case 'off': return 0;
+    case 'system': return 1;
+    case 'manual': return 2;
+  }
+}
+
 function decodeTaskState(value: number): NativeTaskState {
   switch (value) {
     case 1: return 'waiting';
@@ -199,13 +238,14 @@ function u16(value: number): Buffer {
 }
 
 function u32(value: number): Buffer {
+  if (!Number.isInteger(value) || value < 0 || value > 0xffff_ffff) throw new Error(`Invalid native u32 value: ${value}`);
   const output = Buffer.allocUnsafe(4);
   output.writeUInt32LE(value, 0);
   return output;
 }
 
 function u64(value: bigint): Buffer {
-  if (value <= 0n || value > UINT64_MASK) throw new Error(`Invalid native u64 value: ${value}`);
+  if (value < 0n || value > UINT64_MASK) throw new Error(`Invalid native u64 value: ${value}`);
   const output = Buffer.allocUnsafe(8);
   output.writeBigUInt64LE(value, 0);
   return output;

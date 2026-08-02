@@ -8,6 +8,7 @@ use std::time::{Duration, Instant};
 use crate::platform;
 use crate::platform::ResponseReader;
 use crate::sha256::Sha256;
+use crate::transport_settings::{SharedRateLimiter, TransportSettings};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RequestHeader {
@@ -61,6 +62,7 @@ pub struct DownloadRequest {
     pub url: String,
     pub destination: PathBuf,
     pub headers: Vec<RequestHeader>,
+    pub transport: TransportSettings,
 }
 
 impl DownloadRequest {
@@ -69,6 +71,7 @@ impl DownloadRequest {
             url: url.into(),
             destination: destination.into(),
             headers: Vec::new(),
+            transport: TransportSettings::default(),
         }
     }
 }
@@ -237,17 +240,26 @@ impl From<std::io::Error> for TransferError {
 }
 
 pub fn probe_url(url: &str, headers: &[RequestHeader]) -> Result<HttpProbe, TransferError> {
+    probe_url_with_settings(url, headers, &TransportSettings::default())
+}
+
+pub fn probe_url_with_settings(
+    url: &str,
+    headers: &[RequestHeader],
+    settings: &TransportSettings,
+) -> Result<HttpProbe, TransferError> {
+    settings.validate().map_err(TransferError::Protocol)?;
     for header in headers {
         header.validate()?;
     }
 
-    let mut response = platform::open_response("HEAD", url, headers)?;
+    let mut response = platform::open_response("HEAD", url, headers, settings)?;
     if matches!(response.metadata().status_code, 405 | 501) {
         drop(response);
         let range = RequestHeader::new("Range", "bytes=0-0")?;
         let mut fallback_headers = headers.to_vec();
         fallback_headers.push(range);
-        response = platform::open_response("GET", url, &fallback_headers)?;
+        response = platform::open_response("GET", url, &fallback_headers, settings)?;
     }
 
     let probe = response.metadata().clone();
@@ -278,7 +290,12 @@ where
         return Err(TransferError::PartialFileExists(partial));
     }
 
-    let mut response = platform::open_response("GET", &request.url, &request.headers)?;
+    request
+        .transport
+        .validate()
+        .map_err(TransferError::Protocol)?;
+    let mut response =
+        platform::open_response("GET", &request.url, &request.headers, &request.transport)?;
     let metadata = response.metadata().clone();
     if !(200..300).contains(&metadata.status_code) {
         return Err(TransferError::HttpStatus(metadata.status_code));
@@ -306,6 +323,7 @@ where
     let mut downloaded = 0_u64;
     let mut hasher = Sha256::new();
     let mut buffer = vec![0_u8; 64 * 1024];
+    let rate_limiter = SharedRateLimiter::new(request.transport.speed_limit_bytes_per_second);
 
     loop {
         let read = response.read(&mut buffer)?;
@@ -313,6 +331,9 @@ where
             break;
         }
         file.write_all(&buffer[..read])?;
+        if let Some(limiter) = rate_limiter.as_deref() {
+            limiter.throttle(read);
+        }
         hasher.update(&buffer[..read]);
         downloaded = downloaded
             .checked_add(read as u64)

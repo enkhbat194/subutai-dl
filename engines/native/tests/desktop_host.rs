@@ -176,6 +176,7 @@ fn start_request(task_id: &str, url: String, destination: &Path) -> DesktopStart
         maximum_connections: 4,
         minimum_chunk_bytes: 256 * 1024,
         checkpoint_bytes: 64 * 1024,
+        transport: subutai_native_engine::TransportSettings::default(),
         headers: vec![RequestHeader::new(TEST_HEADER_NAME, TEST_HEADER_VALUE).unwrap()],
     }
 }

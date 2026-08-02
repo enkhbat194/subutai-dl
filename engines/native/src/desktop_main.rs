@@ -67,6 +67,9 @@ fn run() -> Result<(), String> {
     request.minimum_segment_size = start.minimum_chunk_bytes;
     request.checkpoint_bytes = start.checkpoint_bytes;
     request.headers = start.headers;
+    request.transport = start.transport;
+    request.adaptive.max_replacements = request.transport.retry_max_attempts.saturating_sub(1);
+    request.adaptive.retry_backoff = request.transport.retry_base_delay;
     request.adaptive.minimum_connections = request
         .adaptive
         .minimum_connections

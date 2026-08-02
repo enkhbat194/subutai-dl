@@ -12,8 +12,9 @@ use crate::platform;
 use crate::platform::ResponseReader;
 use crate::sha256::Sha256;
 use crate::transfer::{
-    DownloadResult, HttpProbe, RequestHeader, TransferError, partial_path, probe_url,
+    DownloadResult, HttpProbe, RequestHeader, TransferError, partial_path, probe_url_with_settings,
 };
+use crate::transport_settings::{SharedRateLimiter, TransportSettings};
 use crate::{JobManifest, JobState, JournalStore, SegmentState, StoreError, plan_ranges};
 
 const CONTROL_RUNNING: u8 = 0;
@@ -70,6 +71,7 @@ pub struct SegmentedDownloadRequest {
     pub minimum_segment_size: u64,
     pub checkpoint_bytes: u64,
     pub adaptive: AdaptivePolicy,
+    pub transport: TransportSettings,
 }
 
 impl SegmentedDownloadRequest {
@@ -87,6 +89,7 @@ impl SegmentedDownloadRequest {
             minimum_segment_size: 4 * 1024 * 1024,
             checkpoint_bytes: 1024 * 1024,
             adaptive: AdaptivePolicy::default(),
+            transport: TransportSettings::default(),
         }
     }
 }
@@ -168,7 +171,7 @@ where
         ));
     }
 
-    let segment_probe = probe_segment_support(&request.url, &request.headers)?;
+    let segment_probe = probe_segment_support(request)?;
     let total_size = segment_probe
         .content_length
         .ok_or(TransferError::MissingContentLength)?;
@@ -224,6 +227,7 @@ where
     ));
     let started = Instant::now();
     let (progress_sender, progress_receiver) = mpsc::channel::<SegmentedProgress>();
+    let rate_limiter = SharedRateLimiter::new(request.transport.speed_limit_bytes_per_second);
     let mut worker_results = Vec::new();
 
     thread::scope(|scope| {
@@ -249,6 +253,7 @@ where
             let worker_probe = segment_probe.clone();
             let worker_sender = progress_sender.clone();
             let worker_adaptive = Arc::clone(&adaptive);
+            let worker_rate_limiter = rate_limiter.clone();
             handles.push(scope.spawn(move || {
                 run_segment_worker(
                     index,
@@ -261,6 +266,7 @@ where
                     started,
                     &worker_sender,
                     &worker_adaptive,
+                    worker_rate_limiter.as_deref(),
                 )
             }));
         }
@@ -369,6 +375,10 @@ fn validate_request(request: &SegmentedDownloadRequest) -> Result<(), TransferEr
         .adaptive
         .validate(request.requested_segments as usize)
         .map_err(TransferError::Protocol)?;
+    request
+        .transport
+        .validate()
+        .map_err(TransferError::Protocol)?;
     for header in &request.headers {
         if header.name.eq_ignore_ascii_case("range") || header.name.eq_ignore_ascii_case("if-range")
         {
@@ -378,11 +388,34 @@ fn validate_request(request: &SegmentedDownloadRequest) -> Result<(), TransferEr
     Ok(())
 }
 
-fn probe_segment_support(url: &str, headers: &[RequestHeader]) -> Result<HttpProbe, TransferError> {
-    let general_probe = probe_url(url, headers)?;
-    let mut range_headers = headers.to_vec();
+fn probe_segment_support(request: &SegmentedDownloadRequest) -> Result<HttpProbe, TransferError> {
+    let mut last_error = None;
+    for attempt in 1..=request.transport.retry_max_attempts {
+        match probe_segment_support_once(request) {
+            Ok(probe) => return Ok(probe),
+            Err(error)
+                if is_retryable(&error) && attempt < request.transport.retry_max_attempts =>
+            {
+                last_error = Some(error);
+                thread::sleep(request.transport.retry_delay(attempt));
+            }
+            Err(error) => return Err(error),
+        }
+    }
+    Err(last_error.unwrap_or_else(|| {
+        TransferError::Protocol("remote probe exhausted without a result".into())
+    }))
+}
+
+fn probe_segment_support_once(
+    request: &SegmentedDownloadRequest,
+) -> Result<HttpProbe, TransferError> {
+    let general_probe =
+        probe_url_with_settings(&request.url, &request.headers, &request.transport)?;
+    let mut range_headers = request.headers.clone();
     range_headers.push(RequestHeader::new("Range", "bytes=0-0")?);
-    let response = platform::open_response("GET", url, &range_headers)?;
+    let response =
+        platform::open_response("GET", &request.url, &range_headers, &request.transport)?;
     let range_probe = response.metadata().clone();
     if range_probe.status_code != 206 {
         return Err(TransferError::ByteRangesUnsupported);
@@ -583,6 +616,7 @@ fn run_segment_worker(
     started: Instant,
     progress_sender: &mpsc::Sender<SegmentedProgress>,
     adaptive: &AdaptiveGate,
+    rate_limiter: Option<&SharedRateLimiter>,
 ) -> Result<WorkerStop, TransferError> {
     let mut replacements = 0_u32;
     loop {
@@ -607,6 +641,7 @@ fn run_segment_worker(
                 started,
                 progress_sender,
                 adaptive,
+                rate_limiter,
             ),
         };
         drop(permit);
@@ -672,6 +707,7 @@ fn run_segment_attempt(
     started: Instant,
     progress_sender: &mpsc::Sender<SegmentedProgress>,
     adaptive: &AdaptiveGate,
+    rate_limiter: Option<&SharedRateLimiter>,
 ) -> Result<WorkerAttempt, TransferError> {
     match control.state() {
         CONTROL_PAUSED => return Ok(WorkerAttempt::Paused),
@@ -716,7 +752,7 @@ fn run_segment_attempt(
     }
 
     let attempt_started = Instant::now();
-    let mut response = platform::open_response("GET", &request.url, &headers)?;
+    let mut response = platform::open_response("GET", &request.url, &headers, &request.transport)?;
     let metadata = response.metadata().clone();
     if metadata.status_code == 200 && if_range_validator(probe).is_some() {
         return Err(TransferError::RemoteChanged(
@@ -775,6 +811,9 @@ fn run_segment_attempt(
             });
         }
         file.write_all(&buffer[..read])?;
+        if let Some(limiter) = rate_limiter {
+            limiter.throttle(read);
+        }
         completed = completed
             .checked_add(read as u64)
             .ok_or_else(|| TransferError::Protocol("segment progress overflowed".into()))?;
