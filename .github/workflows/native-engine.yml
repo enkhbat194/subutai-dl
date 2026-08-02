@@ -9,7 +9,6 @@ on:
       - "docs/NATIVE_ENGINE_IPC.md"
       - "docs/PROJECT_STATUS.md"
       - "scripts/native-engine-policy-test.mjs"
-      - "scripts/apply-n3-source.mjs"
       - "rust-toolchain.toml"
       - "package.json"
       - "pnpm-lock.yaml"
@@ -24,7 +23,6 @@ on:
       - "docs/NATIVE_ENGINE_IPC.md"
       - "docs/PROJECT_STATUS.md"
       - "scripts/native-engine-policy-test.mjs"
-      - "scripts/apply-n3-source.mjs"
       - "rust-toolchain.toml"
       - "package.json"
       - "pnpm-lock.yaml"
@@ -35,10 +33,10 @@ on:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   native-engine:
@@ -47,10 +45,8 @@ jobs:
     timeout-minutes: 60
 
     steps:
-      - name: Checkout N3 source branch
+      - name: Checkout
         uses: actions/checkout@v4
-        with:
-          ref: ${{ github.head_ref || github.ref_name }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -72,27 +68,6 @@ jobs:
           rustup default 1.97.1
           rustc --version --verbose
           cargo --version
-
-      - name: Apply N3 adaptive source migration
-        shell: powershell
-        run: |
-          node scripts/apply-n3-source.mjs
-          Remove-Item scripts/apply-n3-source.mjs
-          cargo fmt --manifest-path engines/native/Cargo.toml --all
-
-      - name: Save N3 adaptive source
-        shell: powershell
-        run: |
-          $changes = git status --porcelain
-          if ([string]::IsNullOrWhiteSpace($changes)) {
-            Write-Host "N3 source is already applied."
-            exit 0
-          }
-          git config user.name "Subutai Automation"
-          git config user.email "subutai-automation@users.noreply.github.com"
-          git add -A
-          git commit -m "Build N3 adaptive segmented transfer core"
-          git push origin "HEAD:${{ github.head_ref || github.ref_name }}"
 
       - name: Verify Subutai ownership policy
         shell: powershell
