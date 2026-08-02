@@ -36,14 +36,18 @@ function Remove-BrowserRegistration {
   Remove-Item -LiteralPath $nativeMessagingDir -Recurse -Force -ErrorAction SilentlyContinue
 }
 
+function Copy-DirectoryContents {
+  param([Parameter(Mandatory = $true)][string]$Source, [Parameter(Mandatory = $true)][string]$Destination)
+  New-Item -ItemType Directory -Force -Path $Destination | Out-Null
+  Get-ChildItem -LiteralPath $Source -Force -ErrorAction Stop |
+    Copy-Item -Destination $Destination -Recurse -Force -ErrorAction Stop
+}
+
 function Capture-Directory {
   param([Parameter(Mandatory = $true)][string]$Path, [Parameter(Mandatory = $true)][string]$Name)
   $existed = Test-Path -LiteralPath $Path
   $backup = Join-Path $safetyRoot $Name
-  if ($existed) {
-    New-Item -ItemType Directory -Force -Path $backup | Out-Null
-    Copy-Item -LiteralPath (Join-Path $Path '*') -Destination $backup -Recurse -Force -ErrorAction Stop
-  }
+  if ($existed) { Copy-DirectoryContents -Source $Path -Destination $backup }
   $script:directoryState += [ordered]@{ path = $Path; backup = $backup; existed = $existed }
 }
 
@@ -51,10 +55,7 @@ function Restore-DirectoryState {
   foreach ($entry in $directoryState) {
     Remove-Item -LiteralPath ([string]$entry.path) -Recurse -Force -ErrorAction SilentlyContinue
     if ($entry.existed) {
-      New-Item -ItemType Directory -Force -Path ([string]$entry.path) | Out-Null
-      if (Test-Path -LiteralPath ([string]$entry.backup)) {
-        Copy-Item -LiteralPath (Join-Path ([string]$entry.backup) '*') -Destination ([string]$entry.path) -Recurse -Force
-      }
+      Copy-DirectoryContents -Source ([string]$entry.backup) -Destination ([string]$entry.path)
     }
   }
 }
@@ -79,7 +80,6 @@ try {
     -TargetVersion $TargetVersion `
     -Workspace $Workspace `
     -ScenarioTimeoutSeconds $ScenarioTimeoutSeconds
-  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 } finally {
   Stop-SubutaiProcesses
   if (Test-Path -LiteralPath $installDir) {
