@@ -4,8 +4,10 @@ use std::process::ExitCode;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use subutai_native_engine::{
-    DownloadRequest, ENGINE_NAME, ENGINE_VERSION, JobManifest, JournalStore, SegmentState,
-    decode_manifest, download_file_with_progress, encode_manifest, plan_ranges, probe_url,
+    DownloadControl, DownloadRequest, ENGINE_NAME, ENGINE_VERSION, JobManifest, JournalStore,
+    SegmentState, SegmentedDownloadRequest, SegmentedOutcome, decode_manifest,
+    download_file_with_progress, download_segmented_with_progress, encode_manifest, plan_ranges,
+    probe_url,
 };
 
 fn main() -> ExitCode {
@@ -28,6 +30,7 @@ fn run() -> Result<(), String> {
         Some("plan") => run_plan(args),
         Some("probe") => run_probe(args),
         Some("download") => run_download(args),
+        Some("download-segmented") => run_segmented_download(args),
         Some("self-test") => {
             if args.next().is_some() {
                 return Err("usage: subutai-engine self-test".into());
@@ -84,6 +87,7 @@ fn run_probe(mut args: impl Iterator<Item = String>) -> Result<(), String> {
     println!("final_url={}", probe.final_url);
     println!("status={}", probe.status_code);
     println!("content_length={}", optional_u64(probe.content_length));
+    println!("content_range={}", optional_text(probe.content_range.as_deref()));
     println!("accepts_byte_ranges={}", probe.accepts_byte_ranges);
     println!("etag={}", optional_text(probe.etag.as_deref()));
     println!(
@@ -129,13 +133,80 @@ fn run_download(mut args: impl Iterator<Item = String>) -> Result<(), String> {
     })
     .map_err(|error| error.to_string())?;
 
+    print_download_result(&result);
+    Ok(())
+}
+
+fn run_segmented_download(mut args: impl Iterator<Item = String>) -> Result<(), String> {
+    let usage = "usage: subutai-engine download-segmented <http-or-https-url> <destination> [segments] [minimum-segment-bytes]";
+    let url = args.next().ok_or_else(|| usage.to_string())?;
+    let destination = args
+        .next()
+        .map(PathBuf::from)
+        .ok_or_else(|| usage.to_string())?;
+    let segments = match args.next() {
+        Some(value) => value
+            .parse::<u32>()
+            .map_err(|_| format!("invalid segment count: {value}"))?,
+        None => 8,
+    };
+    let minimum_segment_size = match args.next() {
+        Some(value) => value
+            .parse::<u64>()
+            .map_err(|_| format!("invalid minimum segment size: {value}"))?,
+        None => 4 * 1024 * 1024,
+    };
+    if args.next().is_some() {
+        return Err(usage.into());
+    }
+
+    let job_id = format!("cli:{}:{}", url, destination.to_string_lossy());
+    let mut request = SegmentedDownloadRequest::new(job_id, url, &destination);
+    request.requested_segments = segments;
+    request.minimum_segment_size = minimum_segment_size;
+    let control = DownloadControl::default();
+    let mut last_reported = 0_u64;
+    let outcome = download_segmented_with_progress(&request, &control, |progress| {
+        let reached_end = progress.downloaded_bytes == progress.total_bytes;
+        if progress.downloaded_bytes.saturating_sub(last_reported) >= 1024 * 1024 || reached_end {
+            last_reported = progress.downloaded_bytes;
+            eprintln!(
+                "downloaded={} total={} segments={}/{} speed_bytes_per_second={} elapsed_ms={}",
+                progress.downloaded_bytes,
+                progress.total_bytes,
+                progress.completed_segments,
+                progress.total_segments,
+                progress.bytes_per_second,
+                progress.elapsed.as_millis(),
+            );
+        }
+    })
+    .map_err(|error| error.to_string())?;
+
+    match outcome {
+        SegmentedOutcome::Completed(result) => print_download_result(&result),
+        SegmentedOutcome::Paused {
+            downloaded_bytes,
+            total_bytes,
+            journal_path,
+        } => {
+            println!("result=PAUSED");
+            println!("downloaded_bytes={downloaded_bytes}");
+            println!("total_bytes={total_bytes}");
+            println!("journal={}", journal_path.display());
+        }
+        SegmentedOutcome::Cancelled => println!("result=CANCELLED"),
+    }
+    Ok(())
+}
+
+fn print_download_result(result: &subutai_native_engine::DownloadResult) {
     println!("result=PASS");
     println!("destination={}", result.destination.display());
     println!("final_url={}", result.final_url);
     println!("downloaded_bytes={}", result.downloaded_bytes);
     println!("sha256={}", result.sha256);
     println!("elapsed_ms={}", result.elapsed.as_millis());
-    Ok(())
 }
 
 fn run_self_test() -> Result<(), String> {
@@ -226,5 +297,5 @@ fn optional_text(value: Option<&str>) -> &str {
 }
 
 fn usage() -> &'static str {
-    "usage: subutai-engine <version|plan|probe|download|self-test>"
+    "usage: subutai-engine <version|plan|probe|download|download-segmented|self-test>"
 }
