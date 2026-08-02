@@ -9,6 +9,7 @@ on:
       - "docs/NATIVE_ENGINE_IPC.md"
       - "docs/PROJECT_STATUS.md"
       - "scripts/native-engine-policy-test.mjs"
+      - "scripts/native-soak-benchmark.mjs"
       - "scripts/release-engine-policy-test.mjs"
       - "scripts/dependency-lock-policy-test.mjs"
       - "scripts/integrity-policy-test.mts"
@@ -29,6 +30,7 @@ on:
       - "docs/NATIVE_ENGINE_IPC.md"
       - "docs/PROJECT_STATUS.md"
       - "scripts/native-engine-policy-test.mjs"
+      - "scripts/native-soak-benchmark.mjs"
       - "scripts/release-engine-policy-test.mjs"
       - "scripts/dependency-lock-policy-test.mjs"
       - "scripts/integrity-policy-test.mts"
@@ -54,7 +56,7 @@ jobs:
   native-engine:
     name: subutai-windows
     runs-on: [self-hosted, Windows, X64, subutai]
-    timeout-minutes: 60
+    timeout-minutes: 75
 
     steps:
       - name: Checkout
@@ -101,9 +103,9 @@ jobs:
         shell: powershell
         run: cargo run --quiet --manifest-path engines/native/Cargo.toml --bin subutai-engine -- self-test
 
-      - name: Build production release desktop host without test hooks
+      - name: Build production release binaries without test hooks
         shell: powershell
-        run: cargo build --release --manifest-path engines/native/Cargo.toml --bin subutai-engine-host
+        run: cargo build --release --manifest-path engines/native/Cargo.toml --bin subutai-engine --bin subutai-engine-host
 
       - name: Enable pnpm
         shell: powershell
@@ -114,6 +116,15 @@ jobs:
       - name: Install locked desktop dependencies
         shell: powershell
         run: pnpm install --frozen-lockfile
+
+      - name: Run native resource soak benchmark
+        shell: powershell
+        env:
+          SUBUTAI_SOAK_ITERATIONS: 8
+          SUBUTAI_SOAK_MIB: 8
+          SUBUTAI_SOAK_SEGMENTS: 8
+          SUBUTAI_SOAK_REPORT: artifacts/n5/native-soak-report.json
+        run: pnpm test:native-soak
 
       - name: Check public Subutai identity
         shell: powershell
@@ -174,3 +185,12 @@ jobs:
       - name: Build Subutai desktop
         shell: powershell
         run: pnpm build
+
+      - name: Preserve native soak telemetry
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Subutai-Native-Soak-Telemetry
+          path: artifacts/n5/native-soak-report.json
+          if-no-files-found: warn
+          retention-days: 14
