@@ -31,11 +31,27 @@ $registryState = @()
 $primaryFailure = $null
 $restorationFailures = New-Object System.Collections.Generic.List[string]
 $desktopPackageOriginal = Get-Content -LiteralPath $desktopPackagePath -Raw
+$harnessOriginal = Get-Content -LiteralPath $harness -Raw
 
 function Write-Utf8NoBom {
   param([Parameter(Mandatory = $true)][string]$Path, [Parameter(Mandatory = $true)][string]$Content)
   $encoding = New-Object System.Text.UTF8Encoding($false)
   [System.IO.File]::WriteAllText($Path, $Content, $encoding)
+}
+
+function Replace-ExactlyOnce {
+  param(
+    [Parameter(Mandatory = $true)][string]$Content,
+    [Parameter(Mandatory = $true)][string]$Before,
+    [Parameter(Mandatory = $true)][string]$After,
+    [Parameter(Mandatory = $true)][string]$Label
+  )
+  $first = $Content.IndexOf($Before, [System.StringComparison]::Ordinal)
+  if ($first -lt 0) { throw "$Label source contract was not found." }
+  if ($Content.IndexOf($Before, $first + $Before.Length, [System.StringComparison]::Ordinal) -ge 0) {
+    throw "$Label source contract appeared more than once."
+  }
+  return $Content.Substring(0, $first) + $After + $Content.Substring($first + $Before.Length)
 }
 
 function Set-AcceptanceAppIdentity {
@@ -44,6 +60,31 @@ function Set-AcceptanceAppIdentity {
   $package.productName = $acceptanceProductName
   $package.build.appId = $acceptanceAppId
   Write-Utf8NoBom -Path $desktopPackagePath -Content (($package | ConvertTo-Json -Depth 40) + "`n")
+}
+
+function Set-AcceptanceHarnessIdentity {
+  $content = $harnessOriginal
+  $content = Replace-ExactlyOnce -Content $content `
+    -Before "`$installDir = Join-Path `$env:LOCALAPPDATA 'Programs\SubutaiRealUpdateAcceptance'" `
+    -After "`$installDir = Join-Path `$env:LOCALAPPDATA 'Programs\Subutai Real Update Acceptance'" `
+    -Label 'Acceptance install directory'
+  $content = Replace-ExactlyOnce -Content $content `
+    -Before "`$userDataDir = Join-Path `$env:APPDATA 'Subutai Download Manager'" `
+    -After "`$userDataDir = Join-Path `$env:APPDATA 'Subutai Real Update Acceptance'" `
+    -Label 'Acceptance user-data directory'
+  $content = Replace-ExactlyOnce -Content $content `
+    -Before "`$installedExecutable = Join-Path `$installDir 'Subutai Download Manager.exe'" `
+    -After "`$installedExecutable = Join-Path `$installDir 'Subutai Real Update Acceptance.exe'" `
+    -Label 'Acceptance executable path'
+  $content = Replace-ExactlyOnce -Content $content `
+    -Before "Get-Process -Name 'Subutai Download Manager' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue" `
+    -After "foreach (`$name in @('Subutai Download Manager', 'Subutai Real Update Acceptance')) { Get-Process -Name `$name -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue }" `
+    -Label 'Acceptance process cleanup'
+  $content = Replace-ExactlyOnce -Content $content `
+    -Before "  New-Item -ItemType Directory -Force -Path `$installDir | Out-Null`r`n  `$process = Start-Process -FilePath ([string]`$BaselineBuild.setupPath) -ArgumentList @('/S', `"/D=`$installDir`") -PassThru -Wait" `
+    -After "  `$process = Start-Process -FilePath ([string]`$BaselineBuild.setupPath) -ArgumentList @('/S') -PassThru -Wait" `
+    -Label 'Acceptance baseline default install'
+  Write-Utf8NoBom -Path $harness -Content $content
 }
 
 function Stop-SubutaiProcesses {
@@ -107,13 +148,13 @@ try {
   Capture-Directory -Path $updaterRoot -Name 'updater'
   Capture-Directory -Path $nativeMessagingDir -Name 'native-messaging'
   Set-AcceptanceAppIdentity
+  Set-AcceptanceHarnessIdentity
 
   & $harness `
     -BaselineVersion $BaselineVersion `
     -TargetVersion $TargetVersion `
     -Workspace $Workspace `
-    -ScenarioTimeoutSeconds $ScenarioTimeoutSeconds `
-    -AcceptanceProductName $acceptanceProductName
+    -ScenarioTimeoutSeconds $ScenarioTimeoutSeconds
 } catch {
   $primaryFailure = $_
 } finally {
@@ -132,6 +173,7 @@ try {
   try { Restore-DirectoryState } catch { $restorationFailures.Add("Restore directories: $($_.Exception.Message)") }
   try { Restore-RegistryState } catch { $restorationFailures.Add("Restore registry: $($_.Exception.Message)") }
   try { Write-Utf8NoBom -Path $desktopPackagePath -Content $desktopPackageOriginal } catch { $restorationFailures.Add("Restore desktop package: $($_.Exception.Message)") }
+  try { Write-Utf8NoBom -Path $harness -Content $harnessOriginal } catch { $restorationFailures.Add("Restore acceptance harness: $($_.Exception.Message)") }
   try { Remove-Item -LiteralPath (Join-Path $workspacePath 'pre-existing-state') -Recurse -Force -ErrorAction SilentlyContinue } catch { $restorationFailures.Add("Remove nested backup: $($_.Exception.Message)") }
   try { Remove-Item -LiteralPath $safetyRoot -Recurse -Force -ErrorAction SilentlyContinue } catch { $restorationFailures.Add("Remove safety backup: $($_.Exception.Message)") }
 }
