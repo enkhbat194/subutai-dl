@@ -111,6 +111,9 @@ for (const required of [
   'startup-health-confirmed.txt',
   'rollbackAttemptCount',
   'NativeMessagingHosts',
+  'Registry]::CurrentUser.DeleteSubKeyTree',
+  'Registry]::CurrentUser.CreateSubKey',
+  'RegistryValueKind]::String',
 ]) requireText(twoBuildAcceptance, required, 'Local two-build updater acceptance');
 
 for (const required of [
