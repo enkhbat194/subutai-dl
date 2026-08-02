@@ -9,7 +9,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
-import type { AppUpdater } from 'electron-updater';
+import electronUpdater, { type AppUpdater } from 'electron-updater';
 import {
   readUpdateJournal,
   updaterRootPath,
@@ -17,6 +17,7 @@ import {
 
 declare const __SUBUTAI_REAL_UPDATE_ACCEPTANCE_BUILD__: boolean;
 
+const { autoUpdater } = electronUpdater;
 const CONFIG_SCHEMA_VERSION = 1 as const;
 const RESULT_SCHEMA_VERSION = 1 as const;
 const CONFIG_FILENAME = 'real-two-installer-acceptance.json';
@@ -234,6 +235,12 @@ export async function driveRealUpdateAcceptance(updater: AppUpdater): Promise<vo
     updater.removeListener('error', onUpdaterError);
     failAcceptance(config, error);
   }
+}
+
+export function startRealUpdateAcceptanceDriver(): void {
+  const config = configureRealUpdateAcceptanceUpdater(autoUpdater);
+  if (!config || app.getVersion() !== config.baselineVersion || config.phase !== 'ready') return;
+  setTimeout(() => { void driveRealUpdateAcceptance(autoUpdater); }, 1_000).unref();
 }
 
 export function realUpdateAcceptanceTransactionOptions(): {
