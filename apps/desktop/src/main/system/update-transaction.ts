@@ -22,12 +22,15 @@ async function replaceJournal(
   allowedInstallRoots: string[] | undefined,
   updater: (journal: UpdateTransactionJournal) => UpdateTransactionJournal | null,
 ): Promise<UpdateTransactionJournal | null> {
-  const journal = await readUpdateJournal({ rootPath, allowedInstallRoots });
+  const journalOptions: ReadJournalOptions = allowedInstallRoots
+    ? { rootPath, allowedInstallRoots }
+    : { rootPath };
+  const journal = await readUpdateJournal(journalOptions);
   if (!journal) return null;
   const next = updater({ ...journal });
   if (!next) return null;
   next.updatedAt = new Date().toISOString();
-  await writeUpdateJournal(next, { rootPath, allowedInstallRoots });
+  await writeUpdateJournal(next, journalOptions);
   return next;
 }
 
