@@ -14,13 +14,16 @@ $repoRoot = (Resolve-Path '.').Path
 $harness = Join-Path $repoRoot 'scripts\real-two-installer-acceptance.ps1'
 $desktopPackagePath = Join-Path $repoRoot 'apps\desktop\package.json'
 $acceptanceAppId = 'com.subutai.downloadmanager.real-update-acceptance'
-$acceptanceProductName = 'Subutai Real Update Acceptance'
+# Keep the production product/executable identity so the real transaction and watchdog
+# validate exactly the same controlled executable name used by public builds.
+$acceptanceProductName = 'Subutai Download Manager'
 # electron-builder one-click per-user installers derive APP_FILENAME from the sanitized package name.
 $acceptanceInstallDirectoryName = '@subutaidesktop'
 $workspacePath = [System.IO.Path]::GetFullPath((Join-Path $repoRoot $Workspace))
 $safetyRoot = Join-Path $env:RUNNER_TEMP ("SubutaiRealUpdateSafety-" + [guid]::NewGuid().ToString('N'))
 $installDir = Join-Path $env:LOCALAPPDATA "Programs\$acceptanceInstallDirectoryName"
 $userDataDir = Join-Path $env:APPDATA $acceptanceProductName
+$electronUpdaterCacheDir = Join-Path $env:LOCALAPPDATA '@subutaidesktop-updater'
 $updaterRoot = Join-Path $env:LOCALAPPDATA 'Subutai\Updater'
 $nativeMessagingDir = Join-Path $env:LOCALAPPDATA 'Subutai Download Manager\NativeMessaging'
 $registryKeys = @(
@@ -77,18 +80,6 @@ function Set-AcceptanceHarnessIdentity {
     -After "`$installDir = Join-Path `$env:LOCALAPPDATA 'Programs\@subutaidesktop'" `
     -Label 'Acceptance install directory'
   $content = Replace-ExactlyOnce -Content $content `
-    -Before "`$userDataDir = Join-Path `$env:APPDATA 'Subutai Download Manager'" `
-    -After "`$userDataDir = Join-Path `$env:APPDATA 'Subutai Real Update Acceptance'" `
-    -Label 'Acceptance user-data directory'
-  $content = Replace-ExactlyOnce -Content $content `
-    -Before "`$installedExecutable = Join-Path `$installDir 'Subutai Download Manager.exe'" `
-    -After "`$installedExecutable = Join-Path `$installDir 'Subutai Real Update Acceptance.exe'" `
-    -Label 'Acceptance executable path'
-  $content = Replace-ExactlyOnce -Content $content `
-    -Before "Get-Process -Name 'Subutai Download Manager' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue" `
-    -After "foreach (`$name in @('Subutai Download Manager', 'Subutai Real Update Acceptance')) { Get-Process -Name `$name -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue }" `
-    -Label 'Acceptance process cleanup'
-  $content = Replace-ExactlyOnce -Content $content `
     -Before "  New-Item -ItemType Directory -Force -Path `$installDir | Out-Null`r`n  `$process = Start-Process -FilePath ([string]`$BaselineBuild.setupPath) -ArgumentList @('/S', `"/D=`$installDir`") -PassThru -Wait" `
     -After "  `$process = Start-Process -FilePath ([string]`$BaselineBuild.setupPath) -ArgumentList @('/S') -PassThru -Wait" `
     -Label 'Acceptance one-click baseline install'
@@ -96,9 +87,8 @@ function Set-AcceptanceHarnessIdentity {
 }
 
 function Stop-SubutaiProcesses {
-  foreach ($name in @('Subutai Download Manager', $acceptanceProductName)) {
-    Get-Process -Name $name -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-  }
+  Get-Process -Name $acceptanceProductName -ErrorAction SilentlyContinue |
+    Stop-Process -Force -ErrorAction SilentlyContinue
   Start-Sleep -Milliseconds 500
 }
 
@@ -152,8 +142,9 @@ try {
     }
   }
   Stop-SubutaiProcesses
-  Capture-Directory -Path $userDataDir -Name 'acceptance-user-data'
-  Capture-Directory -Path $updaterRoot -Name 'updater'
+  Capture-Directory -Path $userDataDir -Name 'product-user-data'
+  Capture-Directory -Path $electronUpdaterCacheDir -Name 'electron-updater-cache'
+  Capture-Directory -Path $updaterRoot -Name 'transactional-updater'
   Capture-Directory -Path $nativeMessagingDir -Name 'native-messaging'
   Set-AcceptanceAppIdentity
   Set-AcceptanceHarnessIdentity
