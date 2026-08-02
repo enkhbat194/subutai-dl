@@ -73,7 +73,7 @@ jobs:
         shell: powershell
         run: node scripts/native-engine-policy-test.mjs
 
-      - name: Apply N1 compile cleanup
+      - name: Apply N1 quality cleanup
         shell: powershell
         run: |
           $path = "engines/native/src/transfer.rs"
@@ -84,17 +84,40 @@ jobs:
               "use crate::platform;`nuse crate::platform::ResponseReader;`n"
             )
           }
-          $old = @(
+          $oldLength = @(
             '    let content_length = header("content-length")',
             '        .and_then(|value| value.parse::<u64>().ok())',
             '        .or_else(|| header("content-range").and_then(parse_content_range_total));'
           ) -join "`n"
-          $new = @(
+          $newLength = @(
             '    let content_length = header("content-range")',
             '        .and_then(parse_content_range_total)',
             '        .or_else(|| header("content-length").and_then(|value| value.parse::<u64>().ok()));'
           ) -join "`n"
-          $text = $text.Replace($old, $new)
+          $text = $text.Replace($oldLength, $newLength)
+          $oldSize = @(
+            '    if let Some(expected) = metadata.content_length {',
+            '        if expected != downloaded {',
+            '            file.sync_all()?;',
+            '            return Err(TransferError::SizeMismatch {',
+            '                expected,',
+            '                actual: downloaded,',
+            '            });',
+            '        }',
+            '    }'
+          ) -join "`n"
+          $newSize = @(
+            '    if let Some(expected) = metadata.content_length',
+            '        && expected != downloaded',
+            '    {',
+            '        file.sync_all()?;',
+            '        return Err(TransferError::SizeMismatch {',
+            '            expected,',
+            '            actual: downloaded,',
+            '        });',
+            '    }'
+          ) -join "`n"
+          $text = $text.Replace($oldSize, $newSize)
           $utf8 = New-Object System.Text.UTF8Encoding($false)
           [System.IO.File]::WriteAllText($path, $text, $utf8)
 
@@ -113,7 +136,7 @@ jobs:
           git config user.name "Subutai Automation"
           git config user.email "subutai-automation@users.noreply.github.com"
           git add engines/native
-          git commit -m "Resolve N1 transfer compile checks"
+          git commit -m "Resolve N1 transfer quality checks"
           git push origin "HEAD:${{ github.head_ref || github.ref_name }}"
 
       - name: Check native engine quality
