@@ -26,6 +26,7 @@ import {
   isRemoteChangeFailure,
   normalizeSha256,
   prepareDownloadDestination,
+  removeDownloadFiles,
   verifyCompletedDownload,
 } from './integrity/download-policy';
 import {
@@ -35,6 +36,15 @@ import {
 } from './network/transfer-policy';
 import { isRunningStatus, queueAllowance, sortQueuedJobs } from './queue/queue-policy';
 import { canAutoRetry, classifyDownloadFailure } from './resilience/failure-policy';
+import {
+  activeDownloadUrl,
+  applyMirrorTransition,
+  mirrorReasonFromFailure,
+  nextMirrorSource,
+  normalizeMirrorUrls,
+  validateMirrorIntegrity,
+  type MirrorFailoverReason,
+} from './resilience/mirror-policy';
 import { JobStore } from './storage/job-store';
 
 const jobs = new Map<string, DownloadJob>();
@@ -182,7 +192,9 @@ function validateRequest(request: DownloadCreateRequest): void {
   if (!['http:', 'https:', 'ftp:', 'sftp:'].includes(parsed.protocol)) {
     throw new Error(`Одоогоор дэмжихгүй протокол: ${parsed.protocol}`);
   }
-  normalizeSha256(request.expectedSha256);
+  const expectedSha256 = normalizeSha256(request.expectedSha256);
+  const mirrorUrls = normalizeMirrorUrls(url, request.mirrorUrls);
+  validateMirrorIntegrity(mirrorUrls, expectedSha256);
 }
 
 function isLikelyMediaUrl(url: string): boolean {
@@ -270,7 +282,7 @@ async function assignTask(job: DownloadJob): Promise<boolean> {
     media?: MediaDownloadOptions;
     speedLimitBytesPerSecond?: number;
   } = {
-    url: job.url,
+    url: activeDownloadUrl(job),
     destination: job.destination,
     connections: job.connections,
   };
@@ -379,6 +391,10 @@ export async function createDownload(request: DownloadCreateRequest): Promise<Do
   const destination = request.destination.trim() || app.getPath('downloads');
   const requestedFilename = request.filename?.trim() ?? '';
   const media = resolveMediaOptions(request);
+  const mirrorUrls = normalizeMirrorUrls(request.url.trim(), request.mirrorUrls);
+  if (media && mirrorUrls.length > 0) {
+    throw new Error('Mirror fallback нь зөвхөн direct HTTP/HTTPS таталтад хамаарна.');
+  }
   const filename = requestedFilename || (media ? 'Media таталт' : inferFilename(request.url));
 
   const job: DownloadJob = {
@@ -410,6 +426,10 @@ export async function createDownload(request: DownloadCreateRequest): Promise<Do
     job.remoteRestartCount = 0;
     const expectedSha256 = normalizeSha256(request.expectedSha256);
     if (expectedSha256) job.expectedSha256 = expectedSha256;
+    if (mirrorUrls.length > 0) job.mirrorUrls = mirrorUrls;
+    job.mirrorIndex = 0;
+    job.activeSourceUrl = job.url;
+    job.mirrorFallbackCount = 0;
   }
   if (request.scheduleId) job.scheduleId = request.scheduleId;
   if (typeof request.speedLimitBytesPerSecond === 'number' && request.speedLimitBytesPerSecond > 0) {
@@ -714,6 +734,22 @@ function updateJobFromStatus(job: DownloadJob, status: SubutaiTaskStatus): void 
   }
 }
 
+async function failoverToNextMirror(
+  job: DownloadJob,
+  reason: MirrorFailoverReason,
+): Promise<boolean> {
+  const transition = nextMirrorSource(job, reason);
+  if (!transition) return false;
+
+  if (job.engineTaskId) {
+    try { await engine.cancel(job.engineTaskId); } catch { /* failed or completed task may already be gone */ }
+  }
+  const destinationPath = join(job.destination, job.filename);
+  await removeDownloadFiles(destinationPath, false);
+  applyMirrorTransition(job, transition);
+  return true;
+}
+
 async function restartChangedRemote(job: DownloadJob, status: SubutaiTaskStatus): Promise<boolean> {
   if (job.remoteChangePolicy !== 'restart'
     || (job.remoteRestartCount ?? 0) >= 1
@@ -737,8 +773,8 @@ async function restartChangedRemote(job: DownloadJob, status: SubutaiTaskStatus)
   return true;
 }
 
-async function verifyJobIntegrity(job: DownloadJob): Promise<void> {
-  if (job.engine === 'media' || !job.expectedSha256 || job.actualSha256) return;
+async function verifyJobIntegrity(job: DownloadJob): Promise<boolean> {
+  if (job.engine === 'media' || !job.expectedSha256 || job.actualSha256) return true;
   const filePath = join(job.destination, job.filename);
   const verification = await verifyCompletedDownload(filePath, job.expectedSha256);
   job.actualSha256 = verification.actualSha256;
@@ -754,7 +790,9 @@ async function verifyJobIntegrity(job: DownloadJob): Promise<void> {
     job.speedBytesPerSecond = 0;
     job.etaSeconds = null;
     job.updatedAt = new Date().toISOString();
+    return false;
   }
+  return true;
 }
 
 async function synchronizeJobs(): Promise<void> {
@@ -768,9 +806,17 @@ async function synchronizeJobs(): Promise<void> {
         const status = await engine.getStatus(job.engineTaskId);
         updateJobFromStatus(job, status);
         if (job.status === 'failed') {
-          await restartChangedRemote(job, status);
+          let mirrorSwitched = false;
+          if (isRemoteChangeFailure(status.errorCode, status.errorMessage)) {
+            mirrorSwitched = await failoverToNextMirror(job, 'remote-change');
+          } else {
+            const mirrorReason = mirrorReasonFromFailure(job.failureKind);
+            if (mirrorReason) mirrorSwitched = await failoverToNextMirror(job, mirrorReason);
+          }
+          if (!mirrorSwitched) await restartChangedRemote(job, status);
         } else if (job.status === 'completed') {
-          await verifyJobIntegrity(job);
+          const integrityMatched = await verifyJobIntegrity(job);
+          if (!integrityMatched) await failoverToNextMirror(job, 'integrity');
         }
         saveJob(job);
         changed = true;
@@ -808,6 +854,10 @@ function restoreState(): void {
     restored.remoteChangePolicy ??= 'fail';
     restored.remoteRestartCount ??= 0;
     restored.destinationPolicyApplied ??= true;
+    restored.mirrorUrls = normalizeMirrorUrls(restored.url, restored.mirrorUrls);
+    restored.mirrorIndex = Math.max(0, Math.min(restored.mirrorUrls.length, restored.mirrorIndex ?? 0));
+    restored.activeSourceUrl = [restored.url, ...restored.mirrorUrls][restored.mirrorIndex] ?? restored.url;
+    restored.mirrorFallbackCount ??= restored.mirrorIndex;
     order += 1;
     if (!['completed', 'failed', 'cancelled'].includes(restored.status)) {
       delete restored.engineTaskId;

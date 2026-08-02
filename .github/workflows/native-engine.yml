@@ -12,6 +12,7 @@ on:
       - "scripts/release-engine-policy-test.mjs"
       - "scripts/dependency-lock-policy-test.mjs"
       - "scripts/integrity-policy-test.mts"
+      - "scripts/mirror-policy-test.mts"
       - "scripts/validate-windows-package.ps1"
       - "rust-toolchain.toml"
       - "package.json"
@@ -31,6 +32,7 @@ on:
       - "scripts/release-engine-policy-test.mjs"
       - "scripts/dependency-lock-policy-test.mjs"
       - "scripts/integrity-policy-test.mts"
+      - "scripts/mirror-policy-test.mts"
       - "scripts/validate-windows-package.ps1"
       - "rust-toolchain.toml"
       - "package.json"
@@ -128,6 +130,10 @@ jobs:
       - name: Check integrity and redaction policies
         shell: powershell
         run: pnpm test:integrity
+
+      - name: Check mirror fallback policies
+        shell: powershell
+        run: pnpm test:mirror
 
       - name: Typecheck desktop and browser integration
         shell: powershell
