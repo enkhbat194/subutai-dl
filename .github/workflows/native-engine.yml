@@ -73,6 +73,26 @@ jobs:
         shell: powershell
         run: node scripts/native-engine-policy-test.mjs
 
+      - name: Make accepted range sockets blocking
+        shell: powershell
+        run: |
+          $path = "engines/native/tests/resumable_transfer.rs"
+          $text = [System.IO.File]::ReadAllText($path).Replace("`r`n", "`n")
+          $needle = '                    Ok((mut stream, _)) => {'
+          $replacement = @(
+            '                    Ok((mut stream, _)) => {',
+            '                        if let Err(error) = stream.set_nonblocking(false) {',
+            '                            eprintln!("range-server blocking-mode error: {error}");',
+            '                            continue;',
+            '                        }'
+          ) -join "`n"
+          if (-not $text.Contains($needle)) {
+            throw "Accepted range socket block was not found"
+          }
+          $text = $text.Replace($needle, $replacement)
+          $utf8 = New-Object System.Text.UTF8Encoding($false)
+          [System.IO.File]::WriteAllText($path, $text, $utf8)
+
       - name: Format N2 native engine sources
         shell: powershell
         run: cargo fmt --manifest-path engines/native/Cargo.toml --all
@@ -88,7 +108,7 @@ jobs:
           git config user.name "Subutai Automation"
           git config user.email "subutai-automation@users.noreply.github.com"
           git add engines/native
-          git commit -m "Format final N2 resumable transfer sources"
+          git commit -m "Use blocking accepted sockets in N2 range tests"
           git push origin "HEAD:${{ github.head_ref || github.ref_name }}"
 
       - name: Check native engine quality
