@@ -16,6 +16,7 @@ const packageJson = readFileSync(join(root, 'package.json'), 'utf8');
 const nativeWorkflow = readFileSync(join(root, '.github', 'workflows', 'native-engine.yml'), 'utf8');
 const n5Workflow = readFileSync(join(root, '.github', 'workflows', 'n5-production-acceptance.yml'), 'utf8');
 const releaseWorkflow = readFileSync(join(root, '.github', 'workflows', 'release.yml'), 'utf8');
+const twoBuildAcceptance = readFileSync(join(root, 'scripts', 'updater-two-build-acceptance.mjs'), 'utf8');
 
 function requireText(source, expected, label) {
   if (!source.includes(expected)) throw new Error(`${label} is missing required contract: ${expected}`);
@@ -85,6 +86,8 @@ for (const required of [
 for (const required of [
   'Test-PathInside',
   'Get-AllowedInstallRoots',
+  'Get-JournalProperty',
+  'Set-JournalProperty',
   'Previous installer checksum mismatch',
   "@('/S', '--updated')",
   'rollbackAttemptCount',
@@ -99,6 +102,18 @@ if (/Restart-Computer|shutdown\.exe|SetSuspendState|rundll32.+powrprof/iu.test(w
 }
 
 for (const required of [
+  'fixture-old-installer.rs',
+  'fixture-new-app.rs',
+  "run('rustc'",
+  'runProductionWatchdog',
+  'SUBUTAI_FIXTURE_INSTALL_ROOT',
+  'installed-version.txt',
+  'startup-health-confirmed.txt',
+  'rollbackAttemptCount',
+  'NativeMessagingHosts',
+]) requireText(twoBuildAcceptance, required, 'Local two-build updater acceptance');
+
+for (const required of [
   'cache-current-installer.ps1',
   '$EXEPATH',
   '${VERSION}',
@@ -108,6 +123,7 @@ for (const required of [
 requireText(desktopPackage, '"from": "resources/updater"', 'Desktop package updater resources');
 requireText(packageJson, '"test:updater-policy"', 'Root updater policy command');
 requireText(packageJson, '"test:updater-acceptance"', 'Root updater acceptance command');
+requireText(packageJson, 'updater-two-build-acceptance.mjs', 'Root local two-build acceptance command');
 
 requireText(packageJson, 'scripts/system-policy-test.mts && pnpm test:updater-policy && pnpm test:updater-acceptance', 'Native workflow updater gate chain');
 requireText(packageJson, 'production-acceptance-policy-test.mjs && pnpm test:updater-policy && pnpm test:updater-acceptance', 'N5/release updater gate chain');
