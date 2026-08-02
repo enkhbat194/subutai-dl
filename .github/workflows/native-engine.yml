@@ -9,7 +9,6 @@ on:
       - "docs/NATIVE_ENGINE_IPC.md"
       - "scripts/native-engine-policy-test.mjs"
       - "rust-toolchain.toml"
-      - "package.json"
       - ".github/workflows/native-engine.yml"
   pull_request:
     branches: [main]
@@ -19,7 +18,6 @@ on:
       - "docs/NATIVE_ENGINE_IPC.md"
       - "scripts/native-engine-policy-test.mjs"
       - "rust-toolchain.toml"
-      - "package.json"
       - ".github/workflows/native-engine.yml"
   workflow_dispatch:
 
@@ -32,36 +30,51 @@ permissions:
 
 jobs:
   native-engine:
-    name: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
+    name: subutai-windows
+    runs-on: [self-hosted, Windows, X64, subutai]
+    timeout-minutes: 30
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Verify Subutai ownership policy
-        run: node scripts/native-engine-policy-test.mjs
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
 
       - name: Install pinned Rust toolchain
+        shell: pwsh
         run: |
+          $cargoBin = Join-Path $env:USERPROFILE ".cargo\bin"
+          if (-not (Get-Command rustup -ErrorAction SilentlyContinue)) {
+            $rustupInstaller = Join-Path $env:RUNNER_TEMP "rustup-init.exe"
+            Invoke-WebRequest "https://win.rustup.rs/x86_64" -OutFile $rustupInstaller
+            & $rustupInstaller -y --profile minimal --default-toolchain none
+          }
+          $env:PATH = "$cargoBin;$env:PATH"
+          $cargoBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           rustup toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy
           rustup default 1.97.1
           rustc --version --verbose
           cargo --version
 
+      - name: Verify Subutai ownership policy
+        shell: pwsh
+        run: node scripts/native-engine-policy-test.mjs
+
       - name: Formatting
+        shell: pwsh
         run: cargo fmt --manifest-path engines/native/Cargo.toml --all -- --check
 
       - name: Static checks
+        shell: pwsh
         run: cargo clippy --manifest-path engines/native/Cargo.toml --all-targets -- -D warnings
 
       - name: Unit and protocol tests
+        shell: pwsh
         run: cargo test --manifest-path engines/native/Cargo.toml --all-targets
 
       - name: Durable journal self-test
+        shell: pwsh
         run: cargo run --quiet --manifest-path engines/native/Cargo.toml -- self-test
