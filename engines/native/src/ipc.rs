@@ -58,11 +58,7 @@ pub struct IpcFrame {
 }
 
 impl IpcFrame {
-    pub fn new(
-        request_id: u64,
-        kind: IpcMessageKind,
-        payload: Vec<u8>,
-    ) -> Result<Self, IpcError> {
+    pub fn new(request_id: u64, kind: IpcMessageKind, payload: Vec<u8>) -> Result<Self, IpcError> {
         if payload.len() > MAX_IPC_PAYLOAD_BYTES {
             return Err(IpcError::PayloadTooLarge(payload.len()));
         }
@@ -293,7 +289,9 @@ impl Display for IpcError {
             }
             Self::InvalidMessageKind(kind) => write!(formatter, "invalid IPC message kind {kind}"),
             Self::UnsupportedFlags(flags) => write!(formatter, "unsupported IPC flags {flags}"),
-            Self::PayloadTooLarge(size) => write!(formatter, "IPC payload is too large: {size} bytes"),
+            Self::PayloadTooLarge(size) => {
+                write!(formatter, "IPC payload is too large: {size} bytes")
+            }
             Self::FrameTooLarge(size) => write!(formatter, "IPC frame is too large: {size} bytes"),
             Self::BufferLimitExceeded(size) => {
                 write!(formatter, "IPC decoder buffer limit exceeded: {size} bytes")
@@ -401,7 +399,11 @@ mod tests {
 
     #[test]
     fn frame_round_trip_preserves_header_and_payload() {
-        let value = frame(42, IpcMessageKind::ProbeRequest, b"https://example.test/file");
+        let value = frame(
+            42,
+            IpcMessageKind::ProbeRequest,
+            b"https://example.test/file",
+        );
         let encoded = value.encode().expect("encode");
         assert_eq!(decode_frame(&encoded).expect("decode"), value);
     }

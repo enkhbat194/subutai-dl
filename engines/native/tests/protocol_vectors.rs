@@ -1,7 +1,5 @@
-use subutai_native_engine::ipc::{decode_frame, IpcFrame, IpcMessageKind};
-use subutai_native_engine::{
-    decode_manifest, encode_manifest, plan_ranges, JobManifest,
-};
+use subutai_native_engine::ipc::{IpcFrame, IpcMessageKind, decode_frame};
+use subutai_native_engine::{JobManifest, decode_manifest, encode_manifest, plan_ranges};
 
 fn decode_hex(value: &str) -> Vec<u8> {
     assert_eq!(value.len() % 2, 0, "hex length must be even");
@@ -37,11 +35,9 @@ fn journal_v1_golden_vector_is_stable() {
 
 #[test]
 fn ipc_v1_golden_vector_is_stable() {
-    let frame =
-        IpcFrame::new(7, IpcMessageKind::Hello, b"x".to_vec()).expect("frame");
-    let expected = decode_hex(
-        "21000000535542495043303101000100070000000000000001000000788cae7364c54768fe",
-    );
+    let frame = IpcFrame::new(7, IpcMessageKind::Hello, b"x".to_vec()).expect("frame");
+    let expected =
+        decode_hex("21000000535542495043303101000100070000000000000001000000788cae7364c54768fe");
     let encoded = frame.encode().expect("encode");
 
     assert_eq!(encoded, expected);
@@ -50,26 +46,14 @@ fn ipc_v1_golden_vector_is_stable() {
 
 #[test]
 fn range_planner_covers_deterministic_size_matrix() {
-    let sizes = [
-        1_u64,
-        2,
-        3,
-        7,
-        31,
-        1024,
-        1025,
-        65_535,
-        1_048_576,
-        1_048_577,
-    ];
+    let sizes = [1_u64, 2, 3, 7, 31, 1024, 1025, 65_535, 1_048_576, 1_048_577];
     let requested_counts = [1_u32, 2, 3, 4, 8, 16, 32];
     let minimum_sizes = [1_u64, 2, 4096, 1_048_576];
 
     for total in sizes {
         for requested in requested_counts {
             for minimum in minimum_sizes {
-                let segments =
-                    plan_ranges(total, requested, minimum).expect("range plan");
+                let segments = plan_ranges(total, requested, minimum).expect("range plan");
                 assert!(!segments.is_empty());
                 assert_eq!(segments.first().map(|segment| segment.start), Some(0));
                 assert_eq!(

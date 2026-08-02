@@ -1,5 +1,5 @@
-use subutai_native_engine::ipc::{decode_frame, IpcFrame, IpcMessageKind};
-use subutai_native_engine::{decode_manifest, encode_manifest, plan_ranges, JobManifest};
+use subutai_native_engine::ipc::{IpcFrame, IpcMessageKind, decode_frame};
+use subutai_native_engine::{JobManifest, decode_manifest, encode_manifest, plan_ranges};
 
 fn sample_manifest_bytes() -> Vec<u8> {
     let manifest = JobManifest::new(

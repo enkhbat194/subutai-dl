@@ -4,14 +4,8 @@ use std::process::ExitCode;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use subutai_native_engine::{
-    ENGINE_NAME,
-    ENGINE_VERSION,
-    JobManifest,
-    JournalStore,
-    SegmentState,
-    decode_manifest,
-    encode_manifest,
-    plan_ranges,
+    ENGINE_NAME, ENGINE_VERSION, JobManifest, JournalStore, SegmentState, decode_manifest,
+    encode_manifest, plan_ranges,
 };
 
 fn main() -> ExitCode {
@@ -78,8 +72,7 @@ fn run() -> Result<(), String> {
 
 fn run_self_test() -> Result<(), String> {
     let total_size = 32 * 1024 * 1024;
-    let ranges = plan_ranges(total_size, 8, 1024 * 1024)
-        .map_err(|error| error.to_string())?;
+    let ranges = plan_ranges(total_size, 8, 1024 * 1024).map_err(|error| error.to_string())?;
     let mut manifest = JobManifest::new(
         "self-test",
         "https://example.test/subutai.bin",
@@ -107,12 +100,8 @@ fn run_self_test() -> Result<(), String> {
     let path = self_test_store_path()?;
     let store = JournalStore::new(&path);
     let disk_result = (|| -> Result<(u64, u64), String> {
-        let generation_one = store
-            .save(&decoded)
-            .map_err(|error| error.to_string())?;
-        let generation_two = store
-            .save(&manifest)
-            .map_err(|error| error.to_string())?;
+        let generation_one = store.save(&decoded).map_err(|error| error.to_string())?;
+        let generation_two = store.save(&manifest).map_err(|error| error.to_string())?;
         let recovered = store.load().map_err(|error| error.to_string())?;
         if recovered.generation != generation_two || recovered.manifest != manifest {
             return Err("durable journal verification mismatch".into());

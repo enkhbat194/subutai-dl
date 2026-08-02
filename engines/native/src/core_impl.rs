@@ -326,8 +326,7 @@ pub fn plan_ranges(
     let base_length = total_size / segment_count;
     let remainder = total_size % segment_count;
 
-    let capacity =
-        usize::try_from(segment_count).map_err(|_| PlanError::ArithmeticOverflow)?;
+    let capacity = usize::try_from(segment_count).map_err(|_| PlanError::ArithmeticOverflow)?;
     let mut ranges = Vec::with_capacity(capacity);
     let mut cursor = 0_u64;
 
@@ -359,9 +358,7 @@ pub fn is_supported_http_url(value: &str) -> bool {
         .or_else(|| trimmed.strip_prefix("http://"));
 
     remainder.is_some_and(|rest| {
-        !rest.is_empty()
-            && !rest.starts_with('/')
-            && !rest.chars().any(char::is_whitespace)
+        !rest.is_empty() && !rest.starts_with('/') && !rest.chars().any(char::is_whitespace)
     })
 }
 
@@ -480,10 +477,7 @@ pub fn decode_manifest(input: &[u8]) -> Result<JobManifest, JournalError> {
     Ok(manifest)
 }
 
-fn validate_segment_coverage(
-    total_size: u64,
-    segments: &[Segment],
-) -> Result<(), JournalError> {
+fn validate_segment_coverage(total_size: u64, segments: &[Segment]) -> Result<(), JournalError> {
     if total_size == 0 && segments.is_empty() {
         return Ok(());
     }
@@ -589,10 +583,7 @@ impl Display for JournalError {
             Self::InvalidSegmentBounds {
                 start,
                 end_exclusive,
-            } => write!(
-                formatter,
-                "invalid segment bounds {start}..{end_exclusive}"
-            ),
+            } => write!(formatter, "invalid segment bounds {start}..{end_exclusive}"),
             Self::CompletedBeyondSegment { completed, length } => write!(
                 formatter,
                 "segment completed bytes {completed} exceed length {length}"
@@ -662,7 +653,11 @@ impl Display for StoreError {
             Self::Journal(error) => write!(formatter, "journal format error: {error}"),
             Self::NoSnapshot => write!(formatter, "no journal snapshot exists"),
             Self::NoValidSnapshot(errors) => {
-                write!(formatter, "no valid journal snapshot: {}", errors.join("; "))
+                write!(
+                    formatter,
+                    "no valid journal snapshot: {}",
+                    errors.join("; ")
+                )
             }
             Self::GenerationOverflow => write!(formatter, "journal generation overflowed"),
             Self::VerificationFailed => write!(formatter, "journal write verification failed"),
@@ -721,11 +716,7 @@ impl JournalStore {
         } else {
             self.slot_path("b")
         };
-        let temporary = self.temporary_path(if generation % 2 == 1 {
-            "a"
-        } else {
-            "b"
-        });
+        let temporary = self.temporary_path(if generation % 2 == 1 { "a" } else { "b" });
 
         if let Some(parent) = target.parent() {
             fs::create_dir_all(parent)?;
@@ -768,8 +759,7 @@ impl JournalStore {
                     found_file = true;
                     snapshots.push(snapshot);
                 }
-                Err(StoreError::Io(error))
-                    if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(StoreError::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => {}
                 Err(error) => {
                     found_file = true;
                     errors.push(format!("{}: {error}", path.display()));
@@ -819,13 +809,10 @@ fn append_suffix(path: &Path, suffix: &str) -> PathBuf {
     PathBuf::from(value)
 }
 
-fn encode_snapshot(
-    generation: u64,
-    manifest: &JobManifest,
-) -> Result<Vec<u8>, JournalError> {
+fn encode_snapshot(generation: u64, manifest: &JobManifest) -> Result<Vec<u8>, JournalError> {
     let manifest_bytes = encode_manifest(manifest)?;
-    let manifest_length = u32::try_from(manifest_bytes.len())
-        .map_err(|_| JournalError::FieldTooLarge("manifest"))?;
+    let manifest_length =
+        u32::try_from(manifest_bytes.len()).map_err(|_| JournalError::FieldTooLarge("manifest"))?;
 
     let mut output = Vec::new();
     output.extend_from_slice(SNAPSHOT_MAGIC);
@@ -911,17 +898,12 @@ fn push_u64(output: &mut Vec<u8>, value: u64) {
     output.extend_from_slice(&value.to_le_bytes());
 }
 
-fn push_string(
-    output: &mut Vec<u8>,
-    value: &str,
-    field: &'static str,
-) -> Result<(), JournalError> {
+fn push_string(output: &mut Vec<u8>, value: &str, field: &'static str) -> Result<(), JournalError> {
     let bytes = value.as_bytes();
     if bytes.len() > MAX_STRING_BYTES {
         return Err(JournalError::LimitExceeded(field));
     }
-    let length =
-        u32::try_from(bytes.len()).map_err(|_| JournalError::FieldTooLarge(field))?;
+    let length = u32::try_from(bytes.len()).map_err(|_| JournalError::FieldTooLarge(field))?;
     push_u32(output, length);
     output.extend_from_slice(bytes);
     Ok(())
@@ -1082,10 +1064,7 @@ mod tests {
     fn range_plan_respects_minimum_segment_size() {
         let ranges = plan_ranges(10, 32, 4).expect("range plan");
         assert_eq!(ranges.len(), 3);
-        assert_eq!(
-            ranges.last().map(|segment| segment.end_exclusive),
-            Some(10)
-        );
+        assert_eq!(ranges.last().map(|segment| segment.end_exclusive), Some(10));
     }
 
     #[test]
@@ -1127,10 +1106,7 @@ mod tests {
         let value = manifest(1024, 1);
         let mut encoded = encode_manifest(&value).expect("encode");
         encoded[0] ^= 0xff;
-        assert_eq!(
-            decode_manifest(&encoded),
-            Err(JournalError::InvalidMagic)
-        );
+        assert_eq!(decode_manifest(&encoded), Err(JournalError::InvalidMagic));
     }
 
     #[test]
@@ -1161,12 +1137,8 @@ mod tests {
         value
             .transition_to(JobState::Downloading)
             .expect("download");
-        value
-            .transition_to(JobState::Verifying)
-            .expect("verify");
-        value
-            .transition_to(JobState::Completed)
-            .expect("complete");
+        value.transition_to(JobState::Verifying).expect("verify");
+        value.transition_to(JobState::Completed).expect("complete");
         assert!(value.all_segments_complete());
         assert_eq!(value.completed_bytes().expect("completed bytes"), 1024);
     }

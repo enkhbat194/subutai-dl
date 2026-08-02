@@ -2,9 +2,9 @@
 mod core_impl;
 
 pub use core_impl::{
-    decode_manifest, encode_manifest, is_supported_http_url, JobManifest, JobState, JournalError,
-    JournalSnapshot, PlanError, Segment, SegmentState, StoreError, ENGINE_NAME, ENGINE_VERSION,
-    JOURNAL_SCHEMA_VERSION,
+    ENGINE_NAME, ENGINE_VERSION, JOURNAL_SCHEMA_VERSION, JobManifest, JobState, JournalError,
+    JournalSnapshot, PlanError, Segment, SegmentState, StoreError, decode_manifest,
+    encode_manifest, is_supported_http_url,
 };
 
 pub fn plan_ranges(
@@ -35,8 +35,7 @@ pub fn plan_ranges(
         .max(1);
     let base_length = total_size / segment_count;
     let remainder = total_size % segment_count;
-    let capacity =
-        usize::try_from(segment_count).map_err(|_| PlanError::ArithmeticOverflow)?;
+    let capacity = usize::try_from(segment_count).map_err(|_| PlanError::ArithmeticOverflow)?;
     let mut ranges = Vec::with_capacity(capacity);
     let mut cursor = 0_u64;
 
@@ -152,10 +151,7 @@ mod tests {
 
         let before_a = fs::read(&slot_a).expect("snapshot a");
         let before_b = fs::read(&slot_b).expect("snapshot b");
-        assert!(matches!(
-            store.load(),
-            Err(StoreError::NoValidSnapshot(_))
-        ));
+        assert!(matches!(store.load(), Err(StoreError::NoValidSnapshot(_))));
         assert!(matches!(
             store.save(&manifest),
             Err(StoreError::NoValidSnapshot(_))
