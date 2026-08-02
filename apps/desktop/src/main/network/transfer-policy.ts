@@ -47,18 +47,47 @@ export function normalizeTransferSettings(
   };
 }
 
-export function resolveProxyUrl(settings: TransferSettings, password: string): string | null {
+function normalizedProxyUrl(settings: TransferSettings): URL | null {
   if (settings.proxyMode !== 'manual' || !settings.proxyUrl.trim()) return null;
   let input = settings.proxyUrl.trim();
   if (!/^[a-z][a-z\d+.-]*:\/\//i.test(input)) input = `http://${input}`;
   try {
     const url = new URL(input);
-    if (settings.proxyUsername) url.username = settings.proxyUsername;
-    if (password) url.password = password;
-    return url.toString();
+    if (url.protocol !== 'http:') throw new Error('Only HTTP proxy endpoints are supported.');
+    if (!url.hostname || !url.port) throw new Error('Proxy host and port are required.');
+    url.username = '';
+    url.password = '';
+    url.pathname = '/';
+    url.search = '';
+    url.hash = '';
+    return url;
   } catch {
-    throw new Error('Proxy URL буруу байна.');
+    throw new Error('Proxy URL буруу байна. HTTP host:port шаардлагатай.');
   }
+}
+
+export function resolveNativeProxyEndpoint(settings: TransferSettings): string {
+  return normalizedProxyUrl(settings)?.toString() ?? '';
+}
+
+export function resolveProxyUrl(settings: TransferSettings, password: string): string | null {
+  const endpoint = normalizedProxyUrl(settings);
+  if (!endpoint) return null;
+  if (settings.proxyUsername) endpoint.username = settings.proxyUsername;
+  if (password) endpoint.password = password;
+  return endpoint.toString();
+}
+
+export function effectiveSpeedLimit(
+  settings: TransferSettings,
+  jobSpeedLimitBytesPerSecond = 0,
+): number {
+  const positive = [
+    jobSpeedLimitBytesPerSecond,
+    settings.defaultDownloadSpeedLimitBytesPerSecond,
+    settings.globalSpeedLimitBytesPerSecond,
+  ].filter((value) => Number.isFinite(value) && value > 0);
+  return positive.length > 0 ? Math.trunc(Math.min(...positive)) : 0;
 }
 
 export function ariaSpeed(value: number): string {
