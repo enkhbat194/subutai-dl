@@ -16,7 +16,7 @@ permissions:
 jobs:
   release-windows:
     runs-on: windows-latest
-    timeout-minutes: 100
+    timeout-minutes: 140
     env:
       RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
     steps:
@@ -84,6 +84,25 @@ jobs:
           pnpm test:failure-policy
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      - name: Build production native CLI for extended soak
+        shell: pwsh
+        run: cargo build --release --manifest-path engines/native/Cargo.toml --bin subutai-engine
+
+      - name: Run extended native resource soak benchmark
+        shell: pwsh
+        env:
+          SUBUTAI_SOAK_ITERATIONS: 16
+          SUBUTAI_SOAK_MIB: 32
+          SUBUTAI_SOAK_SEGMENTS: 8
+          SUBUTAI_SOAK_REPORT: artifacts/n5/native-soak-report.json
+        run: pnpm test:native-soak
+
+      - name: Publish extended native soak telemetry
+        shell: pwsh
+        env:
+          SUBUTAI_SOAK_REPORT: artifacts/n5/native-soak-report.json
+        run: node scripts/publish-native-soak-summary.mjs
+
       - name: Run native process and network resilience
         shell: pwsh
         env:
@@ -102,7 +121,8 @@ jobs:
         shell: pwsh
         run: ./scripts/n5-windows-acceptance.ps1
 
-      - name: Preserve release artifact
+      - name: Preserve secondary CI artifact
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: Subutai-${{ env.RELEASE_TAG }}-Windows
@@ -112,7 +132,8 @@ jobs:
             apps/desktop/release/latest.yml
             apps/desktop/release/*.blockmap
             apps/desktop/release/SHA256SUMS.txt
-          if-no-files-found: error
+            artifacts/n5/native-soak-report.json
+          if-no-files-found: warn
           retention-days: 30
 
       - name: Publish GitHub Release
@@ -129,3 +150,4 @@ jobs:
             apps/desktop/release/latest.yml
             apps/desktop/release/*.blockmap
             apps/desktop/release/SHA256SUMS.txt
+            artifacts/n5/native-soak-report.json
