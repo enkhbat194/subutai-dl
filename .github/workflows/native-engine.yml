@@ -11,6 +11,7 @@ on:
       - "scripts/native-engine-policy-test.mjs"
       - "scripts/release-engine-policy-test.mjs"
       - "scripts/dependency-lock-policy-test.mjs"
+      - "scripts/integrity-policy-test.mts"
       - "scripts/validate-windows-package.ps1"
       - "rust-toolchain.toml"
       - "package.json"
@@ -29,6 +30,7 @@ on:
       - "scripts/native-engine-policy-test.mjs"
       - "scripts/release-engine-policy-test.mjs"
       - "scripts/dependency-lock-policy-test.mjs"
+      - "scripts/integrity-policy-test.mts"
       - "scripts/validate-windows-package.ps1"
       - "rust-toolchain.toml"
       - "package.json"
@@ -122,6 +124,10 @@ jobs:
       - name: Check reproducible dependency policy
         shell: powershell
         run: pnpm test:dependency-lock
+
+      - name: Check integrity and redaction policies
+        shell: powershell
+        run: pnpm test:integrity
 
       - name: Typecheck desktop and browser integration
         shell: powershell

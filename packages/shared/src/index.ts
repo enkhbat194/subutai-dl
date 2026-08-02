@@ -13,7 +13,9 @@ export type DownloadStatus =
 export type DownloadSource = 'desktop' | 'chrome' | 'edge' | 'firefox' | 'clipboard' | 'batch' | 'site-grabber';
 export type QueuePriority = 'low' | 'normal' | 'high';
 export type ProxyMode = 'off' | 'system' | 'manual';
-export type DownloadFailureKind = 'network' | 'server' | 'authentication' | 'disk' | 'cancelled' | 'unknown';
+export type FileConflictPolicy = 'rename' | 'overwrite' | 'skip' | 'resume';
+export type RemoteChangePolicy = 'fail' | 'restart';
+export type DownloadFailureKind = 'network' | 'server' | 'authentication' | 'disk' | 'integrity' | 'cancelled' | 'unknown';
 
 export interface DownloadRequestHeaders {
   [name: string]: string;
@@ -62,6 +64,9 @@ export interface DownloadCreateRequest {
   priority?: QueuePriority;
   scheduleId?: string;
   speedLimitBytesPerSecond?: number;
+  fileConflictPolicy?: FileConflictPolicy;
+  remoteChangePolicy?: RemoteChangePolicy;
+  expectedSha256?: string;
 }
 
 export interface BatchPreviewRequest {
@@ -139,6 +144,13 @@ export interface DownloadJob {
   scheduleId?: string;
   pausedByScheduler?: boolean;
   speedLimitBytesPerSecond?: number;
+  fileConflictPolicy?: FileConflictPolicy;
+  remoteChangePolicy?: RemoteChangePolicy;
+  expectedSha256?: string;
+  actualSha256?: string;
+  quarantinePath?: string;
+  destinationPolicyApplied?: boolean;
+  remoteRestartCount?: number;
   failureKind?: DownloadFailureKind;
   retryCount?: number;
   lastRetryAt?: string;
