@@ -12,6 +12,10 @@ path = "src/lib.rs"
 name = "subutai-engine"
 path = "src/main.rs"
 
+[[bin]]
+name = "subutai-engine-host"
+path = "src/desktop_main.rs"
+
 [profile.release]
 lto = "thin"
 codegen-units = 1
