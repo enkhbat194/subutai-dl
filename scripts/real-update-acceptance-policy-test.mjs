@@ -3,6 +3,7 @@ import { join } from 'node:path';
 
 const root = process.cwd();
 const read = (...parts) => readFileSync(join(root, ...parts), 'utf8');
+const wrapper = read('scripts', 'run-real-update-acceptance-safely.ps1');
 const harness = read('scripts', 'real-two-installer-acceptance.ps1');
 const stateProbe = read('scripts', 'real-update-state-probe.mjs');
 const feedServer = read('scripts', 'real-update-feed-server.mjs');
@@ -18,6 +19,17 @@ const workflow = read('.github', 'workflows', 'real-update-acceptance.yml');
 
 function requireText(source, expected, label) {
   if (!source.includes(expected)) throw new Error(`${label} is missing required contract: ${expected}`);
+}
+
+for (const required of [
+  'SubutaiRealUpdateSafety-',
+  'Capture-Directory',
+  'Restore-DirectoryState',
+  'Remove-BrowserRegistration',
+  'real-two-installer-acceptance.ps1',
+  'pre-existing-state',
+]) {
+  requireText(wrapper, required, 'Real update runner safety wrapper');
 }
 
 for (const required of [
@@ -62,7 +74,7 @@ for (const required of [
 
 for (const required of [
   "host: '127.0.0.1'",
-  "port: 0",
+  'port: 0',
   'Cache-Control',
   'no-store',
   "['GET', 'HEAD']",
@@ -97,7 +109,7 @@ for (const required of [
   'runs-on: [self-hosted, Windows, X64, subutai]',
   'contents: read',
   'pnpm test:real-update-policy',
-  './scripts/real-two-installer-acceptance.ps1',
+  './scripts/run-real-update-acceptance-safely.ps1',
   'real-two-installer-acceptance-report.json',
   'if: always()',
 ]) {
@@ -119,4 +131,4 @@ if (!workflow.includes('workflow_dispatch:') || !workflow.includes('pull_request
   throw new Error('Real updater acceptance must support manual and pull-request execution.');
 }
 
-console.log('Subutai real two-installer updater acceptance policy passed: real NSIS A/B builds, loopback feed, healthy update, forced rollback, checksum rejection, durable user state, browser bridge evidence and read-only execution are locked.');
+console.log('Subutai real two-installer updater acceptance policy passed: safety-isolated real NSIS A/B builds, loopback feed, healthy update, forced rollback, checksum rejection, durable user state, browser bridge evidence and read-only execution are locked.');
