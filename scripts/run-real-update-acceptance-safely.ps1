@@ -61,7 +61,8 @@ function Set-AcceptanceAppIdentity {
   $package.build.productName = $acceptanceProductName
   $package.build.appId = $acceptanceAppId
   $package.build.nsis.shortcutName = $acceptanceProductName
-  $package.build.nsis.oneClick = $false
+  $package.build.nsis.oneClick = $true
+  $package.build.nsis.allowToChangeInstallationDirectory = $false
   $package.build.nsis | Add-Member -NotePropertyName perMachine -NotePropertyValue $false -Force
   $package.build.nsis | Add-Member -NotePropertyName allowElevation -NotePropertyValue $false -Force
   Write-Utf8NoBom -Path $desktopPackagePath -Content (($package | ConvertTo-Json -Depth 40) + "`n")
@@ -85,6 +86,10 @@ function Set-AcceptanceHarnessIdentity {
     -Before "Get-Process -Name 'Subutai Download Manager' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue" `
     -After "foreach (`$name in @('Subutai Download Manager', 'Subutai Real Update Acceptance')) { Get-Process -Name `$name -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue }" `
     -Label 'Acceptance process cleanup'
+  $content = Replace-ExactlyOnce -Content $content `
+    -Before "  New-Item -ItemType Directory -Force -Path `$installDir | Out-Null`r`n  `$process = Start-Process -FilePath ([string]`$BaselineBuild.setupPath) -ArgumentList @('/S', `"/D=`$installDir`") -PassThru -Wait" `
+    -After "  `$process = Start-Process -FilePath ([string]`$BaselineBuild.setupPath) -ArgumentList @('/S') -PassThru -Wait" `
+    -Label 'Acceptance one-click baseline install'
   Write-Utf8NoBom -Path $harness -Content $content
 }
 
