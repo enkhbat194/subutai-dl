@@ -189,39 +189,32 @@ fn handle_request(
         line.split_once(':')
             .is_some_and(|(name, _)| name.eq_ignore_ascii_case("range"))
     });
-    if has_range {
-        range_requests.fetch_add(1, Ordering::AcqRel);
-    } else if method == "GET" {
-        streaming_gets.fetch_add(1, Ordering::AcqRel);
-    }
-
-    write_headers(&mut stream, "200 OK", data.len())?;
     if method == "HEAD" {
-        return Ok(());
+        return write_headers(&mut stream, "200 OK", data.len());
     }
     if method != "GET" {
-        return Ok(());
+        return write_headers(&mut stream, "405 Method Not Allowed", 0);
+    }
+    if has_range {
+        range_requests.fetch_add(1, Ordering::AcqRel);
+        // The server deliberately ignores Range by returning 200. No body is
+        // needed because the engine rejects the response from its headers.
+        return write_headers(&mut stream, "200 OK", 0);
     }
 
-    for chunk in data.chunks(32 * 1024) {
-        match stream.write_all(chunk) {
-            Ok(()) => {}
-            Err(error)
-                if matches!(
-                    error.kind(),
-                    std::io::ErrorKind::BrokenPipe
-                        | std::io::ErrorKind::ConnectionReset
-                        | std::io::ErrorKind::ConnectionAborted
-                ) =>
-            {
-                return Ok(());
-            }
-            Err(error) => return Err(error),
-        }
-        stream.flush()?;
-        thread::sleep(Duration::from_millis(2));
+    streaming_gets.fetch_add(1, Ordering::AcqRel);
+    write_headers(&mut stream, "200 OK", data.len())?;
+    match stream.write_all(data) {
+        Ok(()) => stream.flush(),
+        Err(error)
+            if matches!(
+                error.kind(),
+                std::io::ErrorKind::BrokenPipe
+                    | std::io::ErrorKind::ConnectionReset
+                    | std::io::ErrorKind::ConnectionAborted
+            ) => Ok(()),
+        Err(error) => Err(error),
     }
-    Ok(())
 }
 
 fn write_headers(
