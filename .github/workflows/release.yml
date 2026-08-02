@@ -69,15 +69,16 @@ jobs:
             throw "Legacy direct-download engine must not enter a Subutai release package."
           }
 
-      - name: Install dependencies
+      - name: Install locked dependencies
         shell: pwsh
-        run: pnpm install --no-frozen-lockfile
+        run: pnpm install --frozen-lockfile
 
       - name: Verify native engine and release policies
         shell: pwsh
         run: |
           pnpm test:native-engine
           pnpm test:release-engine
+          pnpm test:dependency-lock
           pnpm typecheck
           pnpm test:brand
           pnpm test:system

@@ -10,6 +10,7 @@ on:
       - "docs/PROJECT_STATUS.md"
       - "scripts/native-engine-policy-test.mjs"
       - "scripts/release-engine-policy-test.mjs"
+      - "scripts/dependency-lock-policy-test.mjs"
       - "scripts/validate-windows-package.ps1"
       - "rust-toolchain.toml"
       - "package.json"
@@ -27,6 +28,7 @@ on:
       - "docs/PROJECT_STATUS.md"
       - "scripts/native-engine-policy-test.mjs"
       - "scripts/release-engine-policy-test.mjs"
+      - "scripts/dependency-lock-policy-test.mjs"
       - "scripts/validate-windows-package.ps1"
       - "rust-toolchain.toml"
       - "package.json"
@@ -105,9 +107,9 @@ jobs:
           corepack enable
           pnpm --version
 
-      - name: Install desktop dependencies
+      - name: Install locked desktop dependencies
         shell: powershell
-        run: pnpm install --no-frozen-lockfile
+        run: pnpm install --frozen-lockfile
 
       - name: Check public Subutai identity
         shell: powershell
@@ -116,6 +118,10 @@ jobs:
       - name: Check release engine packaging policy
         shell: powershell
         run: pnpm test:release-engine
+
+      - name: Check reproducible dependency policy
+        shell: powershell
+        run: pnpm test:dependency-lock
 
       - name: Typecheck desktop and browser integration
         shell: powershell
