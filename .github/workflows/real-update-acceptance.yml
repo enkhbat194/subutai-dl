@@ -114,6 +114,30 @@ jobs:
             "Real two-installer acceptance report was not produced." | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
           }
 
+      - name: Print bounded acceptance diagnostics
+        if: always()
+        shell: powershell
+        run: |
+          $roots = @(
+            "artifacts/real-update-acceptance/evidence",
+            "artifacts/real-update-acceptance/logs"
+          )
+          $files = foreach ($root in $roots) {
+            if (Test-Path -LiteralPath $root) {
+              Get-ChildItem -LiteralPath $root -Recurse -File -ErrorAction SilentlyContinue |
+                Where-Object { $_.Extension -in @('.json', '.log') }
+            }
+          }
+          if (-not $files) {
+            Write-Host "No real-update diagnostic files were produced."
+          } else {
+            foreach ($file in @($files | Sort-Object FullName)) {
+              Write-Host "::group::diagnostic $($file.FullName) ($($file.Length) bytes; last 400 lines)"
+              Get-Content -LiteralPath $file.FullName -Tail 400 -ErrorAction Continue
+              Write-Host "::endgroup::"
+            }
+          }
+
       - name: Preserve private acceptance evidence
         if: always()
         continue-on-error: true
