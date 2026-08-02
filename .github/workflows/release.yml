@@ -71,7 +71,7 @@ jobs:
 
       - name: Install dependencies
         shell: pwsh
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --no-frozen-lockfile
 
       - name: Verify native engine and release policies
         shell: pwsh
