@@ -4,7 +4,7 @@ import { existsSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { basename, join, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
-import type { TransferSettings } from '@subutai/shared';
+import type { NativeTransferTelemetry, TransferSettings } from '@subutai/shared';
 import {
   DEFAULT_TRANSFER_SETTINGS,
   effectiveSpeedLimit,
@@ -26,6 +26,7 @@ export interface NativeEngineTaskStatus {
   completedLength: string;
   downloadSpeed: string;
   connections: string;
+  telemetry?: NativeTransferTelemetry;
   errorCode?: string;
   errorMessage?: string;
   files?: Array<{ path: string; length: string; completedLength: string; selected: string }>;
@@ -328,6 +329,18 @@ export class NativeEngineService {
       this.failTask(task, `Native status task mismatch: ${event.taskId}`);
       return;
     }
+    let telemetry: NativeTransferTelemetry = {
+      activeConnections: event.activeConnections,
+      connectionLimit: event.connectionLimit,
+      peakConnections: event.peakConnections,
+      queuedSegments: event.queuedSegments,
+      replacementCount: safeBigIntNumber(event.replacementCount),
+      retryCount: safeBigIntNumber(event.retryCount),
+      elapsedMilliseconds: safeBigIntNumber(event.elapsedMilliseconds),
+    };
+    if (event.state !== 'active' && isEmptyTelemetry(telemetry) && task.status.telemetry) {
+      telemetry = { ...task.status.telemetry, activeConnections: 0, queuedSegments: 0 };
+    }
     const status: NativeEngineTaskStatus = {
       gid: task.id,
       status: event.state,
@@ -335,6 +348,7 @@ export class NativeEngineService {
       completedLength: event.completedBytes.toString(),
       downloadSpeed: event.bytesPerSecond.toString(),
       connections: String(event.activeConnections),
+      telemetry,
       files: [{
         path: event.filePath || task.request.destinationPath,
         length: event.totalBytes.toString(),
@@ -414,6 +428,20 @@ export class NativeEngineService {
   }
 }
 
+function safeBigIntNumber(value: bigint): number {
+  return value > BigInt(Number.MAX_SAFE_INTEGER) ? Number.MAX_SAFE_INTEGER : Number(value);
+}
+
+function isEmptyTelemetry(value: NativeTransferTelemetry): boolean {
+  return value.activeConnections === 0
+    && value.connectionLimit === 0
+    && value.peakConnections === 0
+    && value.queuedSegments === 0
+    && value.replacementCount === 0
+    && value.retryCount === 0
+    && value.elapsedMilliseconds === 0;
+}
+
 function initialStatus(id: string, destinationPath: string): NativeEngineTaskStatus {
   return {
     gid: id,
@@ -433,6 +461,7 @@ function initialStatus(id: string, destinationPath: string): NativeEngineTaskSta
 
 function cloneStatus(status: NativeEngineTaskStatus): NativeEngineTaskStatus {
   const clone: NativeEngineTaskStatus = { ...status };
+  if (status.telemetry) clone.telemetry = { ...status.telemetry };
   if (status.files) clone.files = status.files.map((file) => ({ ...file }));
   return clone;
 }

@@ -24,6 +24,7 @@
     "test:system": "node --experimental-strip-types scripts/system-policy-test.mts",
     "test:integrity": "node --experimental-strip-types scripts/integrity-policy-test.mts",
     "test:mirror": "node --experimental-strip-types scripts/mirror-policy-test.mts",
+    "test:telemetry": "node --experimental-strip-types scripts/telemetry-policy-test.mts",
     "test:production-acceptance": "node scripts/production-acceptance-policy-test.mjs",
     "test:release-version": "node scripts/validate-release-version.mjs",
     "test:release-engine": "node scripts/release-engine-policy-test.mjs",

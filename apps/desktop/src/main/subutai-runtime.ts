@@ -292,6 +292,7 @@ async function assignTask(job: DownloadJob): Promise<boolean> {
   if (job.media) options.media = job.media;
   if (typeof job.speedLimitBytesPerSecond === 'number') options.speedLimitBytesPerSecond = job.speedLimitBytesPerSecond;
 
+  if (job.engine !== 'media') delete job.nativeTelemetry;
   job.engineTaskId = await engine.addDownload(options);
   delete job.error;
   delete job.failureKind;
@@ -719,7 +720,8 @@ function updateJobFromStatus(job: DownloadJob, status: SubutaiTaskStatus): void 
   job.downloadedBytes = downloadedBytes;
   job.speedBytesPerSecond = speedBytesPerSecond;
   job.etaSeconds = speedBytesPerSecond > 0 ? Math.ceil(remaining / speedBytesPerSecond) : null;
-  job.connections = job.engine === 'media' ? 1 : Math.max(0, Number(status.connections) || job.connections);
+  if (job.engine === 'media') job.connections = 1;
+  else if (status.telemetry) job.nativeTelemetry = { ...status.telemetry };
   job.updatedAt = new Date().toISOString();
   if (filePath) job.filename = basename(filePath);
   else if (status.displayName && job.engine === 'media') job.filename = status.displayName;
@@ -747,6 +749,7 @@ async function failoverToNextMirror(
   const destinationPath = join(job.destination, job.filename);
   await removeDownloadFiles(destinationPath, false);
   applyMirrorTransition(job, transition);
+  delete job.nativeTelemetry;
   return true;
 }
 
@@ -768,6 +771,7 @@ async function restartChangedRemote(job: DownloadJob, status: SubutaiTaskStatus)
   job.totalBytes = null;
   job.speedBytesPerSecond = 0;
   job.etaSeconds = null;
+  delete job.nativeTelemetry;
   job.remoteRestartCount = (job.remoteRestartCount ?? 0) + 1;
   job.updatedAt = new Date().toISOString();
   return true;
@@ -858,6 +862,10 @@ function restoreState(): void {
     restored.mirrorIndex = Math.max(0, Math.min(restored.mirrorUrls.length, restored.mirrorIndex ?? 0));
     restored.activeSourceUrl = [restored.url, ...restored.mirrorUrls][restored.mirrorIndex] ?? restored.url;
     restored.mirrorFallbackCount ??= restored.mirrorIndex;
+    if (restored.nativeTelemetry) {
+      restored.nativeTelemetry.activeConnections = 0;
+      restored.nativeTelemetry.queuedSegments = 0;
+    }
     order += 1;
     if (!['completed', 'failed', 'cancelled'].includes(restored.status)) {
       delete restored.engineTaskId;

@@ -3,6 +3,8 @@ const START_MAGIC = Buffer.from('SUBSTRT1', 'ascii');
 const STATUS_MAGIC = Buffer.from('SUBSTAT1', 'ascii');
 const IPC_PROTOCOL_VERSION = 1;
 const DESKTOP_PAYLOAD_SCHEMA_VERSION = 2;
+const STATUS_PAYLOAD_SCHEMA_VERSION = 3;
+const LEGACY_STATUS_PAYLOAD_SCHEMA_VERSION = 2;
 const MAX_IPC_PAYLOAD_BYTES = 8 * 1024 * 1024;
 const MAX_IPC_BUFFER_BYTES = MAX_IPC_PAYLOAD_BYTES + 1024 * 1024;
 const MAX_FIELD_BYTES = 1024 * 1024;
@@ -53,6 +55,12 @@ export interface NativeStatusPayload {
   completedBytes: bigint;
   bytesPerSecond: bigint;
   activeConnections: number;
+  connectionLimit: number;
+  peakConnections: number;
+  queuedSegments: number;
+  replacementCount: bigint;
+  retryCount: bigint;
+  elapsedMilliseconds: bigint;
   filePath: string;
   errorCode: string;
   errorMessage: string;
@@ -154,13 +162,22 @@ export function decodeStatusPayload(payload: Buffer): NativeStatusPayload {
   const cursor = new PayloadCursor(payload);
   if (!cursor.take(STATUS_MAGIC.length).equals(STATUS_MAGIC)) throw new Error('Invalid native status payload magic');
   const schema = cursor.readU16();
-  if (schema !== DESKTOP_PAYLOAD_SCHEMA_VERSION) throw new Error(`Unsupported native status schema: ${schema}`);
+  if (schema !== STATUS_PAYLOAD_SCHEMA_VERSION && schema !== LEGACY_STATUS_PAYLOAD_SCHEMA_VERSION) {
+    throw new Error(`Unsupported native status schema: ${schema}`);
+  }
   const taskId = cursor.readString();
   const state = decodeTaskState(cursor.readU8());
   const totalBytes = cursor.readU64();
   const completedBytes = cursor.readU64();
   const bytesPerSecond = cursor.readU64();
   const activeConnections = cursor.readU32();
+  const hasTelemetry = schema === STATUS_PAYLOAD_SCHEMA_VERSION;
+  const connectionLimit = hasTelemetry ? cursor.readU32() : activeConnections;
+  const peakConnections = hasTelemetry ? cursor.readU32() : activeConnections;
+  const queuedSegments = hasTelemetry ? cursor.readU32() : 0;
+  const replacementCount = hasTelemetry ? cursor.readU64() : 0n;
+  const retryCount = hasTelemetry ? cursor.readU64() : 0n;
+  const elapsedMilliseconds = hasTelemetry ? cursor.readU64() : 0n;
   const filePath = cursor.readString();
   const errorCode = cursor.readString();
   const errorMessage = cursor.readString();
@@ -172,6 +189,12 @@ export function decodeStatusPayload(payload: Buffer): NativeStatusPayload {
     completedBytes,
     bytesPerSecond,
     activeConnections,
+    connectionLimit,
+    peakConnections,
+    queuedSegments,
+    replacementCount,
+    retryCount,
+    elapsedMilliseconds,
     filePath,
     errorCode,
     errorMessage,
