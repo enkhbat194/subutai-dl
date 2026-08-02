@@ -69,7 +69,7 @@ where
 
     let parent = destination_parent(&request.destination)?;
     fs::create_dir_all(&parent)?;
-    let available = platform::available_disk_space(&parent)?;
+    let available = request.available_disk_space(&parent)?;
     if available < total_size {
         return Err(TransferError::InsufficientDiskSpace {
             required: total_size,
@@ -221,6 +221,7 @@ where
                 actual: downloaded,
             });
         }
+        request.before_write(read)?;
         file.write_all(&buffer[..read])?;
         if let Some(limiter) = rate_limiter {
             limiter.throttle(read);
@@ -276,6 +277,7 @@ where
             actual: total_size.saturating_add(1),
         });
     }
+    request.before_sync()?;
     file.sync_all()?;
     store
         .save(manifest)
@@ -505,6 +507,7 @@ fn finalize_download(
         });
     }
     let sha256 = hash_file(partial)?;
+    request.before_atomic_move()?;
     platform::atomic_move(partial, &request.destination)?;
     manifest
         .transition_to(JobState::Completed)
@@ -569,9 +572,7 @@ fn hash_file(path: &Path) -> Result<String, TransferError> {
 
 fn is_retryable(error: &TransferError) -> bool {
     match error {
-        TransferError::Windows { .. }
-        | TransferError::Io(_)
-        | TransferError::SizeMismatch { .. } => true,
+        TransferError::Windows { .. } | TransferError::SizeMismatch { .. } => true,
         TransferError::HttpStatus(status) => matches!(status, 408 | 425 | 429 | 500..=599),
         _ => false,
     }

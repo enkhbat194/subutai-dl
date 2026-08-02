@@ -94,7 +94,11 @@ fn insufficient_space_fails_before_partial_or_journal_creation() {
         .expect_err("insufficient space must fail");
     assert!(matches!(error, TransferError::InsufficientDiskSpace { .. }));
     assert!(!partial_path(&destination).exists());
-    assert!(journal_slots(&destination).iter().all(|path| !path.exists()));
+    assert!(
+        journal_slots(&destination)
+            .iter()
+            .all(|path| !path.exists())
+    );
     fs::remove_dir_all(directory).expect("cleanup space test");
 }
 
@@ -112,7 +116,11 @@ fn write_failure_is_not_retried_and_saved_state_resumes() {
     let error = download_segmented(&request, &DownloadControl::default())
         .expect_err("injected write must fail");
     assert!(error.to_string().contains("injected partial file write"));
-    assert_eq!(injection.write_failures(), 1, "local write error was retried");
+    assert_eq!(
+        injection.write_failures(),
+        1,
+        "local write error was retried"
+    );
     assert!(partial_path(&destination).exists());
     assert!(journal_slots(&destination).iter().any(|path| path.exists()));
 
@@ -163,10 +171,17 @@ fn atomic_move_failure_preserves_verifiable_partial_for_recovery() {
 
     let error = download_segmented(&request, &DownloadControl::default())
         .expect_err("injected atomic move must fail");
-    assert!(error.to_string().contains("injected atomic destination move"));
+    assert!(
+        error
+            .to_string()
+            .contains("injected atomic destination move")
+    );
     assert_eq!(injection.atomic_move_failures(), 1);
     assert!(!destination.exists());
-    assert_eq!(fs::read(partial_path(&destination)).expect("read complete partial"), data);
+    assert_eq!(
+        fs::read(partial_path(&destination)).expect("read complete partial"),
+        data
+    );
     assert!(journal_slots(&destination).iter().any(|path| path.exists()));
 
     let recovery = request_without_failure("move", &server.url, &destination);
@@ -188,7 +203,11 @@ fn request_with_injection(
     request
 }
 
-fn request_without_failure(job_id: &str, url: &str, destination: &Path) -> SegmentedDownloadRequest {
+fn request_without_failure(
+    job_id: &str,
+    url: &str,
+    destination: &Path,
+) -> SegmentedDownloadRequest {
     let mut request = SegmentedDownloadRequest::new(job_id, url, destination);
     request.requested_segments = 1;
     request.minimum_segment_size = 2 * 1024 * 1024;
@@ -202,7 +221,10 @@ fn assert_completed(outcome: SegmentedOutcome, destination: &Path, expected: &[u
     match outcome {
         SegmentedOutcome::Completed(result) => {
             assert_eq!(result.downloaded_bytes, expected.len() as u64);
-            assert_eq!(fs::read(destination).expect("read completed file"), expected);
+            assert_eq!(
+                fs::read(destination).expect("read completed file"),
+                expected
+            );
         }
         other => panic!("expected completed download, received {other:?}"),
     }
@@ -268,7 +290,10 @@ fn handle_request(mut stream: TcpStream, data: &[u8]) -> std::io::Result<()> {
         &[
             ("Content-Length", body.len().to_string()),
             ("Accept-Ranges", "bytes".into()),
-            ("Content-Range", format!("bytes {start}-{end}/{}", data.len())),
+            (
+                "Content-Range",
+                format!("bytes {start}-{end}/{}", data.len()),
+            ),
             ("ETag", "\"subutai-failure-matrix\"".into()),
             ("Last-Modified", "Sun, 02 Aug 2026 16:00:00 GMT".into()),
         ],
@@ -342,7 +367,10 @@ fn write_response(
                 std::io::ErrorKind::BrokenPipe
                     | std::io::ErrorKind::ConnectionReset
                     | std::io::ErrorKind::ConnectionAborted
-            ) => Ok(()),
+            ) =>
+        {
+            Ok(())
+        }
         Err(error) => Err(error),
     }
 }

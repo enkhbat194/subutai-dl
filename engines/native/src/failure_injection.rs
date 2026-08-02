@@ -76,10 +76,7 @@ impl FailureInjection {
     }
 
     pub(crate) fn before_write(&self, bytes: usize) -> io::Result<()> {
-        let threshold = self
-            .inner
-            .fail_write_after_bytes
-            .load(Ordering::Acquire);
+        let threshold = self.inner.fail_write_after_bytes.load(Ordering::Acquire);
         if threshold == DISABLED {
             return Ok(());
         }
