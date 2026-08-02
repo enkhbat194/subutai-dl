@@ -2,13 +2,13 @@ import { app, BrowserWindow } from 'electron';
 import { appendFileSync } from 'node:fs';
 import { isNativeMessagingInvocation, runNativeMessagingHost } from './browser/native-messaging';
 import { ensureNativeMessagingRegistered } from './browser/registration';
+import { startRealUpdateAcceptanceDriver } from './system/real-update-acceptance-driver';
 import {
   initializeRealUpdateAcceptance,
   realUpdateAcceptanceTransactionOptions,
   recordHealthyRealUpdateAcceptance,
   recordRolledBackRealUpdateAcceptance,
   shouldFailRealUpdateAcceptanceHealth,
-  startRealUpdateAcceptanceDriver,
 } from './system/real-update-acceptance';
 import { verifyUpdatedDesktopHealth } from './system/update-health';
 import { installTransactionalUpdaterGuard } from './system/transactional-updater';
