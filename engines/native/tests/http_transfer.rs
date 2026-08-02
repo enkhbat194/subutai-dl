@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use subutai_native_engine::{download_file, partial_path, probe_url, DownloadRequest};
+use subutai_native_engine::{DownloadRequest, download_file, partial_path, probe_url};
 
 struct TestServer {
     base_url: String,
@@ -137,17 +137,15 @@ fn read_request(stream: &mut TcpStream) -> String {
         let read = stream.read(&mut buffer).expect("read request");
         assert!(read > 0, "client closed before request headers completed");
         bytes.extend_from_slice(&buffer[..read]);
-        assert!(bytes.len() < 64 * 1024, "test request headers are too large");
+        assert!(
+            bytes.len() < 64 * 1024,
+            "test request headers are too large"
+        );
     }
     String::from_utf8(bytes).expect("UTF-8 test request")
 }
 
-fn write_response(
-    stream: &mut TcpStream,
-    status: &str,
-    headers: &[(&str, &str)],
-    body: &[u8],
-) {
+fn write_response(stream: &mut TcpStream, status: &str, headers: &[(&str, &str)], body: &[u8]) {
     write!(stream, "HTTP/1.1 {status}\r\n").expect("status");
     for (name, value) in headers {
         write!(stream, "{name}: {value}\r\n").expect("header");

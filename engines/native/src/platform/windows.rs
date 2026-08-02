@@ -8,7 +8,7 @@ use std::ptr::{null, null_mut};
 use std::slice;
 
 use crate::platform::ResponseReader;
-use crate::transfer::{probe_from_headers, HttpProbe, RequestHeader, TransferError};
+use crate::transfer::{HttpProbe, RequestHeader, TransferError, probe_from_headers};
 
 const WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY: u32 = 4;
 const WINHTTP_FLAG_SECURE: u32 = 0x0080_0000;
@@ -248,7 +248,11 @@ pub(crate) fn open_response(
                 null(),
                 null(),
                 null(),
-                if parsed.secure { WINHTTP_FLAG_SECURE } else { 0 },
+                if parsed.secure {
+                    WINHTTP_FLAG_SECURE
+                } else {
+                    0
+                },
             )
         },
         "WinHttpOpenRequest",
@@ -297,14 +301,7 @@ pub(crate) fn available_disk_space(path: &Path) -> Result<u64, TransferError> {
     let mut total = 0_u64;
     let mut free = 0_u64;
     check(
-        unsafe {
-            GetDiskFreeSpaceExW(
-                path.as_ptr(),
-                &mut available,
-                &mut total,
-                &mut free,
-            )
-        },
+        unsafe { GetDiskFreeSpaceExW(path.as_ptr(), &mut available, &mut total, &mut free) },
         "GetDiskFreeSpaceExW",
     )?;
     Ok(available)
@@ -314,7 +311,13 @@ pub(crate) fn atomic_move(source: &Path, destination: &Path) -> Result<(), Trans
     let source = wide_os(source);
     let destination = wide_os(destination);
     check(
-        unsafe { MoveFileExW(source.as_ptr(), destination.as_ptr(), MOVEFILE_WRITE_THROUGH) },
+        unsafe {
+            MoveFileExW(
+                source.as_ptr(),
+                destination.as_ptr(),
+                MOVEFILE_WRITE_THROUGH,
+            )
+        },
         "MoveFileExW",
     )
 }
@@ -363,7 +366,11 @@ fn crack_url(value: &str) -> Result<ParsedUrl, TransferError> {
     let path = pointer_string(components.path, components.path_length)?;
     let extra = pointer_string(components.extra, components.extra_length)?;
     let extra = extra.split('#').next().unwrap_or_default();
-    let mut object = if path.is_empty() { "/".to_string() } else { path };
+    let mut object = if path.is_empty() {
+        "/".to_string()
+    } else {
+        path
+    };
     object.push_str(extra);
 
     Ok(ParsedUrl {
@@ -432,11 +439,7 @@ fn query_option_string(handle: *mut c_void, option: u32) -> Result<String, Trans
     Ok(wide_buffer_to_string(&buffer))
 }
 
-fn set_u32_option(
-    handle: *mut c_void,
-    option: u32,
-    value: u32,
-) -> Result<(), TransferError> {
+fn set_u32_option(handle: *mut c_void, option: u32, value: u32) -> Result<(), TransferError> {
     check(
         unsafe {
             WinHttpSetOption(
@@ -489,7 +492,10 @@ fn wide_os(path: &Path) -> Vec<u16> {
 }
 
 fn wide_buffer_to_string(buffer: &[u16]) -> String {
-    let end = buffer.iter().position(|value| *value == 0).unwrap_or(buffer.len());
+    let end = buffer
+        .iter()
+        .position(|value| *value == 0)
+        .unwrap_or(buffer.len());
     String::from_utf16_lossy(&buffer[..end])
 }
 

@@ -108,17 +108,44 @@ pub enum TransferError {
 impl Display for TransferError {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::UnsupportedPlatform => write!(formatter, "N1 transfer is currently available on Windows"),
+            Self::UnsupportedPlatform => {
+                write!(formatter, "N1 transfer is currently available on Windows")
+            }
             Self::InvalidUrl(value) => write!(formatter, "invalid HTTP/HTTPS URL: {value}"),
-            Self::InvalidHeaderName(name) => write!(formatter, "invalid request header name: {name}"),
-            Self::InvalidHeaderValue(name) => write!(formatter, "request header {name} contains a forbidden character"),
+            Self::InvalidHeaderName(name) => {
+                write!(formatter, "invalid request header name: {name}")
+            }
+            Self::InvalidHeaderValue(name) => write!(
+                formatter,
+                "request header {name} contains a forbidden character"
+            ),
             Self::HttpStatus(status) => write!(formatter, "server returned HTTP status {status}"),
-            Self::DestinationExists(path) => write!(formatter, "destination already exists: {}", path.display()),
-            Self::PartialFileExists(path) => write!(formatter, "partial file already exists: {}", path.display()),
-            Self::MissingParent(path) => write!(formatter, "destination has no parent directory: {}", path.display()),
-            Self::InsufficientDiskSpace { required, available } => write!(formatter, "insufficient disk space: required {required} bytes, available {available} bytes"),
-            Self::SizeMismatch { expected, actual } => write!(formatter, "download size mismatch: expected {expected} bytes, received {actual} bytes"),
-            Self::Windows { operation, code } => write!(formatter, "Windows operation {operation} failed with error {code}"),
+            Self::DestinationExists(path) => {
+                write!(formatter, "destination already exists: {}", path.display())
+            }
+            Self::PartialFileExists(path) => {
+                write!(formatter, "partial file already exists: {}", path.display())
+            }
+            Self::MissingParent(path) => write!(
+                formatter,
+                "destination has no parent directory: {}",
+                path.display()
+            ),
+            Self::InsufficientDiskSpace {
+                required,
+                available,
+            } => write!(
+                formatter,
+                "insufficient disk space: required {required} bytes, available {available} bytes"
+            ),
+            Self::SizeMismatch { expected, actual } => write!(
+                formatter,
+                "download size mismatch: expected {expected} bytes, received {actual} bytes"
+            ),
+            Self::Windows { operation, code } => write!(
+                formatter,
+                "Windows operation {operation} failed with error {code}"
+            ),
             Self::Io(error) => write!(formatter, "file I/O error: {error}"),
             Self::Protocol(message) => write!(formatter, "HTTP protocol error: {message}"),
         }
@@ -197,7 +224,10 @@ where
     if let Some(required) = metadata.content_length {
         let available = platform::available_disk_space(parent)?;
         if available < required {
-            return Err(TransferError::InsufficientDiskSpace { required, available });
+            return Err(TransferError::InsufficientDiskSpace {
+                required,
+                available,
+            });
         }
     }
 
@@ -227,8 +257,8 @@ where
             .ok_or_else(|| TransferError::Protocol("download byte count overflowed".into()))?;
         let elapsed = started.elapsed();
         let nanos = elapsed.as_nanos().max(1);
-        let rate = ((u128::from(downloaded) * 1_000_000_000) / nanos)
-            .min(u128::from(u64::MAX)) as u64;
+        let rate =
+            ((u128::from(downloaded) * 1_000_000_000) / nanos).min(u128::from(u64::MAX)) as u64;
         progress(TransferProgress {
             downloaded_bytes: downloaded,
             total_bytes: metadata.content_length,
@@ -364,8 +394,10 @@ fn sanitize_filename(value: &str) -> Option<String> {
     let filename = value
         .chars()
         .map(|character| {
-            if matches!(character, '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*')
-                || character.is_control()
+            if matches!(
+                character,
+                '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*'
+            ) || character.is_control()
             {
                 '_'
             } else {
@@ -379,7 +411,7 @@ fn sanitize_filename(value: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{probe_from_headers, RequestHeader};
+    use super::{RequestHeader, probe_from_headers};
 
     #[test]
     fn rejects_header_injection() {
@@ -403,6 +435,9 @@ mod tests {
         );
         assert_eq!(probe.content_length, Some(123));
         assert!(probe.accepts_byte_ranges);
-        assert_eq!(probe.suggested_filename.as_deref(), Some("Subutai Guide.pdf"));
+        assert_eq!(
+            probe.suggested_filename.as_deref(),
+            Some("Subutai Guide.pdf")
+        );
     }
 }
