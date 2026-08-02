@@ -1,24 +1,42 @@
 import { createHash } from 'node:crypto';
-import { createReadStream, createWriteStream } from 'node:fs';
-import { mkdir, mkdtemp, open, readFile, rm, stat } from 'node:fs/promises';
+import { createReadStream, createWriteStream, existsSync } from 'node:fs';
+import { mkdir, mkdtemp, open, rm, stat } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
-import { basename, join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { spawn } from 'node:child_process';
 import { setTimeout as delay } from 'node:timers/promises';
 
-const FILE_MB = Math.max(8, Number(process.env.SUBUTAI_RESILIENCE_MB || 64));
+const FILE_MB = Math.max(8, Number(process.env.SUBUTAI_RESILIENCE_MB || 32));
 const FILE_SIZE = FILE_MB * 1024 * 1024;
 const CHUNK_SIZE = 64 * 1024;
-const aria2 = process.env.SUBUTAI_ARIA2_PATH || (process.platform === 'win32' ? 'aria2c.exe' : 'aria2c');
-const root = await mkdtemp(join(tmpdir(), 'subutai-resilience-'));
+const MINIMUM_PROGRESS_BYTES = 1024 * 1024;
+const nativeEngine = resolve(
+  process.env.SUBUTAI_NATIVE_ENGINE_PATH
+    || join(
+      process.cwd(),
+      'engines',
+      'native',
+      'target',
+      process.env.SUBUTAI_NATIVE_PROFILE || 'debug',
+      process.platform === 'win32' ? 'subutai-engine.exe' : 'subutai-engine',
+    ),
+);
+
+if (!existsSync(nativeEngine)) {
+  throw new Error(`Subutai native engine was not found: ${nativeEngine}`);
+}
+
+const root = await mkdtemp(join(tmpdir(), 'subutai-native-resilience-'));
 const sourcePath = join(root, 'source.bin');
 const outputDir = join(root, 'downloads');
 await mkdir(outputDir, { recursive: true });
 
 function patternChunk(offset, length) {
   const buffer = Buffer.allocUnsafe(length);
-  for (let index = 0; index < length; index += 1) buffer[index] = (offset + index * 31 + 17) & 0xff;
+  for (let index = 0; index < length; index += 1) {
+    buffer[index] = (offset + index * 31 + 17) & 0xff;
+  }
   return buffer;
 }
 
@@ -27,11 +45,13 @@ async function createSource() {
   let offset = 0;
   while (offset < FILE_SIZE) {
     const length = Math.min(1024 * 1024, FILE_SIZE - offset);
-    if (!stream.write(patternChunk(offset, length))) await new Promise((resolve) => stream.once('drain', resolve));
+    if (!stream.write(patternChunk(offset, length))) {
+      await new Promise((resolvePromise) => stream.once('drain', resolvePromise));
+    }
     offset += length;
   }
-  await new Promise((resolve, reject) => {
-    stream.end(resolve);
+  await new Promise((resolvePromise, reject) => {
+    stream.end(resolvePromise);
     stream.once('error', reject);
   });
 }
@@ -56,9 +76,9 @@ class RangeServer {
       this.sockets.add(socket);
       socket.on('close', () => this.sockets.delete(socket));
     });
-    await new Promise((resolve, reject) => {
+    await new Promise((resolvePromise, reject) => {
       this.server.once('error', reject);
-      this.server.listen(port, '127.0.0.1', resolve);
+      this.server.listen(port, '127.0.0.1', resolvePromise);
     });
     const address = this.server.address();
     if (!address || typeof address === 'string') throw new Error('Range server failed to start.');
@@ -70,7 +90,7 @@ class RangeServer {
     if (dropConnections) for (const socket of this.sockets) socket.destroy();
     const server = this.server;
     this.server = null;
-    await new Promise((resolve) => server.close(() => resolve()));
+    await new Promise((resolvePromise) => server.close(resolvePromise));
   }
 
   async handle(request, response) {
@@ -79,6 +99,7 @@ class RangeServer {
       response.end();
       return;
     }
+
     const rangeHeader = request.headers.range;
     let start = 0;
     let end = FILE_SIZE - 1;
@@ -94,10 +115,13 @@ class RangeServer {
       response.statusCode = 206;
       response.setHeader('content-range', `bytes ${start}-${end}/${FILE_SIZE}`);
     }
+
     const length = end - start + 1;
     response.setHeader('accept-ranges', 'bytes');
     response.setHeader('content-length', String(length));
     response.setHeader('content-type', 'application/octet-stream');
+    response.setHeader('etag', '"subutai-n5-resilience"');
+    response.setHeader('last-modified', 'Sun, 02 Aug 2026 14:00:00 GMT');
     if (request.method === 'HEAD') {
       response.end();
       return;
@@ -111,9 +135,11 @@ class RangeServer {
         const buffer = Buffer.allocUnsafe(size);
         const { bytesRead } = await file.read(buffer, 0, size, position);
         if (bytesRead <= 0) break;
-        if (!response.write(buffer.subarray(0, bytesRead))) await new Promise((resolve) => response.once('drain', resolve));
+        if (!response.write(buffer.subarray(0, bytesRead))) {
+          await new Promise((resolvePromise) => response.once('drain', resolvePromise));
+        }
         position += bytesRead;
-        await delay(8);
+        await delay(10);
       }
       if (!response.destroyed) response.end();
     } finally {
@@ -122,53 +148,48 @@ class RangeServer {
   }
 }
 
-function ariaArgs(url, filename, split = 8) {
-  return [
-    '--continue=true',
-    `--split=${split}`,
-    `--max-connection-per-server=${split}`,
-    '--min-split-size=1M',
-    '--file-allocation=none',
-    '--auto-file-renaming=false',
-    '--allow-overwrite=true',
-    '--max-tries=0',
-    '--retry-wait=1',
-    '--connect-timeout=5',
-    '--timeout=10',
-    '--summary-interval=0',
-    '--console-log-level=warn',
-    `--dir=${outputDir}`,
-    `--out=${filename}`,
-    url,
-  ];
-}
-
-function runAria(url, filename, split = 8) {
-  const child = spawn(aria2, ariaArgs(url, filename, split), { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+function runNative(url, destination, segments = 4) {
+  const child = spawn(
+    nativeEngine,
+    ['download-segmented', url, destination, String(segments), String(1024 * 1024)],
+    { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true },
+  );
+  let stdout = '';
   let stderr = '';
-  child.stderr?.on('data', (chunk) => { stderr += chunk; });
-  const completion = new Promise((resolve, reject) => {
+  let downloadedBytes = 0;
+  child.stdout?.setEncoding('utf8');
+  child.stderr?.setEncoding('utf8');
+  child.stdout?.on('data', (chunk) => { stdout += chunk; });
+  child.stderr?.on('data', (chunk) => {
+    stderr += chunk;
+    for (const match of chunk.matchAll(/downloaded=(\d+)/gu)) {
+      downloadedBytes = Math.max(downloadedBytes, Number(match[1]));
+    }
+  });
+  const completion = new Promise((resolvePromise, reject) => {
     child.once('error', reject);
     child.once('exit', (code) => {
-      if (code === 0) resolve();
-      else reject(new Error(`${basename(aria2)} exited with ${code}\n${stderr}`));
+      if (code === 0 && stdout.includes('result=PASS')) resolvePromise({ stdout, stderr });
+      else reject(new Error(`Subutai native engine exited with ${String(code)}\n${stderr}\n${stdout}`));
     });
   });
-  return { child, completion };
+  return {
+    child,
+    completion,
+    downloadedBytes: () => downloadedBytes,
+  };
 }
 
-async function waitForPartial(path, minimumBytes = 1024 * 1024) {
-  const deadline = Date.now() + 20_000;
+async function waitForProgress(run, minimumBytes = MINIMUM_PROGRESS_BYTES) {
+  const deadline = Date.now() + 30_000;
   while (Date.now() < deadline) {
-    try {
-      const info = await stat(path);
-      if (info.size >= minimumBytes && info.size < FILE_SIZE) return info.size;
-    } catch {
-      // File is not created yet.
+    if (run.downloadedBytes() >= minimumBytes) return run.downloadedBytes();
+    if (run.child.exitCode !== null) {
+      throw new Error(`Native engine exited before reaching ${minimumBytes} bytes.`);
     }
-    await delay(100);
+    await delay(50);
   }
-  throw new Error(`Partial download was not observed for ${path}`);
+  throw new Error(`Native progress did not reach ${minimumBytes} bytes.`);
 }
 
 async function verify(path, expectedHash) {
@@ -176,6 +197,18 @@ async function verify(path, expectedHash) {
   if (info.size !== FILE_SIZE) throw new Error(`Unexpected size for ${path}: ${info.size}`);
   const actualHash = await sha256(path);
   if (actualHash !== expectedHash) throw new Error(`Checksum mismatch for ${path}`);
+  for (const statePath of resumableStatePaths(path)) {
+    if (existsSync(statePath)) throw new Error(`Recovery state remained after completion: ${statePath}`);
+  }
+}
+
+function resumableStatePaths(destination) {
+  return [
+    `${destination}.subutai.part`,
+    `${destination}.subutai.job`,
+    `${destination}.subutai.job.a`,
+    `${destination}.subutai.job.b`,
+  ];
 }
 
 await createSource();
@@ -185,35 +218,37 @@ await server.start();
 const url = `http://127.0.0.1:${server.port}/source.bin`;
 
 try {
-  const clean = runAria(url, 'clean.bin', 8);
+  const cleanPath = join(outputDir, 'clean.bin');
+  const clean = runNative(url, cleanPath, 4);
   await clean.completion;
-  await verify(join(outputDir, 'clean.bin'), expectedHash);
-  console.log(`Clean segmented ${FILE_MB} MB download passed.`);
+  await verify(cleanPath, expectedHash);
+  console.log(`Clean native segmented ${FILE_MB} MB download passed.`);
 
   const crashPath = join(outputDir, 'crash-resume.bin');
-  const firstCrash = runAria(url, 'crash-resume.bin', 4);
-  await waitForPartial(crashPath);
+  const firstCrash = runNative(url, crashPath, 4);
+  const persistedBeforeKill = await waitForProgress(firstCrash);
   firstCrash.child.kill();
   await firstCrash.completion.catch(() => undefined);
-  const resumedCrash = runAria(url, 'crash-resume.bin', 4);
+  if (!resumableStatePaths(crashPath).some((path) => existsSync(path))) {
+    throw new Error('Native process kill did not preserve resumable state.');
+  }
+  const resumedCrash = runNative(url, crashPath, 4);
   await resumedCrash.completion;
   await verify(crashPath, expectedHash);
-  console.log('Crash/kill resume checksum passed.');
+  console.log(`Process-kill resume passed after ${persistedBeforeKill} persisted bytes.`);
 
   const networkPath = join(outputDir, 'network-resume.bin');
-  const network = runAria(url, 'network-resume.bin', 4);
-  await waitForPartial(networkPath);
+  const network = runNative(url, networkPath, 4);
+  await waitForProgress(network);
   const originalPort = server.port;
   await server.stop(true);
-  await delay(2_000);
+  await delay(1_000);
   await server.start(originalPort);
   await network.completion;
   await verify(networkPath, expectedHash);
-  console.log('Network drop/rebind resume checksum passed.');
+  console.log('Network drop/rebind recovery checksum passed.');
 
-  const sidecar = await readFile(`${networkPath}.aria2`).catch(() => null);
-  if (sidecar) throw new Error('Recovery sidecar remained after successful completion.');
-  console.log(`Subutai resilience suite passed for ${FILE_MB} MB payloads.`);
+  console.log(`Subutai first-party resilience suite passed for ${FILE_MB} MB payloads.`);
 } finally {
   await server.stop(true);
   await rm(root, { recursive: true, force: true });
