@@ -448,10 +448,8 @@ mod tests {
     #[test]
     fn skips_malformed_disposition_parts_before_filename() {
         assert_eq!(
-            suggested_filename_from_disposition(
-                "attachment; malformed; filename=Subutai-N1.bin"
-            )
-            .as_deref(),
+            suggested_filename_from_disposition("attachment; malformed; filename=Subutai-N1.bin")
+                .as_deref(),
             Some("Subutai-N1.bin")
         );
     }
