@@ -72,6 +72,8 @@ pub struct SegmentedDownloadRequest {
     pub checkpoint_bytes: u64,
     pub adaptive: AdaptivePolicy,
     pub transport: TransportSettings,
+    #[cfg(feature = "failure-injection")]
+    pub failure_injection: crate::FailureInjection,
 }
 
 impl SegmentedDownloadRequest {
@@ -90,7 +92,37 @@ impl SegmentedDownloadRequest {
             checkpoint_bytes: 1024 * 1024,
             adaptive: AdaptivePolicy::default(),
             transport: TransportSettings::default(),
+            #[cfg(feature = "failure-injection")]
+            failure_injection: crate::FailureInjection::default(),
         }
+    }
+
+    pub(crate) fn available_disk_space(&self, parent: &Path) -> Result<u64, TransferError> {
+        #[cfg(feature = "failure-injection")]
+        if let Some(bytes) = self.failure_injection.available_disk_space() {
+            return Ok(bytes);
+        }
+        platform::available_disk_space(parent)
+    }
+
+    pub(crate) fn before_write(&self, bytes: usize) -> Result<(), TransferError> {
+        #[cfg(feature = "failure-injection")]
+        self.failure_injection.before_write(bytes)?;
+        #[cfg(not(feature = "failure-injection"))]
+        let _ = bytes;
+        Ok(())
+    }
+
+    pub(crate) fn before_sync(&self) -> Result<(), TransferError> {
+        #[cfg(feature = "failure-injection")]
+        self.failure_injection.before_sync()?;
+        Ok(())
+    }
+
+    pub(crate) fn before_atomic_move(&self) -> Result<(), TransferError> {
+        #[cfg(feature = "failure-injection")]
+        self.failure_injection.before_atomic_move()?;
+        Ok(())
     }
 }
 
@@ -454,7 +486,7 @@ fn create_manifest(
     if partial.exists() {
         return Err(TransferError::PartialFileExists(partial.to_path_buf()));
     }
-    let available = platform::available_disk_space(parent)?;
+    let available = request.available_disk_space(parent)?;
     if available < total_size {
         return Err(TransferError::InsufficientDiskSpace {
             required: total_size,
@@ -810,6 +842,7 @@ fn run_segment_attempt(
                 actual: completed,
             });
         }
+        request.before_write(read)?;
         file.write_all(&buffer[..read])?;
         if let Some(limiter) = rate_limiter {
             limiter.throttle(read);
@@ -860,6 +893,7 @@ fn run_segment_attempt(
         }
     }
 
+    request.before_sync()?;
     file.sync_all()?;
     checkpoint_segment(index, completed, SegmentState::Completed, manifest, store)?;
     Ok(WorkerAttempt::Completed {
@@ -886,9 +920,7 @@ fn checkpoint_pending(
 
 fn is_retryable(error: &TransferError) -> bool {
     match error {
-        TransferError::Windows { .. }
-        | TransferError::Io(_)
-        | TransferError::SizeMismatch { .. } => true,
+        TransferError::Windows { .. } | TransferError::SizeMismatch { .. } => true,
         TransferError::HttpStatus(status) => {
             matches!(status, 408 | 425 | 429 | 500..=599)
         }
@@ -986,6 +1018,7 @@ fn finalize_download(
         });
     }
     let sha256 = hash_file(partial)?;
+    request.before_atomic_move()?;
     platform::atomic_move(partial, &request.destination)?;
 
     {
@@ -1032,6 +1065,7 @@ fn recover_completed_download(
     }
     let sha256 = hash_file(source)?;
     if source == partial {
+        request.before_atomic_move()?;
         platform::atomic_move(partial, &request.destination)?;
     }
     if manifest.state != JobState::Completed {

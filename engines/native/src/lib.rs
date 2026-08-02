@@ -5,6 +5,8 @@ mod adaptive;
 mod core;
 pub mod desktop_protocol;
 mod direct_download;
+#[cfg(feature = "failure-injection")]
+mod failure_injection;
 pub mod ipc;
 mod platform;
 pub mod resumable;
@@ -21,6 +23,8 @@ pub use desktop_protocol::{
     encode_status_event,
 };
 pub use direct_download::{download_segmented, download_segmented_with_progress};
+#[cfg(feature = "failure-injection")]
+pub use failure_injection::FailureInjection;
 pub use resumable::{
     DownloadControl, SegmentedDownloadRequest, SegmentedOutcome, SegmentedProgress,
     resume_journal_path,
