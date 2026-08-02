@@ -73,58 +73,22 @@ jobs:
         shell: powershell
         run: node scripts/native-engine-policy-test.mjs
 
-      - name: Apply N2 quality cleanup
-        shell: powershell
-        run: |
-          $path = "engines/native/src/resumable.rs"
-          $text = [System.IO.File]::ReadAllText($path).Replace("`r`n", "`n")
-          $old = @(
-            '    if request.destination.exists() {',
-            '        if let Some(snapshot) = snapshot {',
-            '            if snapshot.manifest.all_segments_complete() {',
-            '                return recover_completed_download(request, &store, &partial, snapshot.manifest);',
-            '            }',
-            '        }',
-            '        return Err(TransferError::DestinationExists(',
-            '            request.destination.clone(),',
-            '        ));',
-            '    }'
-          ) -join "`n"
-          $new = @(
-            '    if request.destination.exists() {',
-            '        if let Some(snapshot) = snapshot',
-            '            && snapshot.manifest.all_segments_complete()',
-            '        {',
-            '            return recover_completed_download(request, &store, &partial, snapshot.manifest);',
-            '        }',
-            '        return Err(TransferError::DestinationExists(',
-            '            request.destination.clone(),',
-            '        ));',
-            '    }'
-          ) -join "`n"
-          if (-not $text.Contains($old)) {
-            throw "Expected N2 nested destination block was not found"
-          }
-          $text = $text.Replace($old, $new)
-          $utf8 = New-Object System.Text.UTF8Encoding($false)
-          [System.IO.File]::WriteAllText($path, $text, $utf8)
-
       - name: Format N2 native engine sources
         shell: powershell
         run: cargo fmt --manifest-path engines/native/Cargo.toml --all
 
-      - name: Save N2 cleanup changes
+      - name: Save N2 formatter changes
         shell: powershell
         run: |
           $changes = git status --porcelain -- engines/native
           if ([string]::IsNullOrWhiteSpace($changes)) {
-            Write-Host "N2 sources are already clean."
+            Write-Host "N2 formatting is already clean."
             exit 0
           }
           git config user.name "Subutai Automation"
           git config user.email "subutai-automation@users.noreply.github.com"
           git add engines/native
-          git commit -m "Resolve N2 resumable transfer quality checks"
+          git commit -m "Format final N2 resumable transfer sources"
           git push origin "HEAD:${{ github.head_ref || github.ref_name }}"
 
       - name: Check native engine quality
