@@ -39,7 +39,7 @@ Final Subutai releases must not require a third-party download or media executab
 | N0 | State, range planning, durable journal and desktop/engine protocol | Complete | PASS | PR #15 |
 | N1 | HTTP/HTTPS probe and safe single-stream transfer | Complete | PASS | PR #16 |
 | N2 | Segmented transfer, pause/resume and validator-safe recovery | Complete | PASS | PR #17 |
-| N3 | Adaptive connections and dynamic chunking | Pending | Pending | Pending |
+| N3 | Adaptive connections, dynamic chunking and range replacement | Complete | PASS | PR #18 |
 | N4 | Replace the desktop direct-download path | Pending | Pending | Pending |
 | N5 | Production acceptance and old-engine removal | Pending | Pending | Pending |
 | M1 | First-party HLS/DASH media core | Pending | Pending | Pending |
@@ -96,25 +96,43 @@ Final Subutai releases must not require a third-party download or media executab
 - Full-file SHA-256 after all ranges finish, followed by atomic final move.
 - `subutai-engine download-segmented <url> <destination> [segments] [minimum-segment-bytes]` command.
 - Re-running the same CLI URL and destination resumes the saved transfer automatically.
-- Deterministic local Windows range server supports concurrent connections and deliberate slow streaming.
 - Mid-transfer test pauses after real nonzero progress, persists 524 KiB in the observed runner execution, then resumes remaining ranges and verifies exact final bytes.
 - Validator-change test confirms a saved transfer is preserved but never mixed with changed remote content.
 
-## Latest N2 verification evidence
+## N3 — completed and verified
 
-The Windows self-hosted runner passed:
+- Adaptive policy is implemented in safe Rust with no new third-party crate dependency.
+- `requested_segments` is the maximum concurrent connection budget for new adaptive transfers.
+- File size and target chunk size determine the dynamic journal chunk count.
+- Chunk count is bounded by `maximum connections × chunks per connection` and the configured minimum chunk size.
+- New downloads can persist substantially more chunks than active connections, allowing workers to consume a durable work queue without changing the N0 journal format.
+- An adaptive connection gate starts at the configured minimum and ramps toward the maximum after healthy throughput samples or successful chunks.
+- Slow or transiently failing workers reduce the connection limit before replacement, preventing uncontrolled connection growth against overloaded servers.
+- Each slow worker checkpoints its exact contiguous byte offset, closes the current response and opens a replacement range request from the saved offset.
+- Windows, file I/O, truncated-range and retryable HTTP failures use bounded replacement attempts with increasing backoff.
+- Non-retryable validator, range and protocol failures still fail immediately; changed remote content is never mixed with saved bytes.
+- Replacement exhaustion returns an explicit segment, attempt count and final reason.
+- Progress telemetry now includes active connections, current connection limit, peak connections, queued chunks, slow-range replacements and transient retries.
+- Pause, resume, cancel, ETag/Last-Modified validation, whole-file SHA-256 and atomic completion retain the N2 guarantees.
+- Deterministic unit tests verify dynamic chunk planning and connection ramp-up/backoff behavior.
+- The Windows integration test creates 25 dynamic chunks for a 6 MiB transfer with a four-connection budget.
+- Its first real range is deliberately throttled below the configured threshold; Subutai checkpoints and replaces that connection, scales above one concurrent worker and verifies the exact final bytes.
 
-1. Subutai native ownership policy.
+## Latest N3 verification evidence
+
+The final check-only run on the Windows self-hosted runner passed:
+
+1. Subutai native ownership policy with zero third-party Rust crates and one audited unsafe Windows boundary.
 2. Rust formatting check.
-3. Static checks with every warning treated as an error.
+3. Clippy with every warning treated as an error.
 4. N0 state, journal, corruption and protocol tests.
 5. N1 metadata, redirect, transfer and SHA-256 tests.
-6. N2 `Content-Range` parser and range validation tests.
-7. Concurrent segmented byte transfer.
-8. Mid-transfer pause after nonzero progress.
-9. Durable per-segment checkpoint and exact-offset resume.
-10. ETag change refusal before resume.
-11. Whole-file byte equality, SHA-256 and atomic completion.
+6. N2 concurrent transfer, nonzero pause/resume and validator-change tests.
+7. N3 dynamic chunk planner unit tests.
+8. N3 adaptive connection ramp-up and backoff unit tests.
+9. N3 real slow-range detection, checkpoint and replacement.
+10. N3 real connection scaling with bounded maximum concurrency.
+11. Exact final byte equality, whole-file SHA-256 and atomic completion.
 12. Durable journal self-test.
 13. Public Subutai identity gate.
 14. Desktop and browser TypeScript checks.
@@ -126,20 +144,21 @@ Normal native-engine and desktop regression checks run free on `subutai-windows`
 
 ## Current conclusion
 
-N0, N1 and N2 are complete and runner verified. Subutai now owns its state/recovery foundation, safe Windows HTTP/HTTPS transport, concurrent segmented transfer, durable nonzero pause/resume and validator-safe recovery. The installed desktop application does not switch its direct-download path to this engine until N3 behavior and the N4 integration gate are complete.
+N0, N1, N2 and N3 are complete and runner verified. Subutai now owns its durable state foundation, Windows HTTP/HTTPS transport, concurrent resumable transfer and adaptive connection/chunk engine. The installed desktop application still uses its existing direct-download path until N4 connects the desktop, browser bridge, queue and scheduler to this first-party engine.
 
 ## Remaining release-critical work
 
 ### First-party direct engine
 
-1. N3 dynamic segment sizing and adaptive connection count.
-2. Connection replacement when one range becomes slow or fails.
-3. Network interruption, sleep/wake and process-kill recovery under long-running loads.
-4. Retry/backoff, proxy, authentication, speed-limit and mirror-fallback support in the new engine.
-5. File-conflict policies and explicit restart behavior when remote content changes.
-6. N4 desktop, browser, queue and scheduler integration.
-7. N5 performance, installer and migration acceptance.
-8. Remove temporary release engines only after the replacement passes every gate.
+1. N4 desktop process integration and native-engine lifecycle management.
+2. Map desktop pause, resume, cancel, queue and scheduler commands to the first-party engine.
+3. Forward browser cookies, referer, authorization and validated request headers into the new engine path.
+4. Persist and display N3 connection, queue, retry and replacement telemetry in the desktop UI.
+5. Implement explicit file-conflict and changed-remote restart policies at the product layer.
+6. N5 long-running network interruption, sleep/wake, process-kill and large-file acceptance.
+7. Add proxy, speed-limit, authentication challenge and mirror-fallback acceptance to the first-party path.
+8. Validate Setup, Portable, updater and rollback with the first-party engine bundled.
+9. Remove temporary release engines only after every migration gate passes.
 
 ### Product acceptance
 
@@ -168,10 +187,9 @@ N0, N1 and N2 are complete and runner verified. Subutai now owns its state/recov
 
 ## Ordered next packages
 
-1. **N3 adaptive engine**.
-2. **N4 desktop replacement**.
-3. **N5 production migration and release gate**.
-4. **M1/M2 first-party media replacement**.
+1. **N4 desktop replacement**.
+2. **N5 production migration and release gate**.
+3. **M1/M2 first-party media replacement**.
 
 ## Naming policy
 

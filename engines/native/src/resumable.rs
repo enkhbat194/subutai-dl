@@ -7,6 +7,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use crate::adaptive::{AdaptiveGate, AdaptivePolicy};
 use crate::platform;
 use crate::platform::ResponseReader;
 use crate::sha256::Sha256;
@@ -68,6 +69,7 @@ pub struct SegmentedDownloadRequest {
     pub requested_segments: u32,
     pub minimum_segment_size: u64,
     pub checkpoint_bytes: u64,
+    pub adaptive: AdaptivePolicy,
 }
 
 impl SegmentedDownloadRequest {
@@ -84,6 +86,7 @@ impl SegmentedDownloadRequest {
             requested_segments: 8,
             minimum_segment_size: 4 * 1024 * 1024,
             checkpoint_bytes: 1024 * 1024,
+            adaptive: AdaptivePolicy::default(),
         }
     }
 }
@@ -96,6 +99,12 @@ pub struct SegmentedProgress {
     pub total_segments: usize,
     pub elapsed: Duration,
     pub bytes_per_second: u64,
+    pub active_connections: usize,
+    pub connection_limit: usize,
+    pub peak_connections: usize,
+    pub queued_segments: usize,
+    pub replacement_count: u64,
+    pub retry_count: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -202,7 +211,17 @@ where
         .save(&manifest)
         .map_err(|error| TransferError::Journal(error.to_string()))?;
 
+    let unfinished_chunks = manifest
+        .segments
+        .iter()
+        .filter(|segment| segment.state != SegmentState::Completed)
+        .count();
     let manifest = Arc::new(Mutex::new(manifest));
+    let adaptive = Arc::new(AdaptiveGate::new(
+        request.adaptive.clone(),
+        request.requested_segments as usize,
+        unfinished_chunks,
+    ));
     let started = Instant::now();
     let (progress_sender, progress_receiver) = mpsc::channel::<SegmentedProgress>();
     let mut worker_results = Vec::new();
@@ -229,6 +248,7 @@ where
             let worker_partial = partial.clone();
             let worker_probe = segment_probe.clone();
             let worker_sender = progress_sender.clone();
+            let worker_adaptive = Arc::clone(&adaptive);
             handles.push(scope.spawn(move || {
                 run_segment_worker(
                     index,
@@ -240,6 +260,7 @@ where
                     &worker_probe,
                     started,
                     &worker_sender,
+                    &worker_adaptive,
                 )
             }));
         }
@@ -344,6 +365,10 @@ fn validate_request(request: &SegmentedDownloadRequest) -> Result<(), TransferEr
             "checkpoint size must be greater than zero".into(),
         ));
     }
+    request
+        .adaptive
+        .validate(request.requested_segments as usize)
+        .map_err(TransferError::Protocol)?;
     for header in &request.headers {
         if header.name.eq_ignore_ascii_case("range") || header.name.eq_ignore_ascii_case("if-range")
         {
@@ -412,12 +437,16 @@ fn create_manifest(
     file.set_len(total_size)?;
     file.sync_all()?;
 
-    let segments = plan_ranges(
-        total_size,
-        request.requested_segments,
-        request.minimum_segment_size,
-    )
-    .map_err(|error| TransferError::Protocol(error.to_string()))?;
+    let chunk_count = request
+        .adaptive
+        .planned_chunk_count(
+            total_size,
+            request.requested_segments as usize,
+            request.minimum_segment_size,
+        )
+        .map_err(TransferError::Protocol)?;
+    let segments = plan_ranges(total_size, chunk_count, request.minimum_segment_size)
+        .map_err(|error| TransferError::Protocol(error.to_string()))?;
     let mut manifest = JobManifest::new(
         &request.job_id,
         &request.url,
@@ -534,6 +563,14 @@ fn prepare_manifest_for_run(manifest: &mut JobManifest) -> Result<(), TransferEr
     }
 }
 
+#[derive(Debug)]
+enum WorkerAttempt {
+    Completed { transferred: u64, elapsed: Duration },
+    Paused,
+    Cancelled,
+    ReplaceSlow { transferred: u64, elapsed: Duration },
+}
+
 #[allow(clippy::too_many_arguments)]
 fn run_segment_worker(
     index: usize,
@@ -545,10 +582,100 @@ fn run_segment_worker(
     probe: &HttpProbe,
     started: Instant,
     progress_sender: &mpsc::Sender<SegmentedProgress>,
+    adaptive: &AdaptiveGate,
 ) -> Result<WorkerStop, TransferError> {
+    let mut replacements = 0_u32;
+    loop {
+        match control.state() {
+            CONTROL_PAUSED => return Ok(WorkerStop::Paused),
+            CONTROL_CANCELLED => return Ok(WorkerStop::Cancelled),
+            _ => {}
+        }
+
+        let permit = adaptive.acquire();
+        let attempt = match control.state() {
+            CONTROL_PAUSED => Ok(WorkerAttempt::Paused),
+            CONTROL_CANCELLED => Ok(WorkerAttempt::Cancelled),
+            _ => run_segment_attempt(
+                index,
+                request,
+                control,
+                manifest,
+                store,
+                partial,
+                probe,
+                started,
+                progress_sender,
+                adaptive,
+            ),
+        };
+        drop(permit);
+
+        match attempt {
+            Ok(WorkerAttempt::Completed {
+                transferred,
+                elapsed,
+            }) => {
+                if transferred > 0 && !adaptive.should_replace(transferred, elapsed) {
+                    adaptive.record_healthy();
+                }
+                return Ok(WorkerStop::Completed);
+            }
+            Ok(WorkerAttempt::Paused) => return Ok(WorkerStop::Paused),
+            Ok(WorkerAttempt::Cancelled) => return Ok(WorkerStop::Cancelled),
+            Ok(WorkerAttempt::ReplaceSlow {
+                transferred,
+                elapsed,
+            }) => {
+                if replacements >= request.adaptive.max_replacements {
+                    return Err(TransferError::AdaptiveRetriesExhausted {
+                        segment: index,
+                        attempts: replacements.saturating_add(1),
+                        reason: format!(
+                            "worker remained below the configured rate after {transferred} bytes in {} ms",
+                            elapsed.as_millis()
+                        ),
+                    });
+                }
+                replacements = replacements.saturating_add(1);
+                checkpoint_pending(index, manifest, store)?;
+                adaptive.record_replacement();
+                thread::sleep(adaptive.backoff(replacements));
+            }
+            Err(error) if is_retryable(&error) => {
+                if replacements >= request.adaptive.max_replacements {
+                    return Err(TransferError::AdaptiveRetriesExhausted {
+                        segment: index,
+                        attempts: replacements.saturating_add(1),
+                        reason: error.to_string(),
+                    });
+                }
+                replacements = replacements.saturating_add(1);
+                checkpoint_pending(index, manifest, store)?;
+                adaptive.record_retry();
+                thread::sleep(adaptive.backoff(replacements));
+            }
+            Err(error) => return Err(error),
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn run_segment_attempt(
+    index: usize,
+    request: &SegmentedDownloadRequest,
+    control: &DownloadControl,
+    manifest: &Arc<Mutex<JobManifest>>,
+    store: &JournalStore,
+    partial: &Path,
+    probe: &HttpProbe,
+    started: Instant,
+    progress_sender: &mpsc::Sender<SegmentedProgress>,
+    adaptive: &AdaptiveGate,
+) -> Result<WorkerAttempt, TransferError> {
     match control.state() {
-        CONTROL_PAUSED => return Ok(WorkerStop::Paused),
-        CONTROL_CANCELLED => return Ok(WorkerStop::Cancelled),
+        CONTROL_PAUSED => return Ok(WorkerAttempt::Paused),
+        CONTROL_CANCELLED => return Ok(WorkerAttempt::Cancelled),
         _ => {}
     }
 
@@ -561,9 +688,13 @@ fn run_segment_worker(
             .ok_or_else(|| TransferError::Protocol(format!("missing segment {index}")))?
     };
     if segment.state == SegmentState::Completed {
-        return Ok(WorkerStop::Completed);
+        return Ok(WorkerAttempt::Completed {
+            transferred: 0,
+            elapsed: Duration::ZERO,
+        });
     }
 
+    let initial_completed = segment.completed_bytes;
     let start = segment
         .start
         .checked_add(segment.completed_bytes)
@@ -584,6 +715,7 @@ fn run_segment_worker(
         headers.push(RequestHeader::new("If-Range", value)?);
     }
 
+    let attempt_started = Instant::now();
     let mut response = platform::open_response("GET", &request.url, &headers)?;
     let metadata = response.metadata().clone();
     if metadata.status_code == 200 && if_range_validator(probe).is_some() {
@@ -617,16 +749,18 @@ fn run_segment_worker(
         .checked_sub(start)
         .ok_or_else(|| TransferError::Protocol("segment remaining size underflowed".into()))?;
     let mut buffer = vec![0_u8; READ_BUFFER_BYTES];
+    let mut window_started = Instant::now();
+    let mut window_bytes = 0_u64;
 
     while remaining > 0 {
         match control.state() {
             CONTROL_PAUSED => {
                 checkpoint_segment(index, completed, SegmentState::Pending, manifest, store)?;
-                return Ok(WorkerStop::Paused);
+                return Ok(WorkerAttempt::Paused);
             }
             CONTROL_CANCELLED => {
                 checkpoint_segment(index, completed, SegmentState::Pending, manifest, store)?;
-                return Ok(WorkerStop::Cancelled);
+                return Ok(WorkerAttempt::Cancelled);
             }
             _ => {}
         }
@@ -647,6 +781,7 @@ fn run_segment_worker(
         remaining = remaining
             .checked_sub(read as u64)
             .ok_or_else(|| TransferError::Protocol("server exceeded requested range".into()))?;
+        window_bytes = window_bytes.saturating_add(read as u64);
 
         let state = if remaining == 0 {
             SegmentState::Completed
@@ -667,14 +802,59 @@ fn run_segment_worker(
                     .map_err(|error| TransferError::Journal(error.to_string()))?;
                 checkpoint_completed = completed;
             }
-            aggregate_progress(&guard, started)?
+            aggregate_progress(&guard, started, adaptive)?
         };
         let _ = progress_sender.send(update);
+
+        let window_elapsed = window_started.elapsed();
+        if remaining > 0 && window_elapsed >= request.adaptive.slow_window {
+            if adaptive.should_replace(window_bytes, window_elapsed) {
+                checkpoint_segment(index, completed, SegmentState::Pending, manifest, store)?;
+                return Ok(WorkerAttempt::ReplaceSlow {
+                    transferred: completed.saturating_sub(initial_completed),
+                    elapsed: attempt_started.elapsed(),
+                });
+            }
+            adaptive.record_healthy();
+            window_started = Instant::now();
+            window_bytes = 0;
+        }
     }
 
     file.sync_all()?;
     checkpoint_segment(index, completed, SegmentState::Completed, manifest, store)?;
-    Ok(WorkerStop::Completed)
+    Ok(WorkerAttempt::Completed {
+        transferred: completed.saturating_sub(initial_completed),
+        elapsed: attempt_started.elapsed(),
+    })
+}
+
+fn checkpoint_pending(
+    index: usize,
+    manifest: &Arc<Mutex<JobManifest>>,
+    store: &JournalStore,
+) -> Result<(), TransferError> {
+    let completed = {
+        let guard = lock_manifest(manifest)?;
+        guard
+            .segments
+            .get(index)
+            .map(|segment| segment.completed_bytes)
+            .ok_or_else(|| TransferError::Protocol(format!("missing segment {index}")))?
+    };
+    checkpoint_segment(index, completed, SegmentState::Pending, manifest, store)
+}
+
+fn is_retryable(error: &TransferError) -> bool {
+    match error {
+        TransferError::Windows { .. }
+        | TransferError::Io(_)
+        | TransferError::SizeMismatch { .. } => true,
+        TransferError::HttpStatus(status) => {
+            matches!(status, 408 | 425 | 429 | 500..=599)
+        }
+        _ => false,
+    }
 }
 
 fn checkpoint_segment(
@@ -697,6 +877,7 @@ fn checkpoint_segment(
 fn aggregate_progress(
     manifest: &JobManifest,
     started: Instant,
+    adaptive: &AdaptiveGate,
 ) -> Result<SegmentedProgress, TransferError> {
     let downloaded_bytes = manifest
         .completed_bytes()
@@ -708,17 +889,26 @@ fn aggregate_progress(
     let nanos = elapsed.as_nanos().max(1);
     let bytes_per_second =
         ((u128::from(downloaded_bytes) * 1_000_000_000) / nanos).min(u128::from(u64::MAX)) as u64;
+    let completed_segments = manifest
+        .segments
+        .iter()
+        .filter(|segment| segment.state == SegmentState::Completed)
+        .count();
+    let adaptive_snapshot = adaptive.snapshot();
+    let unfinished_segments = manifest.segments.len().saturating_sub(completed_segments);
     Ok(SegmentedProgress {
         downloaded_bytes,
         total_bytes,
-        completed_segments: manifest
-            .segments
-            .iter()
-            .filter(|segment| segment.state == SegmentState::Completed)
-            .count(),
+        completed_segments,
         total_segments: manifest.segments.len(),
         elapsed,
         bytes_per_second,
+        active_connections: adaptive_snapshot.active_connections,
+        connection_limit: adaptive_snapshot.connection_limit,
+        peak_connections: adaptive_snapshot.peak_connections,
+        queued_segments: unfinished_segments.saturating_sub(adaptive_snapshot.active_connections),
+        replacement_count: adaptive_snapshot.replacement_count,
+        retry_count: adaptive_snapshot.retry_count,
     })
 }
 
