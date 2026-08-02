@@ -2,7 +2,7 @@ name: Subutai Native Engine
 
 on:
   push:
-    branches: [main, "agent/**"]
+    branches: [main]
     paths:
       - "engines/native/**"
       - "docs/NATIVE_ENGINE_LOCKED_PLAN.md"
@@ -20,6 +20,10 @@ on:
       - "package.json"
       - ".github/workflows/native-engine.yml"
   workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
