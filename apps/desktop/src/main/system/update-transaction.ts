@@ -110,11 +110,24 @@ export async function launchUpdateWatchdog(
     throw new Error('Updater watchdog checksum mismatch.');
   }
   const rootPath = dirname(dirname(journal.watchdogPath));
+  const singleInstanceCommand = String.raw`
+$createdNew = $false
+$mutex = New-Object System.Threading.Mutex($true, 'Local\SubutaiUpdaterWatchdog', [ref]$createdNew)
+if (-not $createdNew) { $mutex.Dispose(); exit 0 }
+try {
+  & $args[0] -TransactionPath $args[1] -ParentProcessId ([int]$args[2])
+  exit $LASTEXITCODE
+} finally {
+  $mutex.ReleaseMutex()
+  $mutex.Dispose()
+}
+`;
   const child = spawn('powershell.exe', [
     '-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
-    '-File', journal.watchdogPath,
-    '-TransactionPath', updateJournalPath(rootPath),
-    '-ParentProcessId', String(parentProcessId),
+    '-Command', singleInstanceCommand,
+    journal.watchdogPath,
+    updateJournalPath(rootPath),
+    String(parentProcessId),
   ], { windowsHide: true, detached: true, stdio: 'ignore' });
   child.unref();
 }
