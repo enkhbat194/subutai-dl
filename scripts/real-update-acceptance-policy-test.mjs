@@ -101,7 +101,7 @@ for (const required of [
   "join(rootPath, 'watchdog-launcher.log')",
   '-TransactionPath ${transactionPathLiteral}',
   '-ParentProcessId ${parentProcessId}',
-  "'Local\\SubutaiUpdaterWatchdog'",
+  String.raw`const mutexScope = 'Local\\SubutaiUpdaterWatchdog';`,
   "'-Command', singleInstanceCommand",
 ]) {
   requireText(updateTransaction, required, 'Transactional watchdog launcher');
