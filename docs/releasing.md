@@ -4,7 +4,7 @@ Subutai uses isolated stable and beta/RC Windows updater channels backed by the 
 
 ## Current candidate
 
-The source packages are aligned to **`0.2.0-rc.1`**. This version bump is preflight work only; it does not create a tag, release, installer publication or deployment.
+The source packages are aligned to **`0.2.0-rc.2`**. This candidate repairs the owner-test media path and replaces the crowded prototype dashboard with the focused one-link MVP. It does not authorize a signed production release or deployment.
 
 ## Required release gates
 
@@ -17,9 +17,11 @@ Before publishing:
 5. build and verify signed Setup, Portable, desktop and native-host artifacts;
 6. run signed acceptance on clean physical Windows 10 x64;
 7. run signed acceptance on clean physical Windows 11 x64;
-8. create the exact matching tag only after those gates pass.
+8. create the exact matching production tag only after those gates pass.
 
-The required RC tag is `v0.2.0-rc.1`. Package versions must exactly match the tag without the leading `v`.
+The required production RC tag is `v0.2.0-rc.2`. Package versions must exactly match the tag without the leading `v`.
+
+An unsigned `internal-v0.2.0-rc.2` prerelease may be created only for the repository owner's usability test. It must be clearly labelled as internal and is not evidence that signing or clean-machine gates passed.
 
 ## Fail-closed workflow behavior
 
