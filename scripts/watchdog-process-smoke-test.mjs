@@ -187,7 +187,12 @@ async function runElectronParentExitSmoke() {
     rollbackMarker,
   }, null, 2)}\n`);
 
-  const electron = spawn(electronExecutable, [electronParentFixture, configPath], {
+  const electron = spawn(electronExecutable, [
+    '--disable-gpu',
+    '--in-process-gpu',
+    electronParentFixture,
+    configPath,
+  ], {
     cwd: dirname(installedExecutablePath),
     windowsHide: true,
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -241,10 +246,19 @@ async function runElectronParentExitSmoke() {
   }
 }
 
+let primaryError;
 try {
   await runDirectFileErrorSmoke();
   await runElectronParentExitSmoke();
   console.log('Subutai watchdog process smoke test passed: direct PowerShell -File startup is acknowledged and the script-owned worker survives a real Electron parent exit through verified rollback completion.');
+} catch (error) {
+  primaryError = error;
+  throw error;
 } finally {
-  rmSync(smokeRoot, { recursive: true, force: true });
+  try {
+    rmSync(smokeRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  } catch (cleanupError) {
+    if (!primaryError) throw cleanupError;
+    console.warn(`Watchdog smoke cleanup also failed: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`);
+  }
 }

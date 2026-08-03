@@ -9,7 +9,10 @@ const {
 } = require('node:fs');
 const { app } = require('electron');
 
-const configPath = process.argv[2];
+app.disableHardwareAcceleration();
+app.commandLine.appendSwitch('disable-software-rasterizer');
+
+const configPath = process.argv.at(-1);
 if (!configPath) throw new Error('Watchdog Electron parent fixture requires a config path.');
 const config = JSON.parse(readFileSync(configPath, 'utf8'));
 
