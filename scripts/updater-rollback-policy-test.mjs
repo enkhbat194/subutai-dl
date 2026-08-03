@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const root = process.cwd();
-const transaction = ['update-journal.ts', 'update-staging.ts', 'update-transaction.ts']
+const transaction = ['update-journal.ts', 'update-staging.ts', 'watchdog-diagnostic.ts', 'update-transaction.ts']
   .map((name) => readFileSync(join(root, 'apps', 'desktop', 'src', 'main', 'system', name), 'utf8'))
   .join('\n');
 const updater = readFileSync(join(root, 'apps', 'desktop', 'src', 'main', 'system', 'transactional-updater.ts'), 'utf8');
@@ -37,7 +37,10 @@ for (const required of [
   'Cached rollback installer checksum mismatch',
   'Staged update installer checksum mismatch',
   'redactUpdateError',
-  'WATCHDOG_STARTUP_TIMEOUT_MS = 5_000',
+  'WATCHDOG_STARTUP_TIMEOUT_MS = 7_000',
+  'WATCHDOG_DIAGNOSTIC_RETRY_ATTEMPTS = 5',
+  "new Set(['EACCES', 'EBUSY', 'EPERM'])",
+  'appendWatchdogDiagnostic',
   'function powerShellExecutablePath()',
   'waitForWatchdogStartup',
   "join(rootPath, 'watchdog-launcher.log')",
@@ -48,6 +51,9 @@ for (const required of [
   "'-ParentProcessId',",
   'String(parentProcessId)',
   "'-LauncherLogPath',",
+  "'-StartupSignalPath',",
+  "'-StartupSignal',",
+  'watchdog-started-${randomUUID()}.signal',
   "join(rootPath, 'watchdog-child.log')",
   'detached: false',
   'cwd: rootPath',
@@ -132,6 +138,8 @@ for (const required of [
   '$mutex.ReleaseMutex()',
   '-WorkingDirectory $root',
   'watchdog-started',
+  'Write-StartupSignal',
+  'Watchdog startup signal path must remain inside updater state.',
   'workingDirectory=',
   'mutex-created',
   'transaction-loaded',

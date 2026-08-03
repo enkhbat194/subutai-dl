@@ -37,7 +37,22 @@ function Copy-LiveFile {
   if (-not (Test-Path -LiteralPath $Source -PathType Leaf)) { return }
   $destination = Join-Path $diagnosticRoot $DestinationName
   New-Item -ItemType Directory -Force -Path (Split-Path -Parent $destination) | Out-Null
-  try { Copy-Item -LiteralPath $Source -Destination $destination -Force -ErrorAction Stop } catch { }
+  try {
+    $share = [System.IO.FileShare]::ReadWrite -bor [System.IO.FileShare]::Delete
+    $sourceStream = [System.IO.File]::Open(
+      $Source,
+      [System.IO.FileMode]::Open,
+      [System.IO.FileAccess]::Read,
+      $share
+    )
+    try {
+      $memory = New-Object System.IO.MemoryStream
+      try {
+        $sourceStream.CopyTo($memory)
+        [System.IO.File]::WriteAllBytes($destination, $memory.ToArray())
+      } finally { $memory.Dispose() }
+    } finally { $sourceStream.Dispose() }
+  } catch { }
 }
 
 function Get-InstalledVersion {

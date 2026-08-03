@@ -333,6 +333,18 @@ try {
   assert.equal(resolve(chromiumManifest.path), resolve(failed.installedExecutablePath));
   assert.equal(resolve(firefoxManifest.path), resolve(failed.installedExecutablePath));
   console.log('Local two-build failed-startup rollback, browser bridge and user-data preservation acceptance passed.');
+} catch (error) {
+  for (const scenario of ['healthy-two-build', 'failed-two-build']) {
+    const updaterRoot = join(workspace, scenario, 'LocalAppData', 'Subutai', 'Updater');
+    for (const name of ['update-transaction.json', 'watchdog-evidence.json', 'watchdog-launcher.log']) {
+      const path = join(updaterRoot, name);
+      if (await exists(path)) {
+        const diagnostic = (await readFile(path, 'utf8')).slice(-16_000);
+        console.error(`--- ${scenario}/${name} ---\n${diagnostic}`);
+      }
+    }
+  }
+  throw error;
 } finally {
   try {
     if (registrySnapshot && registryHelpers && await exists(registrySnapshot)) {

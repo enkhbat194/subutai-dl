@@ -1,11 +1,10 @@
 import { spawn } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import {
-  appendFileSync,
   closeSync,
   existsSync,
   openSync,
-  readFileSync,
-  statSync,
+  rmSync,
 } from 'node:fs';
 import { dirname, join } from 'node:path';
 import {
@@ -21,12 +20,12 @@ import {
   writeUpdateJournal,
   writeUpdateJournalSync,
 } from './update-journal.ts';
+import { appendWatchdogDiagnostic } from './watchdog-diagnostic.ts';
 
 export * from './update-journal.ts';
 export * from './update-staging.ts';
 
-const WATCHDOG_STARTUP_TIMEOUT_MS = 5_000;
-const WATCHDOG_STARTUP_POLL_MS = 100;
+const WATCHDOG_STARTUP_TIMEOUT_MS = 7_000;
 
 async function replaceJournal(
   rootPath: string,
@@ -60,26 +59,29 @@ function powerShellExecutablePath(): string {
   return 'powershell.exe';
 }
 
-async function waitForWatchdogStartup(
-  child: ReturnType<typeof spawn>,
-  launcherLogPath: string,
-  startupOffset: number,
-): Promise<void> {
-  const deadline = Date.now() + WATCHDOG_STARTUP_TIMEOUT_MS;
-  while (Date.now() < deadline) {
-    try {
-      const log = readFileSync(launcherLogPath);
-      const newOutput = log.subarray(Math.min(startupOffset, log.length)).toString('utf8');
-      if (newOutput.includes('watchdog-started')) return;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-    }
-    if (child.exitCode !== null) {
-      throw new Error(`Updater watchdog exited before startup acknowledgement with code ${child.exitCode}.`);
-    }
-    await new Promise((resolve) => setTimeout(resolve, WATCHDOG_STARTUP_POLL_MS));
-  }
-  throw new Error(`Updater watchdog did not acknowledge startup within ${WATCHDOG_STARTUP_TIMEOUT_MS}ms.`);
+async function waitForWatchdogStartup(child: ReturnType<typeof spawn>): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const finish = (error?: Error) => {
+      clearTimeout(timeout);
+      child.off('error', onError);
+      child.off('exit', onExit);
+      if (error) reject(error);
+      else resolve();
+    };
+    const onError = (error: Error) => finish(error);
+    const onExit = (code: number | null, signal: NodeJS.Signals | null) => {
+      if (signal) finish(new Error(`Updater watchdog bootstrap exited by signal ${signal}.`));
+      else if (code !== 0) finish(new Error(`Updater watchdog exited before startup acknowledgement with code ${code}.`));
+      else finish();
+    };
+    const timeout = setTimeout(() => {
+      if (child.exitCode === null) child.kill();
+      finish(new Error(`Updater watchdog did not acknowledge startup within ${WATCHDOG_STARTUP_TIMEOUT_MS}ms.`));
+    }, WATCHDOG_STARTUP_TIMEOUT_MS);
+    child.once('error', onError);
+    child.once('exit', onExit);
+    if (child.exitCode !== null) onExit(child.exitCode, child.signalCode);
+  });
 }
 
 export async function armUpdateTransaction(
@@ -167,12 +169,12 @@ export async function launchUpdateWatchdog(
   const rootPath = dirname(dirname(journal.watchdogPath));
   const launcherLogPath = join(rootPath, 'watchdog-launcher.log');
   const childOutputPath = join(rootPath, 'watchdog-child.log');
-  appendFileSync(
+  const startupSignal = `${journal.transactionId}:${randomUUID()}`;
+  const startupSignalPath = join(rootPath, `watchdog-started-${randomUUID()}.signal`);
+  await appendWatchdogDiagnostic(
     launcherLogPath,
     `${new Date().toISOString()} launcher-requested transaction=${journal.transactionId}\n`,
-    'utf8',
   );
-  const startupOffset = statSync(launcherLogPath).size;
   const watchdogArguments = [
     '-NoLogo',
     '-NoProfile',
@@ -187,6 +189,10 @@ export async function launchUpdateWatchdog(
     String(parentProcessId),
     '-LauncherLogPath',
     launcherLogPath,
+    '-StartupSignalPath',
+    startupSignalPath,
+    '-StartupSignal',
+    startupSignal,
   ];
 
   const childOutputFile = openSync(childOutputPath, 'a');
@@ -202,11 +208,10 @@ export async function launchUpdateWatchdog(
       spawned.once('error', reject);
       spawned.once('spawn', () => resolve(spawned));
     });
-    await waitForWatchdogStartup(child, launcherLogPath, startupOffset);
-    appendFileSync(
+    await waitForWatchdogStartup(child);
+    await appendWatchdogDiagnostic(
       launcherLogPath,
       `${new Date().toISOString()} watchdog-start-acknowledged transaction=${journal.transactionId}\n`,
-      'utf8',
     );
     child.unref();
   } catch (error) {
@@ -214,17 +219,17 @@ export async function launchUpdateWatchdog(
       if (child.exitCode === null) child.kill();
       child.unref();
     }
-    try {
-      appendFileSync(
-        launcherLogPath,
-        `${new Date().toISOString()} watchdog-start-failed ${redactUpdateError(error)}\n`,
-        'utf8',
-      );
-    } catch {
-      // Preserve the original spawn error.
-    }
+    await appendWatchdogDiagnostic(
+      launcherLogPath,
+      `${new Date().toISOString()} watchdog-start-failed ${redactUpdateError(error)}\n`,
+    );
     throw error;
   } finally {
     closeSync(childOutputFile);
+    try {
+      rmSync(startupSignalPath, { force: true });
+    } catch {
+      // The unique signal is inert and can be cleaned up by a later maintenance pass.
+    }
   }
 }
