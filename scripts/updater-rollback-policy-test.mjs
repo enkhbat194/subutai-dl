@@ -37,7 +37,7 @@ for (const required of [
   'Cached rollback installer checksum mismatch',
   'Staged update installer checksum mismatch',
   'redactUpdateError',
-  String.raw`Local\\SubutaiUpdaterWatchdog`,
+  String.raw`Local\SubutaiUpdaterWatchdog`,
 ]) requireText(transaction, required, 'Transactional updater journal');
 
 for (const required of [
