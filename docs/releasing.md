@@ -1,6 +1,6 @@
 # Subutai Download Manager release process
 
-Subutai uses one stable Windows updater channel backed by GitHub Releases.
+Subutai uses one stable Windows updater channel backed by the public binary-only repository [`enkhbat194/subutai-releases`](https://github.com/enkhbat194/subutai-releases). Application source remains private.
 
 ## Release gate
 
@@ -10,7 +10,8 @@ Before publishing a release:
 2. Open a normal branch and PR.
 3. Require Linux CI, Linux/Windows resilience, Windows package validation, packaged-app launch smoke, and artifact upload to pass.
 4. Merge the version PR to `main`.
-5. Create and push an exact matching stable tag such as `v0.1.0`, or run **Subutai Release** manually with that tag.
+5. Configure a protected `SUBUTAI_RELEASES_TOKEN` GitHub Actions secret with Contents write access only to `enkhbat194/subutai-releases`.
+6. Create and push an exact matching stable tag such as `v0.1.0`, or run **Subutai Release** manually with that tag.
 
 The release workflow rejects mismatched tags, prerelease suffixes, missing updater metadata, missing bundled engines, undersized installers, and packaged apps that cannot start and exit cleanly in smoke mode.
 
@@ -24,7 +25,7 @@ Each GitHub Release contains:
 - updater blockmap files
 - `SHA256SUMS.txt`
 
-Installed builds use the GitHub provider and `latest.yml` for update checks. Portable builds are distributed for manual use; the NSIS Setup build is the supported automatic-update path.
+Installed builds anonymously read the public `enkhbat194/subutai-releases` GitHub provider and `latest.yml` for update checks. Portable builds are distributed for manual use; the NSIS Setup build is the supported automatic-update path.
 
 ## Recovery
 

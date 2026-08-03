@@ -25,7 +25,7 @@
     "test:updater-policy": "node --experimental-strip-types scripts/updater-transaction-test.mts && node scripts/updater-rollback-policy-test.mjs",
     "test:updater-acceptance": "node scripts/updater-rollback-acceptance.mjs && node scripts/updater-two-build-acceptance.mjs",
     "test:watchdog-process-smoke": "node scripts/watchdog-process-smoke-test.mjs",
-    "test:real-update-policy": "node scripts/real-update-acceptance-policy-test.mjs",
+    "test:real-update-policy": "node scripts/update-channel-policy-test.mjs && node scripts/real-update-acceptance-policy-test.mjs",
     "test:clipboard": "node --experimental-strip-types scripts/clipboard-policy-test.mts",
     "test:site-grabber": "node --experimental-strip-types scripts/site-grabber-test.mts",
     "test:system": "node --experimental-strip-types scripts/system-policy-test.mts && pnpm test:updater-policy && pnpm test:updater-acceptance && pnpm test:real-update-policy",
