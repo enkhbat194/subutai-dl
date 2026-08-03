@@ -48,6 +48,12 @@ for (const required of [
   'pnpm --filter @subutai/desktop build:win:signed',
   './scripts/validate-windows-signatures.ps1',
   'apps/desktop/release/SIGNATURES.json',
+  'SUBUTAI_UPDATE_SIGNING_KEY_BASE64: ${{ secrets.SUBUTAI_UPDATE_SIGNING_KEY_BASE64 }}',
+  'SUBUTAI_UPDATE_PUBLIC_KEY_BASE64: ${{ secrets.SUBUTAI_UPDATE_PUBLIC_KEY_BASE64 }}',
+  'node scripts/prepare-update-trust.mjs',
+  'node scripts/generate-signed-update-manifest.mjs',
+  'apps/desktop/release/subutai-update-manifest.json',
+  './scripts/validate-windows-package.ps1 -LaunchSmoke -RequireUpdateTrust',
 ]) {
   requireText(releaseWorkflow, required, 'Release workflow');
 }

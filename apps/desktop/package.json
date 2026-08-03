@@ -11,7 +11,7 @@
     "build": "electron-vite build",
     "build:native-host": "cargo build --release --manifest-path ../../engines/native/Cargo.toml --bin subutai-engine-host",
     "build:win": "pnpm --filter @subutai/extension build && pnpm build:native-host && electron-vite build && electron-builder --win nsis portable",
-    "build:win:signed": "pnpm --filter @subutai/extension build && pnpm build:native-host && electron-vite build && electron-builder --win nsis portable --config.forceCodeSigning=true",
+    "build:win:signed": "node ../../scripts/validate-prepared-update-trust.mjs && pnpm --filter @subutai/extension build && pnpm build:native-host && electron-vite build && electron-builder --win nsis portable --config.forceCodeSigning=true",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -62,6 +62,11 @@
         "from": "resources/updater",
         "to": "updater",
         "filter": ["**/*"]
+      },
+      {
+        "from": "resources/update",
+        "to": "update",
+        "filter": ["trust.json"]
       },
       {
         "from": "../extension/dist",

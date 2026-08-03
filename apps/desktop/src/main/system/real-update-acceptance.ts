@@ -65,6 +65,10 @@ function acceptanceEnabled(): boolean {
   return __SUBUTAI_REAL_UPDATE_ACCEPTANCE_BUILD__ === true;
 }
 
+export function isRealUpdateAcceptanceActive(): boolean {
+  return acceptanceEnabled() && loadRealUpdateAcceptanceConfig() !== null;
+}
+
 function configPath(): string {
   return join(updaterRootPath(), CONFIG_FILENAME);
 }

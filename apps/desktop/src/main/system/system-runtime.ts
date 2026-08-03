@@ -24,6 +24,15 @@ import {
   downloadNotificationTransitions,
   normalizeSystemSettings,
 } from './system-policy';
+import { isRealUpdateAcceptanceActive } from './real-update-acceptance';
+import {
+  assertUpdaterResultMatchesManifest,
+  compareReleaseVersions,
+  prepareVerifiedUpdateRelease,
+  releaseChannelForVersion,
+  UPDATE_TRUST_STATE_KEY,
+  type VerifiedUpdateRelease,
+} from './signed-update-manifest';
 import { toSanitizedUpdateFailure } from './update-error';
 
 const { autoUpdater } = electronUpdater;
@@ -35,6 +44,7 @@ let timer: NodeJS.Timeout | null = null;
 let isQuitting = false;
 let settings: SystemSettings = { ...DEFAULT_SYSTEM_SETTINGS };
 let previousJobs = new Map<string, DownloadJob>();
+let verifiedRelease: VerifiedUpdateRelease | null = null;
 let update: UpdateState = {
   status: 'idle',
   currentVersion: app.getVersion(),
@@ -169,7 +179,6 @@ function applyLoginSetting(): void {
 async function updateSettings(value: SystemSettingsUpdate): Promise<SystemState> {
   settings = normalizeSystemSettings(settings, value);
   store?.saveState(SETTINGS_KEY, settings);
-  autoUpdater.autoDownload = settings.automaticUpdateDownloads;
   applyLoginSetting();
   configureTray();
   broadcast();
@@ -209,8 +218,35 @@ async function checkForUpdates(): Promise<SystemState> {
     ['error', 'progressPercent', 'bytesPerSecond'],
   );
   try {
-    await autoUpdater.checkForUpdates();
+    if (isRealUpdateAcceptanceActive()) {
+      await autoUpdater.checkForUpdates();
+      return state();
+    }
+    const highestVerified = store?.loadState<{ version?: string }>(UPDATE_TRUST_STATE_KEY)?.version ?? null;
+    verifiedRelease = await prepareVerifiedUpdateRelease({
+      currentVersion: app.getVersion(),
+      resourcesPath: process.resourcesPath,
+      highestVerifiedVersion: highestVerified,
+    });
+    autoUpdater.setFeedURL({ provider: 'generic', url: verifiedRelease.feedUrl });
+    const result = await autoUpdater.checkForUpdates();
+    if (result?.updateInfo) {
+      assertUpdaterResultMatchesManifest(result.updateInfo, verifiedRelease);
+      store?.saveState(UPDATE_TRUST_STATE_KEY, {
+        version: verifiedRelease.payload.version,
+        tag: verifiedRelease.payload.tag,
+        verifiedAt: new Date().toISOString(),
+      });
+      if (
+        settings.automaticUpdateDownloads
+        && compareReleaseVersions(verifiedRelease.payload.version, app.getVersion()) > 0
+      ) {
+        setUpdate({ status: 'downloading' }, ['error']);
+        await autoUpdater.downloadUpdate();
+      }
+    }
   } catch (error) {
+    verifiedRelease = null;
     recordUpdateFailure(error);
   }
   return state();
@@ -219,6 +255,9 @@ async function checkForUpdates(): Promise<SystemState> {
 async function downloadUpdate(): Promise<SystemState> {
   if (!app.isPackaged) return checkForUpdates();
   try {
+    if (!isRealUpdateAcceptanceActive() && (!verifiedRelease || update.availableVersion !== verifiedRelease.payload.version)) {
+      throw new Error('Update must pass signed manifest verification before download.');
+    }
     setUpdate({ status: 'downloading' }, ['error']);
     await autoUpdater.downloadUpdate();
   } catch (error) {
@@ -234,8 +273,10 @@ function installUpdate(): void {
 }
 
 function configureUpdater(): void {
-  autoUpdater.autoDownload = settings.automaticUpdateDownloads;
+  autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.allowPrerelease = releaseChannelForVersion(app.getVersion()) === 'beta';
+  autoUpdater.allowDowngrade = false;
   autoUpdater.on('checking-for-update', () => {
     setUpdate({ status: 'checking' }, ['error']);
   });
