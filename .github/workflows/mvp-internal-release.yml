@@ -1,0 +1,102 @@
+name: Subutai Internal Windows MVP
+
+on:
+  push:
+    branches:
+      - "agent/release-0.2.0-rc1-preflight"
+    paths:
+      - "apps/**"
+      - "engines/native/**"
+      - "packages/**"
+      - "scripts/install-temporary-media-tools.ps1"
+      - "scripts/validate-windows-package.ps1"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/mvp-internal-release.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: subutai-internal-windows-mvp
+  cancel-in-progress: true
+
+jobs:
+  build-and-publish:
+    runs-on: windows-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install pinned Rust toolchain
+        shell: pwsh
+        run: |
+          rustup toolchain install 1.97.1 --profile minimal
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          rustup default 1.97.1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          rustc --version
+          cargo --version
+
+      - name: Enable pnpm
+        shell: pwsh
+        run: |
+          corepack enable
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          pnpm --version
+
+      - name: Install locked dependencies
+        shell: pwsh
+        run: pnpm install --frozen-lockfile
+
+      - name: Install pinned media tools
+        shell: pwsh
+        run: ./scripts/install-temporary-media-tools.ps1
+
+      - name: Typecheck desktop, extension and shared contracts
+        shell: pwsh
+        run: pnpm typecheck
+
+      - name: Build Windows Setup and Portable MVP
+        shell: pwsh
+        run: pnpm --filter @subutai/desktop build:win
+
+      - name: Validate package and launch smoke
+        shell: pwsh
+        run: ./scripts/validate-windows-package.ps1 -LaunchSmoke
+
+      - name: Publish unsigned internal MVP prerelease
+        uses: softprops/action-gh-release@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag_name: internal-v0.2.0-rc.1
+          target_commitish: ${{ github.sha }}
+          name: Subutai Download Manager 0.2.0-rc.1 — Internal MVP
+          body: |
+            UNSIGNED INTERNAL TEST BUILD — not a production release.
+
+            This is the first usable Windows MVP for owner testing.
+
+            Start with `Subutai-Portable-0.2.0-rc.1-x64.exe`. Windows SmartScreen may warn because production Authenticode credentials are not configured yet.
+
+            Included:
+            - direct HTTP/HTTPS downloads
+            - segmented native download engine
+            - pause, resume, cancel and recovery
+            - queue, scheduling and transfer controls
+            - media tools and browser integration resources
+          prerelease: true
+          make_latest: false
+          fail_on_unmatched_files: true
+          files: |
+            apps/desktop/release/Subutai-Setup-*.exe
+            apps/desktop/release/Subutai-Portable-*.exe
+            apps/desktop/release/SHA256SUMS.txt
