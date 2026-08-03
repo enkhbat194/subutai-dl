@@ -124,9 +124,11 @@ export async function launchUpdateWatchdog(
   const watchdogPathLiteral = quotePowerShellLiteral(journal.watchdogPath);
   const transactionPathLiteral = quotePowerShellLiteral(updateJournalPath(rootPath));
   const launcherLogLiteral = quotePowerShellLiteral(join(rootPath, 'watchdog-launcher.log'));
+  const mutexScope = 'Local\\SubutaiUpdaterWatchdog';
+  const mutexNameLiteral = quotePowerShellLiteral(`${mutexScope}-${journal.transactionId}`);
   const singleInstanceCommand = String.raw`
 $createdNew = $false
-$mutex = New-Object System.Threading.Mutex($true, 'Local\SubutaiUpdaterWatchdog', [ref]$createdNew)
+$mutex = New-Object System.Threading.Mutex($true, ${mutexNameLiteral}, [ref]$createdNew)
 if (-not $createdNew) { $mutex.Dispose(); exit 0 }
 try {
   & ${watchdogPathLiteral} -TransactionPath ${transactionPathLiteral} -ParentProcessId ${parentProcessId} *>> ${launcherLogLiteral}
