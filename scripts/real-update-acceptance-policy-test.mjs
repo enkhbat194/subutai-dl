@@ -288,6 +288,8 @@ for (const required of [
   'runs-on: [self-hosted, Windows, X64, subutai]',
   'contents: read',
   'pnpm test:real-update-policy',
+  'Install pinned Electron watchdog smoke runtime',
+  'node apps/desktop/node_modules/electron/install.js',
   'Run watchdog process smoke test',
   'pnpm test:watchdog-process-smoke',
   'scripts/watchdog-electron-parent-fixture.cjs',

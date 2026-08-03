@@ -85,6 +85,10 @@ jobs:
         shell: powershell
         run: ./scripts/install-temporary-media-tools.ps1
 
+      - name: Install pinned Electron watchdog smoke runtime
+        shell: powershell
+        run: node apps/desktop/node_modules/electron/install.js
+
       - name: Verify updater and real acceptance policies
         shell: powershell
         run: |
