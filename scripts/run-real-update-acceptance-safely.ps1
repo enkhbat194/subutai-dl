@@ -2,7 +2,8 @@ param(
   [string]$BaselineVersion = '0.1.0',
   [string]$TargetVersion = '0.2.0',
   [string]$Workspace = 'artifacts/real-update-acceptance',
-  [ValidateRange(120, 1800)][int]$ScenarioTimeoutSeconds = 600
+  [ValidateRange(120, 1800)][int]$ScenarioTimeoutSeconds = 600,
+  [string]$MonitorExitCodePath = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -42,6 +43,17 @@ function Write-Utf8NoBom {
   param([Parameter(Mandatory = $true)][string]$Path, [Parameter(Mandatory = $true)][string]$Content)
   $encoding = New-Object System.Text.UTF8Encoding($false)
   [System.IO.File]::WriteAllText($Path, $Content, $encoding)
+}
+
+function Write-MonitorExitCode {
+  param([Parameter(Mandatory = $true)][ValidateSet(0, 1)][int]$ExitCode)
+  if ([string]::IsNullOrWhiteSpace($MonitorExitCodePath)) { return }
+  $fullPath = [System.IO.Path]::GetFullPath($MonitorExitCodePath)
+  $runnerTemp = [System.IO.Path]::GetFullPath($env:RUNNER_TEMP).TrimEnd('\') + '\'
+  if (-not $fullPath.StartsWith($runnerTemp, [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw 'Monitor exit-code path must remain inside RUNNER_TEMP.'
+  }
+  Write-Utf8NoBom -Path $fullPath -Content ([string]$ExitCode)
 }
 
 function Replace-ExactlyOnce {
@@ -178,11 +190,14 @@ try {
 }
 
 if ($primaryFailure) {
+  try { Write-MonitorExitCode -ExitCode 1 } catch { }
   if ($restorationFailures.Count -gt 0) {
     Write-Warning ("Runner restoration also reported: " + ($restorationFailures -join ' | '))
   }
   throw $primaryFailure
 }
 if ($restorationFailures.Count -gt 0) {
+  try { Write-MonitorExitCode -ExitCode 1 } catch { }
   throw "Real update acceptance passed but runner restoration failed: $($restorationFailures -join ' | ')"
 }
+Write-MonitorExitCode -ExitCode 0

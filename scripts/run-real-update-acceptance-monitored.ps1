@@ -20,6 +20,7 @@ $installDir = Join-Path $env:LOCALAPPDATA 'Programs\@subutaidesktop'
 $installedExecutable = Join-Path $installDir 'Subutai Download Manager.exe'
 $stdoutPath = Join-Path $env:RUNNER_TEMP ("subutai-real-update-monitor-" + [guid]::NewGuid().ToString('N') + '.stdout.log')
 $stderrPath = Join-Path $env:RUNNER_TEMP ("subutai-real-update-monitor-" + [guid]::NewGuid().ToString('N') + '.stderr.log')
+$exitCodePath = Join-Path $env:RUNNER_TEMP ("subutai-real-update-monitor-" + [guid]::NewGuid().ToString('N') + '.exit-code')
 
 function Write-Utf8NoBom {
   param([Parameter(Mandatory = $true)][string]$Path, [Parameter(Mandatory = $true)][string]$Content)
@@ -97,7 +98,8 @@ $arguments = @(
   '-BaselineVersion', $BaselineVersion,
   '-TargetVersion', $TargetVersion,
   '-Workspace', $Workspace,
-  '-ScenarioTimeoutSeconds', [string]$ScenarioTimeoutSeconds
+  '-ScenarioTimeoutSeconds', [string]$ScenarioTimeoutSeconds,
+  '-MonitorExitCodePath', $exitCodePath
 )
 
 $process = Start-Process -FilePath 'powershell.exe' -ArgumentList $arguments -PassThru `
@@ -111,7 +113,20 @@ try {
   Capture-LiveState
   $process.WaitForExit()
   $process.Refresh()
-  $exitCode = $process.ExitCode
+  $nativeExitCode = $process.ExitCode
+  $reportedExitCode = $null
+  if (Test-Path -LiteralPath $exitCodePath -PathType Leaf) {
+    $parsedExitCode = 0
+    $exitCodeText = (Get-Content -LiteralPath $exitCodePath -Raw).Trim()
+    if (-not [int]::TryParse($exitCodeText, [ref]$parsedExitCode) -or $parsedExitCode -notin @(0, 1)) {
+      throw 'Monitored real update acceptance child wrote an invalid completion code.'
+    }
+    $reportedExitCode = $parsedExitCode
+  }
+  if ($null -ne $nativeExitCode -and $null -ne $reportedExitCode -and [int]$nativeExitCode -ne [int]$reportedExitCode) {
+    throw "Monitored real update acceptance child exit codes disagreed: process=$nativeExitCode completion=$reportedExitCode."
+  }
+  $exitCode = if ($null -ne $nativeExitCode) { [int]$nativeExitCode } else { $reportedExitCode }
 
   if (Test-Path -LiteralPath $stdoutPath) { Get-Content -LiteralPath $stdoutPath | Write-Host }
   if (Test-Path -LiteralPath $stderrPath) { Get-Content -LiteralPath $stderrPath | Write-Host }
@@ -119,5 +134,5 @@ try {
   if ($exitCode -ne 0) { throw "Monitored real update acceptance child failed with exit code $exitCode." }
 } finally {
   try { Capture-LiveState } catch { }
-  Remove-Item -LiteralPath $stdoutPath, $stderrPath -Force -ErrorAction SilentlyContinue
+  Remove-Item -LiteralPath $stdoutPath, $stderrPath, $exitCodePath -Force -ErrorAction SilentlyContinue
 }

@@ -86,12 +86,25 @@ for (const required of [
   'Start-Sleep -Milliseconds 250',
   '$process.WaitForExit()',
   '$process.Refresh()',
+  "'-MonitorExitCodePath', $exitCodePath",
+  '$reportedExitCode',
+  'child exit codes disagreed',
+  'child wrote an invalid completion code',
   'if ($null -eq $exitCode)',
   'Monitored real update acceptance child failed with exit code',
   'installedVersion',
   'updaterFiles',
 ]) {
   requireText(monitor, required, 'Real update live-state monitor');
+}
+for (const required of [
+  "[string]$MonitorExitCodePath = ''",
+  'function Write-MonitorExitCode',
+  'Monitor exit-code path must remain inside RUNNER_TEMP.',
+  'Write-MonitorExitCode -ExitCode 0',
+  'Write-MonitorExitCode -ExitCode 1',
+]) {
+  requireText(wrapper, required, 'Real update safety wrapper completion signal');
 }
 if (monitor.includes('if ($process.ExitCode -ne 0) { exit $process.ExitCode }')) {
   throw new Error('The monitor must not convert an unavailable child exit code into a successful shell exit.');
