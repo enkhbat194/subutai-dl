@@ -16,6 +16,9 @@ const desktopMain = read('apps', 'desktop', 'src', 'main', 'index.ts');
 const transactionalUpdater = read(
   'apps', 'desktop', 'src', 'main', 'system', 'transactional-updater.ts',
 );
+const updateTransaction = read(
+  'apps', 'desktop', 'src', 'main', 'system', 'update-transaction.ts',
+);
 const updateJournal = read(
   'apps', 'desktop', 'src', 'main', 'system', 'update-journal.ts',
 );
@@ -72,15 +75,39 @@ for (const required of [
   "evidence\\live-updater-state",
   "update-transaction.json",
   "watchdog-evidence.json",
+  "watchdog-launcher.log",
   "real-two-installer-acceptance.json",
   "@subutaidesktop-updater",
   'Get-CimInstance Win32_Process',
   'Capture-LiveState',
   'Start-Sleep -Milliseconds 250',
+  '$process.WaitForExit()',
+  '$process.Refresh()',
+  'if ($null -eq $exitCode)',
+  'Monitored real update acceptance child failed with exit code',
   'installedVersion',
   'updaterFiles',
 ]) {
   requireText(monitor, required, 'Real update live-state monitor');
+}
+if (monitor.includes('if ($process.ExitCode -ne 0) { exit $process.ExitCode }')) {
+  throw new Error('The monitor must not convert an unavailable child exit code into a successful shell exit.');
+}
+
+for (const required of [
+  'function quotePowerShellLiteral',
+  'watchdogPathLiteral',
+  'transactionPathLiteral',
+  "join(rootPath, 'watchdog-launcher.log')",
+  '-TransactionPath ${transactionPathLiteral}',
+  '-ParentProcessId ${parentProcessId}',
+  "'Local\\SubutaiUpdaterWatchdog'",
+  "'-Command', singleInstanceCommand",
+]) {
+  requireText(updateTransaction, required, 'Transactional watchdog launcher');
+}
+if (updateTransaction.includes('& $args[0] -TransactionPath $args[1] -ParentProcessId ([int]$args[2])')) {
+  throw new Error('The watchdog launcher must not depend on native PowerShell $args forwarding after -Command.');
 }
 
 requireText(updateJournal, "'subutai download manager.exe'", 'TypeScript controlled executable validator');
@@ -201,4 +228,4 @@ if (!workflow.includes('workflow_dispatch:') || !workflow.includes('pull_request
   throw new Error('Real updater acceptance must support manual and pull-request execution.');
 }
 
-console.log('Subutai real two-installer updater acceptance policy passed: acceptance-only appId with the production controlled executable identity, one-click per-user non-elevating NSIS install, deterministic sanitized-package install path, dynamic packaged executable browser registration, isolated runner state, live transaction/watchdog snapshots, real A/B builds, loopback feed, healthy update, forced rollback, checksum rejection, durable user state, browser bridge evidence, bounded console diagnostics and read-only execution are locked.');
+console.log('Subutai real two-installer updater acceptance policy passed: acceptance-only appId with the production controlled executable identity, one-click per-user non-elevating NSIS install, deterministic sanitized-package install path, dynamic packaged executable browser registration, isolated runner state, hardened quoted watchdog launch, live transaction/watchdog snapshots with strict failure propagation, real A/B builds, loopback feed, healthy update, forced rollback, checksum rejection, durable user state, browser bridge evidence, bounded console diagnostics and read-only execution are locked.');
