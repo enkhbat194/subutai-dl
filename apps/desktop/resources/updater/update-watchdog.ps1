@@ -137,6 +137,42 @@ function Write-AtomicJson {
 if ([System.IO.Path]::GetFileName($transactionFullPath) -ne 'update-transaction.json') {
   throw 'Transaction file name is not controlled by Subutai.'
 }
+
+function Wait-InstallTreeUnlocked {
+  param(
+    [Parameter(Mandatory = $true)][string]$Directory,
+    [ValidateRange(1, 120)][int]$TimeoutSeconds = 30
+  )
+  $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+  $reportedPaths = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+  do {
+    $lockedPaths = New-Object System.Collections.Generic.List[string]
+    $fileCount = 0
+    foreach ($file in Get-ChildItem -LiteralPath $Directory -Recurse -File -Force -ErrorAction Stop) {
+      $fileCount++
+      $stream = $null
+      try {
+        $stream = [System.IO.File]::Open(
+          $file.FullName,
+          [System.IO.FileMode]::Open,
+          [System.IO.FileAccess]::Read,
+          [System.IO.FileShare]::None
+        )
+      } catch {
+        $lockedPaths.Add($file.FullName)
+        if ($reportedPaths.Add($file.FullName)) { Write-WatchdogLog "target-file-locked path=$($file.FullName)" }
+      } finally {
+        if ($null -ne $stream) { $stream.Dispose() }
+      }
+    }
+    if ($lockedPaths.Count -eq 0) {
+      Write-WatchdogLog "target-files-unlocked count=$fileCount"
+      return
+    }
+    Start-Sleep -Milliseconds 250
+  } while ([DateTime]::UtcNow -lt $deadline)
+  throw "Installed Subutai files remained locked after $TimeoutSeconds seconds: $($lockedPaths.Count)."
+}
 $evidencePath = Join-Path $root 'watchdog-evidence.json'
 
 function Write-Evidence {
@@ -384,6 +420,7 @@ try {
   } while ([DateTime]::UtcNow -lt $processExitDeadline)
   if ($installedProcessesFound) { throw 'Installed Subutai processes did not exit within 15 seconds.' }
   Write-WatchdogLog "target-process-tree-closed directory=$installedDirectory"
+  Wait-InstallTreeUnlocked -Directory $installedDirectory -TimeoutSeconds 30
 
   if ($TestMode) {
     if ([string]::IsNullOrWhiteSpace($TestRollbackMarker)) { throw 'Rollback marker is required in test mode.' }
@@ -403,9 +440,9 @@ try {
     Write-WatchdogLog "target-process-closed executable=$installedExecutable"
 
     Write-WatchdogLog "rollback-installer-started path=$previousInstaller"
-    # Match the successful electron-updater replacement path. Adding /S makes the
-    # downgrade wrapper report code 2 even though the copied target uninstaller succeeds.
-    $installerProcess = Start-Process -FilePath $previousInstaller -ArgumentList @('--updated') -Wait -PassThru
+    # Keep the rollback non-interactive and preserve application data. The baseline
+    # is restarted explicitly only after registration and the journal are restored.
+    $installerProcess = Start-Process -FilePath $previousInstaller -ArgumentList @('/S', '--updated') -Wait -PassThru
     Write-WatchdogLog "rollback-installer-exit code=$($installerProcess.ExitCode)"
     if ($installerProcess.ExitCode -ne 0) { throw "Rollback installer failed with exit code $($installerProcess.ExitCode)." }
     if (-not (Test-Path -LiteralPath $installedExecutable -PathType Leaf)) { throw 'Previous Subutai executable was not restored.' }

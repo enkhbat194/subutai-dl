@@ -118,7 +118,10 @@ async function runElectronParentExitSmoke() {
   const targetInstallerPath = join(fixtureRoot, 'staged', transactionId, 'target-installer.exe');
   const installedExecutablePath = join(fixtureRoot, 'Programs', 'Subutai Download Manager.exe');
   const installedHelperPath = join(dirname(installedExecutablePath), 'resources', 'installed-helper.exe');
-  for (const path of [watchdogPath, previousInstallerPath, targetInstallerPath, installedExecutablePath, installedHelperPath]) {
+  const installedLockPath = join(dirname(installedExecutablePath), 'resources', 'app.asar');
+  const lockHolderPath = join(fixtureRoot, 'hold-installed-file.ps1');
+  const lockReadyPath = join(fixtureRoot, 'installed-file-lock-ready.txt');
+  for (const path of [watchdogPath, previousInstallerPath, targetInstallerPath, installedExecutablePath, installedHelperPath, installedLockPath]) {
     mkdirSync(dirname(path), { recursive: true });
   }
   copyFileSync(sourceWatchdog, watchdogPath);
@@ -127,12 +130,25 @@ async function runElectronParentExitSmoke() {
   writeFileSync(previousInstallerPath, previousInstaller);
   writeFileSync(targetInstallerPath, targetInstaller);
   writeFileSync(installedExecutablePath, 'installed-new-version');
+  writeFileSync(installedLockPath, 'installed-file-held-by-external-process');
   copyFileSync(process.execPath, installedHelperPath);
   const installedHelper = spawn(installedHelperPath, ['-e', 'setTimeout(() => {}, 60_000)'], {
     windowsHide: true,
     stdio: 'ignore',
   });
+  let lockHolder;
   try {
+  writeFileSync(lockHolderPath, `param([string]$LockedPath, [string]$ReadyPath)\n$stream = [System.IO.File]::Open($LockedPath, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::Read)\ntry { Set-Content -LiteralPath $ReadyPath -Value 'ready' -Encoding UTF8; Start-Sleep -Seconds 5 } finally { $stream.Dispose() }\n`);
+  lockHolder = spawn(powerShellExecutablePath(), [
+    '-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
+    '-File', lockHolderPath,
+    '-LockedPath', installedLockPath,
+    '-ReadyPath', lockReadyPath,
+  ], {
+    windowsHide: true,
+    stdio: 'ignore',
+  });
+  await waitForLogPhases(lockReadyPath, ['ready'], 2_000);
   const now = Date.now();
   writeFileSync(transactionPath, `${JSON.stringify({
     schemaVersion: 1,
@@ -195,6 +211,8 @@ async function runElectronParentExitSmoke() {
     'previous-installer-sha256-verified',
     'target-process-stop',
     'target-process-tree-closed',
+    'target-file-locked',
+    'target-files-unlocked',
     'rollback-journal-written',
     'watchdog-completed outcome=rolled-back',
     'watchdog-finished',
@@ -219,6 +237,7 @@ async function runElectronParentExitSmoke() {
   }
   } finally {
     if (installedHelper.exitCode === null) installedHelper.kill();
+    if (lockHolder?.exitCode === null) lockHolder.kill();
   }
 }
 
