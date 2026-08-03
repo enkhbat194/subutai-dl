@@ -69,6 +69,12 @@ function configPath(): string {
   return join(updaterRootPath(), CONFIG_FILENAME);
 }
 
+function acceptanceUpdaterCachePath(): string | null {
+  const localAppData = process.env.LOCALAPPDATA?.trim();
+  if (!localAppData) return null;
+  return join(localAppData, '@subutaidesktop-updater');
+}
+
 function atomicWriteJson(filePath: string, value: unknown): void {
   mkdirSync(dirname(filePath), { recursive: true });
   const temporaryPath = `${filePath}.${randomUUID()}.tmp`;
@@ -175,6 +181,10 @@ export function initializeRealUpdateAcceptance(): RealUpdateAcceptanceConfig | n
   const existing = loadRealUpdateAcceptanceConfig();
   if (!incoming) return existing;
   if (existing?.token === incoming.token) return existing;
+  if (app.getVersion() === incoming.baselineVersion) {
+    const updaterCache = acceptanceUpdaterCachePath();
+    if (updaterCache) rmSync(updaterCache, { recursive: true, force: true });
+  }
   atomicWriteJson(configPath(), incoming);
   return incoming;
 }
