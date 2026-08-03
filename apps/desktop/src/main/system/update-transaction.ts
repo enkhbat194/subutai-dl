@@ -128,17 +128,20 @@ export async function launchUpdateWatchdog(
   const mutexNameLiteral = quotePowerShellLiteral(`${mutexScope}-${journal.transactionId}`);
   const singleInstanceCommand = String.raw`
 $createdNew = $false
-$mutex = New-Object System.Threading.Mutex($true, ${mutexNameLiteral}, [ref]$createdNew)
-if (-not $createdNew) { $mutex.Dispose(); exit 0 }
+$mutex = $null
 try {
+  $mutex = [System.Threading.Mutex]::new($true, ${mutexNameLiteral}, [ref]$createdNew)
+  if (-not $createdNew) { exit 0 }
   & ${watchdogPathLiteral} -TransactionPath ${transactionPathLiteral} -ParentProcessId ${parentProcessId} *>> ${launcherLogLiteral}
   exit $LASTEXITCODE
 } catch {
   $_ | Out-String | Add-Content -LiteralPath ${launcherLogLiteral}
   exit 2
 } finally {
-  if ($createdNew) { $mutex.ReleaseMutex() }
-  $mutex.Dispose()
+  if ($null -ne $mutex) {
+    if ($createdNew) { try { $mutex.ReleaseMutex() } catch {} }
+    $mutex.Dispose()
+  }
 }
 `;
   const child = spawn('powershell.exe', [
