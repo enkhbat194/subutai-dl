@@ -53,6 +53,7 @@ function Capture-LiveState {
   Copy-LiveFile -Source (Join-Path $updaterRoot 'update-transaction.json') -DestinationName 'update-transaction.json'
   Copy-LiveFile -Source (Join-Path $updaterRoot 'update-transaction.json.bak') -DestinationName 'update-transaction.json.bak'
   Copy-LiveFile -Source (Join-Path $updaterRoot 'watchdog-evidence.json') -DestinationName 'watchdog-evidence.json'
+  Copy-LiveFile -Source (Join-Path $updaterRoot 'watchdog-launcher.log') -DestinationName 'watchdog-launcher.log'
   Copy-LiveFile -Source (Join-Path $updaterRoot 'real-two-installer-acceptance.json') -DestinationName 'real-two-installer-acceptance.json'
   Copy-LiveFile -Source (Join-Path $updaterRoot 'real-two-installer-acceptance.json.bak') -DestinationName 'real-two-installer-acceptance.json.bak'
   Copy-LiveFile -Source (Join-Path $electronUpdaterCache 'pending\update-info.json') -DestinationName 'electron-updater-update-info.json'
@@ -108,10 +109,13 @@ try {
   }
   Capture-LiveState
   $process.WaitForExit()
+  $process.Refresh()
+  $exitCode = $process.ExitCode
 
   if (Test-Path -LiteralPath $stdoutPath) { Get-Content -LiteralPath $stdoutPath | Write-Host }
   if (Test-Path -LiteralPath $stderrPath) { Get-Content -LiteralPath $stderrPath | Write-Host }
-  if ($process.ExitCode -ne 0) { exit $process.ExitCode }
+  if ($null -eq $exitCode) { throw 'Monitored real update acceptance child did not expose an exit code.' }
+  if ($exitCode -ne 0) { throw "Monitored real update acceptance child failed with exit code $exitCode." }
 } finally {
   try { Capture-LiveState } catch { }
   Remove-Item -LiteralPath $stdoutPath, $stderrPath -Force -ErrorAction SilentlyContinue
