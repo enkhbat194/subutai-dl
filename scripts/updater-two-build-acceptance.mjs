@@ -204,12 +204,25 @@ async function runProductionWatchdog(fixture) {
   ], { env: fixture.environment });
 
   const deadline = Date.now() + 15_000;
+  let lastMissingJournalError = null;
   while (Date.now() < deadline) {
-    const journal = JSON.parse(await readFile(fixture.transactionPath, 'utf8'));
-    if (['committed', 'rolled-back', 'failed-safe'].includes(journal.updateState)) return;
+    try {
+      const journal = JSON.parse(await readFile(fixture.transactionPath, 'utf8'));
+      if (['committed', 'rolled-back', 'failed-safe'].includes(journal.updateState)) return;
+      lastMissingJournalError = null;
+    } catch (error) {
+      if (!(error instanceof Error) || !('code' in error) || error.code !== 'ENOENT') throw error;
+      // The watchdog atomically replaces the journal, so its destination can be
+      // briefly absent between the old-file removal and final rename on Windows.
+      lastMissingJournalError = error;
+    }
     await new Promise((resolveDelay) => setTimeout(resolveDelay, 50));
   }
-  throw new Error('Script-owned watchdog worker did not reach a terminal transaction state within 15 seconds.');
+  throw new Error(
+    `Script-owned watchdog worker did not reach a terminal transaction state within 15 seconds.${
+      lastMissingJournalError ? ` Last journal read failed: ${lastMissingJournalError.message}` : ''
+    }`,
+  );
 }
 
 async function writeRegistryHelpers(workspace) {
