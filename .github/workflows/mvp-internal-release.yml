@@ -8,22 +8,23 @@ on:
       - "engines/native/**"
       - "packages/**"
       - "scripts/install-temporary-media-tools.ps1"
+      - "scripts/youtube-media-smoke.ps1"
       - "scripts/validate-windows-package.ps1"
       - "package.json"
       - "pnpm-lock.yaml"
       - ".github/workflows/mvp-internal-release.yml"
   push:
     branches:
-      - "agent/release-0.2.0-rc1-preflight"
+      - "agent/mvp-0.2.0-rc2-usability"
     paths:
       - "apps/**"
       - "engines/native/**"
       - "packages/**"
       - "scripts/install-temporary-media-tools.ps1"
+      - "scripts/youtube-media-smoke.ps1"
       - "scripts/validate-windows-package.ps1"
       - "package.json"
       - "pnpm-lock.yaml"
-      - ".github/workflows/n5-production-acceptance.yml"
       - ".github/workflows/mvp-internal-release.yml"
   workflow_dispatch:
 
@@ -38,7 +39,7 @@ jobs:
   build-and-publish:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, Windows, X64, subutai]
-    timeout-minutes: 90
+    timeout-minutes: 100
 
     steps:
       - name: Checkout exact branch head
@@ -71,13 +72,28 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           pnpm --version
 
+      - name: Resolve candidate version
+        id: version
+        shell: powershell
+        run: |
+          $package = Get-Content package.json -Raw | ConvertFrom-Json
+          $version = [string]$package.version
+          if ($version -notmatch '^0\.2\.0-rc\.[1-9][0-9]*$') {
+            throw "Internal MVP workflow requires an explicit 0.2.0 RC version; received $version."
+          }
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
       - name: Install locked dependencies
         shell: powershell
         run: pnpm install --frozen-lockfile
 
-      - name: Install pinned media tools
+      - name: Install pinned media tools and JavaScript runtime
         shell: powershell
         run: ./scripts/install-temporary-media-tools.ps1
+
+      - name: Prove public YouTube probe and download
+        shell: powershell
+        run: ./scripts/youtube-media-smoke.ps1
 
       - name: Typecheck desktop, extension and shared contracts
         shell: powershell
@@ -95,22 +111,17 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          tag_name: internal-v0.2.0-rc.1
+          tag_name: internal-v${{ steps.version.outputs.version }}
           target_commitish: ${{ github.event.pull_request.head.sha || github.sha }}
-          name: Subutai Download Manager 0.2.0-rc.1 — Internal MVP
+          name: Subutai Download Manager ${{ steps.version.outputs.version }} — Internal MVP
           body: |
-            UNSIGNED INTERNAL TEST BUILD — not a production release.
+            UNSIGNED INTERNAL OWNER-TEST BUILD — not a production release.
 
-            This is the first usable Windows MVP for owner testing.
+            This candidate replaces the crowded prototype dashboard with a focused one-link flow and routes recognised YouTube/media URLs automatically.
 
-            Start with `Subutai-Portable-0.2.0-rc.1-x64.exe`. Windows SmartScreen may warn because production Authenticode credentials are not configured yet.
+            Its publication is gated by a real public YouTube probe and media-file download on the Windows runner, package validation and Electron launch smoke.
 
-            Included:
-            - direct HTTP/HTTPS downloads
-            - segmented native download engine
-            - pause, resume, cancel and recovery
-            - queue, scheduling and transfer controls
-            - media tools and browser integration resources
+            Start with `Subutai-Portable-${{ steps.version.outputs.version }}-x64.exe`. Windows SmartScreen may warn because production Authenticode credentials are not configured yet.
           prerelease: true
           make_latest: false
           fail_on_unmatched_files: true
