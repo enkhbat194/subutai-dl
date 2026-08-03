@@ -84,7 +84,7 @@ try {
     try {
       $probe = Get-Content $probePath -Raw | ConvertFrom-Json
     } catch {
-      $diagnostics.Add("Probe JSON was invalid for $testUrl: $($_.Exception.Message)")
+      $diagnostics.Add("Probe JSON was invalid for ${testUrl}: $($_.Exception.Message)")
       continue
     }
     if (-not $probe.id -or -not $probe.title) {
@@ -124,7 +124,7 @@ try {
       continue
     }
     if ($downloaded.Length -lt 32KB) {
-      $diagnostics.Add("Download output was unexpectedly small for $testUrl: $($downloaded.Length) bytes.")
+      $diagnostics.Add("Download output was unexpectedly small for ${testUrl}: $($downloaded.Length) bytes.")
       continue
     }
 
