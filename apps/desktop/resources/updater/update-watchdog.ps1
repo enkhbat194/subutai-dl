@@ -145,7 +145,20 @@ function Wait-InstallTreeUnlocked {
   )
   $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
   $reportedPaths = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+  $stableSamples = 0
+  $previousFileCount = -1
   do {
+    $installedProcessesFound = $false
+    foreach ($process in Get-Process -ErrorAction SilentlyContinue) {
+      try { $processPath = if ($process.Path) { Get-FullPath $process.Path } else { '' } } catch { continue }
+      if (-not [string]::IsNullOrWhiteSpace($processPath) -and (Test-PathInside $Directory $processPath)) {
+        $installedProcessesFound = $true
+        Write-WatchdogLog "target-process-stop pid=$($process.Id) path=$processPath"
+        try { Stop-Process -Id $process.Id -Force -ErrorAction Stop } catch {
+          if ($_.Exception.Message -notmatch 'exited|cannot find') { throw }
+        }
+      }
+    }
     $lockedPaths = New-Object System.Collections.Generic.List[string]
     $fileCount = 0
     foreach ($file in Get-ChildItem -LiteralPath $Directory -Recurse -File -Force -ErrorAction Stop) {
@@ -165,10 +178,17 @@ function Wait-InstallTreeUnlocked {
         if ($null -ne $stream) { $stream.Dispose() }
       }
     }
-    if ($lockedPaths.Count -eq 0) {
-      Write-WatchdogLog "target-files-unlocked count=$fileCount"
+    if (-not $installedProcessesFound -and $lockedPaths.Count -eq 0 -and $fileCount -gt 0 -and $fileCount -eq $previousFileCount) {
+      $stableSamples++
+    } else {
+      $stableSamples = 0
+    }
+    if ($stableSamples -ge 4) {
+      Write-WatchdogLog "target-process-tree-closed directory=$Directory"
+      Write-WatchdogLog "target-files-unlocked count=$fileCount stableSamples=$stableSamples"
       return
     }
+    $previousFileCount = $fileCount
     Start-Sleep -Milliseconds 250
   } while ([DateTime]::UtcNow -lt $deadline)
   throw "Installed Subutai files remained locked after $TimeoutSeconds seconds: $($lockedPaths.Count)."
@@ -376,6 +396,50 @@ try {
 
   Write-WatchdogLog "rollback-triggered transaction=$([string]$journal.transactionId)"
 
+  $installedExecutable = Get-FullPath ([string]$journal.installedExecutablePath)
+  $targetInstallDeadline = [DateTime]::UtcNow.AddSeconds(120)
+  $lastObservedVersion = ''
+  while ($true) {
+    $journal = Read-Journal
+    Assert-Journal $journal
+    $state = [string]$journal.updateState
+    if ($state -in @('committed', 'rolled-back', 'failed-safe')) {
+      Write-Evidence -Outcome $state
+      Write-WatchdogLog "watchdog-completed outcome=$state"
+      exit 0
+    }
+    if ($state -ne 'awaiting-health') { throw "Target installation entered unexpected transaction state: $state." }
+
+    $observedVersion = ''
+    if ($TestMode -and (Test-Path -LiteralPath $installedExecutable -PathType Leaf)) {
+      $observedVersion = [string]$journal.targetVersion
+    } elseif (
+      -not [string]::IsNullOrWhiteSpace($env:SUBUTAI_FIXTURE_INSTALL_ROOT) -and
+      (Test-PathInside (Get-FullPath $env:SUBUTAI_FIXTURE_INSTALL_ROOT) $installedExecutable)
+    ) {
+      $fixtureVersionPath = Join-Path (Split-Path -Parent $installedExecutable) 'installed-version.txt'
+      if (Test-Path -LiteralPath $fixtureVersionPath -PathType Leaf) {
+        $observedVersion = (Get-Content -LiteralPath $fixtureVersionPath -Raw).Trim()
+      }
+    } elseif (Test-Path -LiteralPath $installedExecutable -PathType Leaf) {
+      try {
+        $versionInformation = (Get-Item -LiteralPath $installedExecutable).VersionInfo
+        foreach ($candidate in @([string]$versionInformation.ProductVersion, [string]$versionInformation.FileVersion)) {
+          if ($candidate -match '(\d+\.\d+\.\d+)') { $observedVersion = $Matches[1]; break }
+        }
+      } catch { $observedVersion = '' }
+    }
+    if ($observedVersion -ne $lastObservedVersion) {
+      $reportedVersion = if ([string]::IsNullOrWhiteSpace($observedVersion)) { 'missing' } else { $observedVersion }
+      Write-WatchdogLog "target-install-wait observedVersion=$reportedVersion expectedVersion=$([string]$journal.targetVersion)"
+      $lastObservedVersion = $observedVersion
+    }
+    if ($observedVersion -eq [string]$journal.targetVersion) { break }
+    if ([DateTime]::UtcNow -ge $targetInstallDeadline) { throw 'Target Subutai installation did not become ready within 120 seconds.' }
+    Start-Sleep -Milliseconds 250
+  }
+  Write-WatchdogLog "target-install-ready version=$([string]$journal.targetVersion) executable=$installedExecutable"
+
   if ([int]$journal.rollbackAttemptCount -ge 1 -or [string]$journal.rollbackState -in @('running', 'succeeded', 'blocked')) {
     Set-FailedSafe -Journal $journal -Reason 'Rollback attempt is already consumed; refusing an update/rollback loop.'
     exit 3
@@ -400,26 +464,7 @@ try {
   }
   Write-WatchdogLog "previous-installer-sha256-verified sha256=$actualHash"
 
-  $installedExecutable = Get-FullPath ([string]$journal.installedExecutablePath)
   $installedDirectory = Split-Path -Parent $installedExecutable
-  $processExitDeadline = [DateTime]::UtcNow.AddSeconds(15)
-  do {
-    $installedProcessesFound = $false
-    foreach ($process in Get-Process -ErrorAction SilentlyContinue) {
-      try { $processPath = if ($process.Path) { Get-FullPath $process.Path } else { '' } } catch { continue }
-      if (-not [string]::IsNullOrWhiteSpace($processPath) -and (Test-PathInside $installedDirectory $processPath)) {
-        $installedProcessesFound = $true
-        Write-WatchdogLog "target-process-stop pid=$($process.Id) path=$processPath"
-        try { Stop-Process -Id $process.Id -Force -ErrorAction Stop } catch {
-          if ($_.Exception.Message -notmatch 'exited|cannot find') { throw }
-        }
-      }
-    }
-    if (-not $installedProcessesFound) { break }
-    Start-Sleep -Milliseconds 100
-  } while ([DateTime]::UtcNow -lt $processExitDeadline)
-  if ($installedProcessesFound) { throw 'Installed Subutai processes did not exit within 15 seconds.' }
-  Write-WatchdogLog "target-process-tree-closed directory=$installedDirectory"
   Wait-InstallTreeUnlocked -Directory $installedDirectory -TimeoutSeconds 30
 
   if ($TestMode) {
