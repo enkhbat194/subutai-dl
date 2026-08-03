@@ -102,12 +102,21 @@ for (const required of [
   '-TransactionPath ${transactionPathLiteral}',
   '-ParentProcessId ${parentProcessId}',
   String.raw`const mutexScope = 'Local\\SubutaiUpdaterWatchdog';`,
-  "'-Command', singleInstanceCommand",
+  "Buffer.from(singleInstanceCommand, 'utf16le')",
+  "'-EncodedCommand', encodedCommand",
+  "stdio: ['ignore', launcherLogFile, launcherLogFile]",
+  'launcher-requested',
+  'launcher-started',
+  "child.once('error', reject)",
+  "child.once('spawn'",
 ]) {
   requireText(updateTransaction, required, 'Transactional watchdog launcher');
 }
 if (updateTransaction.includes('& $args[0] -TransactionPath $args[1] -ParentProcessId ([int]$args[2])')) {
   throw new Error('The watchdog launcher must not depend on native PowerShell $args forwarding after -Command.');
+}
+if (updateTransaction.includes("'-Command', singleInstanceCommand") || updateTransaction.includes("stdio: 'ignore'")) {
+  throw new Error('The watchdog launcher must use encoded PowerShell and preserve stdout/stderr diagnostics.');
 }
 
 requireText(updateJournal, "'subutai download manager.exe'", 'TypeScript controlled executable validator');
@@ -228,4 +237,4 @@ if (!workflow.includes('workflow_dispatch:') || !workflow.includes('pull_request
   throw new Error('Real updater acceptance must support manual and pull-request execution.');
 }
 
-console.log('Subutai real two-installer updater acceptance policy passed: acceptance-only appId with the production controlled executable identity, one-click per-user non-elevating NSIS install, deterministic sanitized-package install path, dynamic packaged executable browser registration, isolated runner state, hardened quoted watchdog launch, live transaction/watchdog snapshots with strict failure propagation, real A/B builds, loopback feed, healthy update, forced rollback, checksum rejection, durable user state, browser bridge evidence, bounded console diagnostics and read-only execution are locked.');
+console.log('Subutai real two-installer updater acceptance policy passed: acceptance-only appId with the production controlled executable identity, one-click per-user non-elevating NSIS install, deterministic sanitized-package install path, dynamic packaged executable browser registration, isolated runner state, encoded and durably logged watchdog launch, live transaction/watchdog snapshots with strict failure propagation, real A/B builds, loopback feed, healthy update, forced rollback, checksum rejection, durable user state, browser bridge evidence, bounded console diagnostics and read-only execution are locked.');
