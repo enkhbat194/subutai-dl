@@ -117,7 +117,8 @@ async function runElectronParentExitSmoke() {
   const previousInstallerPath = join(fixtureRoot, 'packages', '1.0.0', 'Subutai-Setup-1.0.0-rollback.exe');
   const targetInstallerPath = join(fixtureRoot, 'staged', transactionId, 'target-installer.exe');
   const installedExecutablePath = join(fixtureRoot, 'Programs', 'Subutai Download Manager.exe');
-  for (const path of [watchdogPath, previousInstallerPath, targetInstallerPath, installedExecutablePath]) {
+  const installedHelperPath = join(dirname(installedExecutablePath), 'resources', 'installed-helper.exe');
+  for (const path of [watchdogPath, previousInstallerPath, targetInstallerPath, installedExecutablePath, installedHelperPath]) {
     mkdirSync(dirname(path), { recursive: true });
   }
   copyFileSync(sourceWatchdog, watchdogPath);
@@ -126,6 +127,12 @@ async function runElectronParentExitSmoke() {
   writeFileSync(previousInstallerPath, previousInstaller);
   writeFileSync(targetInstallerPath, targetInstaller);
   writeFileSync(installedExecutablePath, 'installed-new-version');
+  copyFileSync(process.execPath, installedHelperPath);
+  const installedHelper = spawn(installedHelperPath, ['-e', 'setTimeout(() => {}, 60_000)'], {
+    windowsHide: true,
+    stdio: 'ignore',
+  });
+  try {
   const now = Date.now();
   writeFileSync(transactionPath, `${JSON.stringify({
     schemaVersion: 1,
@@ -165,6 +172,7 @@ async function runElectronParentExitSmoke() {
   }, null, 2)}\n`);
 
   const electron = spawn(electronExecutable, [electronParentFixture, configPath], {
+    cwd: dirname(installedExecutablePath),
     windowsHide: true,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -185,14 +193,32 @@ async function runElectronParentExitSmoke() {
     'electron-parent-exiting',
     'parent-exited',
     'previous-installer-sha256-verified',
+    'target-process-stop',
+    'target-process-tree-closed',
     'rollback-journal-written',
     'watchdog-completed outcome=rolled-back',
     'watchdog-finished',
   ], 10_000);
+  const expectedWorkerDirectory = `workingDirectory=${fixtureRoot}`.toLowerCase();
+  const workerStart = log.split(/\r?\n/u).find((line) => line.includes('watchdog-started'))?.toLowerCase() ?? '';
+  if (!workerStart.includes(expectedWorkerDirectory)) {
+    throw new Error(`Watchdog worker inherited the installed application directory instead of relocating to updater state.\n${log}`);
+  }
   if (!existsSync(rollbackMarker)) throw new Error(`Watchdog worker did not survive Electron exit to perform rollback.\n${log}`);
+  const helperExitDeadline = Date.now() + 2_000;
+  while (installedHelper.exitCode === null && Date.now() < helperExitDeadline) {
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, 25));
+  }
+  if (installedHelper.exitCode === null) {
+    installedHelper.kill();
+    throw new Error(`Watchdog worker did not close an installed helper process before rollback.\n${log}`);
+  }
   const journal = JSON.parse(readFileSync(transactionPath, 'utf8'));
   if (journal.updateState !== 'rolled-back' || journal.rollbackState !== 'succeeded') {
     throw new Error(`Watchdog worker left the transaction incomplete after Electron exit.\n${JSON.stringify(journal, null, 2)}`);
+  }
+  } finally {
+    if (installedHelper.exitCode === null) installedHelper.kill();
   }
 }
 

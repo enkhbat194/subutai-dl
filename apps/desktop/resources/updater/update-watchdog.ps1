@@ -58,8 +58,8 @@ if (-not $WorkerMode) {
   $startupOffset = if (Test-Path -LiteralPath $script:watchdogLogPath) {
     (Get-Item -LiteralPath $script:watchdogLogPath).Length
   } else { 0 }
-  $worker = Start-Process -FilePath $powerShellPath -ArgumentList $workerArguments -WindowStyle Hidden -PassThru
-  Write-WatchdogLog "watchdog-worker-created pid=$($worker.Id)"
+  $worker = Start-Process -FilePath $powerShellPath -ArgumentList $workerArguments -WorkingDirectory $root -WindowStyle Hidden -PassThru
+  Write-WatchdogLog "watchdog-worker-created pid=$($worker.Id) workingDirectory=$root"
   $startupDeadline = [DateTime]::UtcNow.AddSeconds(5)
   while ([DateTime]::UtcNow -lt $startupDeadline) {
     if (Test-Path -LiteralPath $script:watchdogLogPath) {
@@ -92,7 +92,7 @@ if (-not $WorkerMode) {
   throw 'Watchdog worker did not acknowledge startup within 5000ms.'
 }
 
-Write-WatchdogLog "watchdog-started pid=$PID transaction=$transactionFullPath"
+Write-WatchdogLog "watchdog-started pid=$PID transaction=$transactionFullPath workingDirectory=$([Environment]::CurrentDirectory)"
 
 $mutex = $null
 $mutexCreatedNew = $false
@@ -365,6 +365,26 @@ try {
   Write-WatchdogLog "previous-installer-sha256-verified sha256=$actualHash"
 
   $installedExecutable = Get-FullPath ([string]$journal.installedExecutablePath)
+  $installedDirectory = Split-Path -Parent $installedExecutable
+  $processExitDeadline = [DateTime]::UtcNow.AddSeconds(15)
+  do {
+    $installedProcessesFound = $false
+    foreach ($process in Get-Process -ErrorAction SilentlyContinue) {
+      try { $processPath = if ($process.Path) { Get-FullPath $process.Path } else { '' } } catch { continue }
+      if (-not [string]::IsNullOrWhiteSpace($processPath) -and (Test-PathInside $installedDirectory $processPath)) {
+        $installedProcessesFound = $true
+        Write-WatchdogLog "target-process-stop pid=$($process.Id) path=$processPath"
+        try { Stop-Process -Id $process.Id -Force -ErrorAction Stop } catch {
+          if ($_.Exception.Message -notmatch 'exited|cannot find') { throw }
+        }
+      }
+    }
+    if (-not $installedProcessesFound) { break }
+    Start-Sleep -Milliseconds 100
+  } while ([DateTime]::UtcNow -lt $processExitDeadline)
+  if ($installedProcessesFound) { throw 'Installed Subutai processes did not exit within 15 seconds.' }
+  Write-WatchdogLog "target-process-tree-closed directory=$installedDirectory"
+
   if ($TestMode) {
     if ([string]::IsNullOrWhiteSpace($TestRollbackMarker)) { throw 'Rollback marker is required in test mode.' }
     $markerPath = Get-FullPath $TestRollbackMarker
@@ -380,19 +400,12 @@ try {
     }
     Write-AtomicJson -Path (Join-Path $root 'browser-registration-fixture.json') -Value $registrationFixture
   } else {
-    foreach ($process in Get-Process -ErrorAction SilentlyContinue) {
-      try {
-        if ($process.Path -and (Get-FullPath $process.Path) -eq $installedExecutable) {
-          Stop-Process -Id $process.Id -Force -ErrorAction Stop
-        }
-      } catch {
-        if ($_.Exception.Message -notmatch 'access|exited|cannot find') { throw }
-      }
-    }
     Write-WatchdogLog "target-process-closed executable=$installedExecutable"
 
     Write-WatchdogLog "rollback-installer-started path=$previousInstaller"
-    $installerProcess = Start-Process -FilePath $previousInstaller -ArgumentList @('/S', '--updated') -Wait -PassThru
+    # Match the successful electron-updater replacement path. Adding /S makes the
+    # downgrade wrapper report code 2 even though the copied target uninstaller succeeds.
+    $installerProcess = Start-Process -FilePath $previousInstaller -ArgumentList @('--updated') -Wait -PassThru
     Write-WatchdogLog "rollback-installer-exit code=$($installerProcess.ExitCode)"
     if ($installerProcess.ExitCode -ne 0) { throw "Rollback installer failed with exit code $($installerProcess.ExitCode)." }
     if (-not (Test-Path -LiteralPath $installedExecutable -PathType Leaf)) { throw 'Previous Subutai executable was not restored.' }

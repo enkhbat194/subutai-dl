@@ -194,6 +194,7 @@ export async function launchUpdateWatchdog(
   try {
     child = await new Promise<ReturnType<typeof spawn>>((resolve, reject) => {
       const spawned = spawn(powerShellExecutablePath(), watchdogArguments, {
+        cwd: rootPath,
         windowsHide: true,
         detached: false,
         stdio: ['ignore', childOutputFile, childOutputFile],
