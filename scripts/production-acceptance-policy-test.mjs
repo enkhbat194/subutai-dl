@@ -144,4 +144,4 @@ if (acceptanceWorkflow.includes('softprops/action-gh-release')) {
   throw new Error('N5 acceptance workflow must not publish a release.');
 }
 
-console.log('Subutai N5 production acceptance policy passed: native soak, large-file/queue telemetry, resilience, pinned media tools, Setup/Portable, browser bridge, uninstall and stable release gating.');
+console.log('Subutai N5 production acceptance policy passed: native soak, large-file/queue telemetry, resilience, pinned media tools, Setup/Portable, browser bridge, uninstall and controlled release gating.');

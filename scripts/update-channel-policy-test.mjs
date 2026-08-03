@@ -6,6 +6,7 @@ const desktopPackage = JSON.parse(
   readFileSync(join(root, 'apps', 'desktop', 'package.json'), 'utf8'),
 );
 const releaseWorkflow = readFileSync(join(root, '.github', 'workflows', 'release.yml'), 'utf8');
+const runtime = readFileSync(join(root, 'apps', 'desktop', 'src', 'main', 'system', 'signed-update-manifest.ts'), 'utf8');
 
 function requireText(source, expected, label) {
   if (!source.includes(expected)) {
@@ -36,8 +37,22 @@ for (const required of [
   'repository: enkhbat194/subutai-releases',
   'token: ${{ secrets.SUBUTAI_RELEASES_TOKEN }}',
   'SUBUTAI_RELEASES_TOKEN is required to publish to enkhbat194/subutai-releases.',
+  "prerelease: ${{ contains(env.RELEASE_TAG, '-') }}",
+  'apps/desktop/release/subutai-update-manifest.json',
 ]) {
   requireText(releaseWorkflow, required, 'Release workflow');
+}
+
+for (const required of [
+  "export type UpdateChannel = 'stable' | 'beta'",
+  "release.prerelease === (channel === 'beta')",
+  "autoUpdater.setFeedURL({ provider: 'generic', url: verifiedRelease.feedUrl })",
+  "autoUpdater.allowDowngrade = false",
+]) {
+  const source = required.startsWith('autoUpdater')
+    ? readFileSync(join(root, 'apps', 'desktop', 'src', 'main', 'system', 'system-runtime.ts'), 'utf8')
+    : runtime;
+  requireText(source, required, 'Signed update runtime');
 }
 
 if (releaseWorkflow.includes('target_commitish: ${{ github.sha }}')) {

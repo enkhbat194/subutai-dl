@@ -23,6 +23,7 @@ coverage/
 *.aria2
 downloads/
 engines/bin/
+apps/desktop/resources/update/trust.json
 
 # OS/editor
 .DS_Store

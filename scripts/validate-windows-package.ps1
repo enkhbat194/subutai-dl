@@ -1,6 +1,7 @@
 param(
   [string]$ReleaseDir = "apps/desktop/release",
-  [switch]$LaunchSmoke
+  [switch]$LaunchSmoke,
+  [switch]$RequireUpdateTrust
 )
 
 $ErrorActionPreference = "Stop"
@@ -51,12 +52,22 @@ if ($latestText -notmatch "(?m)^sha512:\s*\S+") {
 $unpackedDir = Join-Path $releasePath "win-unpacked"
 $appExecutable = Join-Path $unpackedDir "Subutai Download Manager.exe"
 $engineDir = Join-Path $unpackedDir "resources\engines"
+$updateTrustPath = Join-Path $unpackedDir "resources\update\trust.json"
 
 if (-not (Test-Path $appExecutable)) {
   throw "Unpacked Subutai executable was not found: $appExecutable"
 }
 if (-not (Test-Path $engineDir)) {
   throw "Packaged engine directory was not found: $engineDir"
+}
+if ($RequireUpdateTrust) {
+  if (-not (Test-Path $updateTrustPath)) {
+    throw "Packaged signed update trust was not found: $updateTrustPath"
+  }
+  $updateTrust = Get-Content $updateTrustPath -Raw | ConvertFrom-Json
+  if ($updateTrust.schemaVersion -ne 1 -or @($updateTrust.keys).Count -lt 1) {
+    throw "Packaged signed update trust is invalid."
+  }
 }
 
 $requiredEngines = @(

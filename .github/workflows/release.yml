@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: "Stable release tag matching package version, for example v0.1.0"
+        description: "Release tag matching package version, for example v0.1.0 or v0.2.0-rc.1"
         required: true
         type: string
 
@@ -52,13 +52,22 @@ jobs:
         shell: pwsh
         run: node scripts/validate-release-version.mjs "$env:RELEASE_TAG"
 
-      - name: Require public release repository token
+      - name: Require release publication and signing secrets
         shell: pwsh
         env:
           SUBUTAI_RELEASES_TOKEN: ${{ secrets.SUBUTAI_RELEASES_TOKEN }}
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+          SUBUTAI_UPDATE_SIGNING_KEY_BASE64: ${{ secrets.SUBUTAI_UPDATE_SIGNING_KEY_BASE64 }}
+          SUBUTAI_UPDATE_PUBLIC_KEY_BASE64: ${{ secrets.SUBUTAI_UPDATE_PUBLIC_KEY_BASE64 }}
         run: |
           if ([string]::IsNullOrWhiteSpace($env:SUBUTAI_RELEASES_TOKEN)) {
             throw "SUBUTAI_RELEASES_TOKEN is required to publish to enkhbat194/subutai-releases."
+          }
+          foreach ($name in @('WIN_CSC_LINK', 'WIN_CSC_KEY_PASSWORD', 'SUBUTAI_UPDATE_SIGNING_KEY_BASE64', 'SUBUTAI_UPDATE_PUBLIC_KEY_BASE64')) {
+            if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
+              throw "$name is required for a signed production release."
+            }
           }
 
       - name: Install locked dependencies
@@ -152,6 +161,13 @@ jobs:
           SUBUTAI_RESILIENCE_MB: 16
         run: pnpm test:resilience
 
+      - name: Prepare packaged update trust
+        shell: pwsh
+        env:
+          SUBUTAI_UPDATE_SIGNING_KEY_BASE64: ${{ secrets.SUBUTAI_UPDATE_SIGNING_KEY_BASE64 }}
+          SUBUTAI_UPDATE_PUBLIC_KEY_BASE64: ${{ secrets.SUBUTAI_UPDATE_PUBLIC_KEY_BASE64 }}
+        run: node scripts/prepare-update-trust.mjs
+
       - name: Build signed Windows installer and portable app
         shell: pwsh
         env:
@@ -165,11 +181,17 @@ jobs:
 
       - name: Validate release packages and launch
         shell: pwsh
-        run: ./scripts/validate-windows-package.ps1 -LaunchSmoke
+        run: ./scripts/validate-windows-package.ps1 -LaunchSmoke -RequireUpdateTrust
 
       - name: Accept portable, installed and uninstalled release
         shell: pwsh
         run: ./scripts/n5-windows-acceptance.ps1
+
+      - name: Generate signed update manifest
+        shell: pwsh
+        env:
+          SUBUTAI_UPDATE_SIGNING_KEY_BASE64: ${{ secrets.SUBUTAI_UPDATE_SIGNING_KEY_BASE64 }}
+        run: node scripts/generate-signed-update-manifest.mjs "$env:RELEASE_TAG"
 
       - name: Preserve secondary CI artifact
         continue-on-error: true
@@ -183,6 +205,7 @@ jobs:
             apps/desktop/release/*.blockmap
             apps/desktop/release/SHA256SUMS.txt
             apps/desktop/release/SIGNATURES.json
+            apps/desktop/release/subutai-update-manifest.json
             artifacts/n5/native-soak-report.json
             artifacts/n5/native-large-queue-report.json
           if-no-files-found: warn
@@ -196,6 +219,7 @@ jobs:
           tag_name: ${{ env.RELEASE_TAG }}
           name: Subutai Download Manager ${{ env.RELEASE_TAG }}
           generate_release_notes: true
+          prerelease: ${{ contains(env.RELEASE_TAG, '-') }}
           fail_on_unmatched_files: true
           files: |
             apps/desktop/release/Subutai-Setup-*.exe
@@ -204,5 +228,6 @@ jobs:
             apps/desktop/release/*.blockmap
             apps/desktop/release/SHA256SUMS.txt
             apps/desktop/release/SIGNATURES.json
+            apps/desktop/release/subutai-update-manifest.json
             artifacts/n5/native-soak-report.json
             artifacts/n5/native-large-queue-report.json
