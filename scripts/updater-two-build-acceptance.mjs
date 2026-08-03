@@ -194,14 +194,22 @@ async function createTransactionFixture(base, name, builds, deadlineOffsetMs) {
   };
 }
 
-function runProductionWatchdog(fixture) {
-  return run('powershell.exe', [
+async function runProductionWatchdog(fixture) {
+  await run('powershell.exe', [
     '-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
     '-File', fixture.watchdogPath,
     '-TransactionPath', fixture.transactionPath,
     '-ParentProcessId', '0',
     '-PollMilliseconds', '100',
   ], { env: fixture.environment });
+
+  const deadline = Date.now() + 15_000;
+  while (Date.now() < deadline) {
+    const journal = JSON.parse(await readFile(fixture.transactionPath, 'utf8'));
+    if (['committed', 'rolled-back', 'failed-safe'].includes(journal.updateState)) return;
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, 50));
+  }
+  throw new Error('Script-owned watchdog worker did not reach a terminal transaction state within 15 seconds.');
 }
 
 async function writeRegistryHelpers(workspace) {

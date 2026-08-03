@@ -6,7 +6,8 @@ param(
   [ValidateRange(100, 10000)][int]$PollMilliseconds = 1000,
   [switch]$TestMode,
   [string]$TestAllowedInstallRoot = '',
-  [string]$TestRollbackMarker = ''
+  [string]$TestRollbackMarker = '',
+  [switch]$WorkerMode
 )
 
 $ErrorActionPreference = 'Stop'
@@ -26,6 +27,69 @@ function Write-WatchdogLog {
   New-Item -ItemType Directory -Force -Path $directory | Out-Null
   $line = "{0} {1}`n" -f [DateTime]::UtcNow.ToString('o'), $Message
   [System.IO.File]::AppendAllText($script:watchdogLogPath, $line, (New-Object System.Text.UTF8Encoding($false)))
+}
+
+function Quote-ProcessArgument {
+  param([Parameter(Mandatory = $true)][string]$Value)
+  if ($Value.Contains('"')) { throw 'Watchdog process argument contains an invalid quote.' }
+  return '"' + $Value + '"'
+}
+
+if (-not $WorkerMode) {
+  Write-WatchdogLog "watchdog-bootstrap-started pid=$PID transaction=$transactionFullPath"
+  $powerShellPath = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+  if (-not (Test-Path -LiteralPath $powerShellPath -PathType Leaf)) { $powerShellPath = 'powershell.exe' }
+  $workerArguments = @(
+    '-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
+    '-File', (Quote-ProcessArgument $PSCommandPath),
+    '-TransactionPath', (Quote-ProcessArgument $transactionFullPath),
+    '-ParentProcessId', [string]$ParentProcessId,
+    '-LauncherLogPath', (Quote-ProcessArgument $script:watchdogLogPath),
+    '-WatchdogMutexName', (Quote-ProcessArgument $WatchdogMutexName),
+    '-PollMilliseconds', [string]$PollMilliseconds,
+    '-WorkerMode'
+  )
+  if ($TestMode) {
+    $workerArguments += '-TestMode'
+    $workerArguments += @('-TestAllowedInstallRoot', (Quote-ProcessArgument $TestAllowedInstallRoot))
+    $workerArguments += @('-TestRollbackMarker', (Quote-ProcessArgument $TestRollbackMarker))
+  }
+
+  $startupOffset = if (Test-Path -LiteralPath $script:watchdogLogPath) {
+    (Get-Item -LiteralPath $script:watchdogLogPath).Length
+  } else { 0 }
+  $worker = Start-Process -FilePath $powerShellPath -ArgumentList $workerArguments -WindowStyle Hidden -PassThru
+  Write-WatchdogLog "watchdog-worker-created pid=$($worker.Id)"
+  $startupDeadline = [DateTime]::UtcNow.AddSeconds(5)
+  while ([DateTime]::UtcNow -lt $startupDeadline) {
+    if (Test-Path -LiteralPath $script:watchdogLogPath) {
+      $stream = [System.IO.File]::Open(
+        $script:watchdogLogPath,
+        [System.IO.FileMode]::Open,
+        [System.IO.FileAccess]::Read,
+        [System.IO.FileShare]::ReadWrite
+      )
+      try {
+        $stream.Position = [Math]::Min($startupOffset, $stream.Length)
+        $reader = New-Object System.IO.StreamReader($stream, (New-Object System.Text.UTF8Encoding($false)))
+        try { $startupLog = $reader.ReadToEnd() } finally { $reader.Dispose() }
+      } finally { $stream.Dispose() }
+      if ($startupLog.Contains('watchdog-started')) {
+        if ($TestMode) {
+          $worker.WaitForExit()
+          Write-WatchdogLog "watchdog-bootstrap-finished workerPid=$($worker.Id) workerExitCode=$($worker.ExitCode)"
+          exit $worker.ExitCode
+        }
+        Write-WatchdogLog "watchdog-bootstrap-finished workerPid=$($worker.Id)"
+        exit 0
+      }
+    }
+    $worker.Refresh()
+    if ($worker.HasExited) { throw "Watchdog worker exited before startup acknowledgement with code $($worker.ExitCode)." }
+    Start-Sleep -Milliseconds 50
+  }
+  try { Stop-Process -Id $worker.Id -Force -ErrorAction SilentlyContinue } catch { }
+  throw 'Watchdog worker did not acknowledge startup within 5000ms.'
 }
 
 Write-WatchdogLog "watchdog-started pid=$PID transaction=$transactionFullPath"

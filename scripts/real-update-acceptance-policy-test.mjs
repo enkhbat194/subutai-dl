@@ -9,6 +9,7 @@ const harness = read('scripts', 'real-two-installer-acceptance.ps1');
 const stateProbe = read('scripts', 'real-update-state-probe.mjs');
 const feedServer = read('scripts', 'real-update-feed-server.mjs');
 const watchdogSmoke = read('scripts', 'watchdog-process-smoke-test.mjs');
+const watchdogElectronParent = read('scripts', 'watchdog-electron-parent-fixture.cjs');
 const installerInclude = read('apps', 'desktop', 'build', 'installer.nsh');
 const acceptanceRuntime = read(
   'apps', 'desktop', 'src', 'main', 'system', 'real-update-acceptance.ts',
@@ -135,6 +136,9 @@ for (const forbidden of ['-Command', '-EncodedCommand', 'shell: true', 'detached
 for (const required of [
   "'Local\\SubutaiUpdaterWatchdog'",
   '[System.Threading.Mutex]::new',
+  'watchdog-bootstrap-started',
+  'watchdog-worker-created',
+  'watchdog-bootstrap-finished',
   'watchdog-started',
   'mutex-created',
   'transaction-loaded',
@@ -164,12 +168,32 @@ for (const required of [
   "'-WatchdogMutexName',",
   'windowsHide: true',
   'detached: false',
-  "stdio: ['ignore', logFile, logFile]",
-  "['watchdog-started', 'watchdog-error', 'watchdog-finished']",
+  "stdio: ['ignore', output, output]",
+  'watchdog-started',
+  'watchdog-error',
+  'watchdog-finished',
+  'watchdog-electron-parent-fixture.cjs',
+  'createRequire',
+  'electron-parent-exiting',
+  'parent-exited',
+  'rollback-journal-written',
   'child.kill()',
   'rmSync(smokeRoot',
 ]) {
   requireText(watchdogSmoke, required, 'Watchdog process smoke test');
+}
+
+for (const required of [
+  "require('electron')",
+  "'-File'",
+  'watchdogPath',
+  'detached: false',
+  "stdio: ['ignore', output, output]",
+  'waitForStartup',
+  'electron-parent-exiting',
+  'app.exit(0)',
+]) {
+  requireText(watchdogElectronParent, required, 'Watchdog Electron parent-exit fixture');
 }
 
 requireText(updateJournal, "'subutai download manager.exe'", 'TypeScript controlled executable validator');
@@ -266,6 +290,7 @@ for (const required of [
   'pnpm test:real-update-policy',
   'Run watchdog process smoke test',
   'pnpm test:watchdog-process-smoke',
+  'scripts/watchdog-electron-parent-fixture.cjs',
   './scripts/run-real-update-acceptance-monitored.ps1',
   '-ScenarioTimeoutSeconds 240',
   'real-two-installer-acceptance-report.json',

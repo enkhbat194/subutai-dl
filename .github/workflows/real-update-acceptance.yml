@@ -13,6 +13,7 @@ on:
       - "scripts/real-update-state-probe.mjs"
       - "scripts/real-update-feed-server.mjs"
       - "scripts/watchdog-process-smoke-test.mjs"
+      - "scripts/watchdog-electron-parent-fixture.cjs"
       - "scripts/real-update-acceptance-policy-test.mjs"
       - "scripts/updater-rollback-acceptance.mjs"
       - "scripts/updater-two-build-acceptance.mjs"
