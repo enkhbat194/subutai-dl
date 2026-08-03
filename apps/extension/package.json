@@ -5,6 +5,6 @@
   "type": "module",
   "scripts": {
     "build": "node ../../scripts/build-extensions.mjs",
-    "typecheck": "node ../../scripts/extension-contract-test.mjs"
+    "typecheck": "node ../../scripts/build-extensions.mjs && node ../../scripts/extension-contract-test.mjs"
   }
 }
