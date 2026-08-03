@@ -8,7 +8,7 @@ const monitor = read('scripts', 'run-real-update-acceptance-monitored.ps1');
 const harness = read('scripts', 'real-two-installer-acceptance.ps1');
 const stateProbe = read('scripts', 'real-update-state-probe.mjs');
 const feedServer = read('scripts', 'real-update-feed-server.mjs');
-const watchdogSmoke = read('scripts', 'watchdog-process-smoke-test.ps1');
+const watchdogSmoke = read('scripts', 'watchdog-process-smoke-test.mjs');
 const installerInclude = read('apps', 'desktop', 'build', 'installer.nsh');
 const acceptanceRuntime = read(
   'apps', 'desktop', 'src', 'main', 'system', 'real-update-acceptance.ts',
@@ -77,6 +77,7 @@ for (const required of [
   "update-transaction.json",
   "watchdog-evidence.json",
   "watchdog-launcher.log",
+  "watchdog-child.log",
   "real-two-installer-acceptance.json",
   "@subutaidesktop-updater",
   'Get-CimInstance Win32_Process',
@@ -107,7 +108,9 @@ for (const required of [
   "'-ParentProcessId',",
   'String(parentProcessId)',
   "'-LauncherLogPath',",
-  "stdio: ['ignore', launcherLogFile, launcherLogFile]",
+  "join(rootPath, 'watchdog-child.log')",
+  'detached: false',
+  "stdio: ['ignore', childOutputFile, childOutputFile]",
   'launcher-requested',
   'watchdog-started',
   'watchdog-start-acknowledged',
@@ -123,7 +126,7 @@ const startupTimeout = /WATCHDOG_STARTUP_TIMEOUT_MS\s*=\s*([\d_]+)/u.exec(update
 if (!startupTimeout || Number(startupTimeout[1].replaceAll('_', '')) > 10_000) {
   throw new Error('Watchdog startup acknowledgement must fail within 10 seconds.');
 }
-for (const forbidden of ['-Command', '-EncodedCommand', 'shell: true', "stdio: 'ignore'", 'quotePowerShellLiteral']) {
+for (const forbidden of ['-Command', '-EncodedCommand', 'shell: true', 'detached: true', "stdio: 'ignore'", 'quotePowerShellLiteral']) {
   if (updateTransaction.includes(forbidden)) {
     throw new Error(`Transactional watchdog launcher contains forbidden inline-shell behavior: ${forbidden}`);
   }
@@ -154,15 +157,17 @@ for (const required of [
 }
 
 for (const required of [
-  "'-File'",
+  "'-File',",
   'update-watchdog.ps1',
-  "'-TransactionPath'",
-  "'-LauncherLogPath'",
-  "'-WatchdogMutexName'",
-  '$startInfo.CreateNoWindow = $true',
-  'ProcessWindowStyle]::Hidden',
-  "@('watchdog-started', 'watchdog-error', 'watchdog-finished')",
-  'Stop-Process -Id $process.Id',
+  "'-TransactionPath',",
+  "'-LauncherLogPath',",
+  "'-WatchdogMutexName',",
+  'windowsHide: true',
+  'detached: false',
+  "stdio: ['ignore', logFile, logFile]",
+  "['watchdog-started', 'watchdog-error', 'watchdog-finished']",
+  'child.kill()',
+  'rmSync(smokeRoot',
 ]) {
   requireText(watchdogSmoke, required, 'Watchdog process smoke test');
 }

@@ -48,7 +48,9 @@ for (const required of [
   "'-ParentProcessId',",
   'String(parentProcessId)',
   "'-LauncherLogPath',",
-  "stdio: ['ignore', launcherLogFile, launcherLogFile]",
+  "join(rootPath, 'watchdog-child.log')",
+  'detached: false',
+  "stdio: ['ignore', childOutputFile, childOutputFile]",
   'launcher-requested',
   'watchdog-started',
   'watchdog-start-acknowledged',
@@ -60,7 +62,7 @@ const startupTimeout = /WATCHDOG_STARTUP_TIMEOUT_MS\s*=\s*([\d_]+)/u.exec(transa
 if (!startupTimeout || Number(startupTimeout[1].replaceAll('_', '')) > 10_000) {
   throw new Error('Watchdog startup acknowledgement must fail within 10 seconds.');
 }
-for (const forbidden of ['-Command', '-EncodedCommand', 'shell: true', "stdio: 'ignore'", 'quotePowerShellLiteral']) {
+for (const forbidden of ['-Command', '-EncodedCommand', 'shell: true', 'detached: true', "stdio: 'ignore'", 'quotePowerShellLiteral']) {
   if (transaction.includes(forbidden)) {
     throw new Error(`Watchdog launcher contains forbidden inline-shell behavior: ${forbidden}`);
   }

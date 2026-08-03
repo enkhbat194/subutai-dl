@@ -166,6 +166,7 @@ export async function launchUpdateWatchdog(
 
   const rootPath = dirname(dirname(journal.watchdogPath));
   const launcherLogPath = join(rootPath, 'watchdog-launcher.log');
+  const childOutputPath = join(rootPath, 'watchdog-child.log');
   appendFileSync(
     launcherLogPath,
     `${new Date().toISOString()} launcher-requested transaction=${journal.transactionId}\n`,
@@ -188,14 +189,14 @@ export async function launchUpdateWatchdog(
     launcherLogPath,
   ];
 
-  const launcherLogFile = openSync(launcherLogPath, 'a');
+  const childOutputFile = openSync(childOutputPath, 'a');
   let child: ReturnType<typeof spawn> | null = null;
   try {
     child = await new Promise<ReturnType<typeof spawn>>((resolve, reject) => {
       const spawned = spawn(powerShellExecutablePath(), watchdogArguments, {
         windowsHide: true,
-        detached: true,
-        stdio: ['ignore', launcherLogFile, launcherLogFile],
+        detached: false,
+        stdio: ['ignore', childOutputFile, childOutputFile],
       });
       spawned.once('error', reject);
       spawned.once('spawn', () => resolve(spawned));
@@ -223,6 +224,6 @@ export async function launchUpdateWatchdog(
     }
     throw error;
   } finally {
-    closeSync(launcherLogFile);
+    closeSync(childOutputFile);
   }
 }

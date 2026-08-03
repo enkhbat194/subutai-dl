@@ -12,7 +12,7 @@ on:
       - "scripts/real-two-installer-acceptance.ps1"
       - "scripts/real-update-state-probe.mjs"
       - "scripts/real-update-feed-server.mjs"
-      - "scripts/watchdog-process-smoke-test.ps1"
+      - "scripts/watchdog-process-smoke-test.mjs"
       - "scripts/real-update-acceptance-policy-test.mjs"
       - "scripts/updater-rollback-acceptance.mjs"
       - "scripts/updater-two-build-acceptance.mjs"

@@ -54,6 +54,7 @@ function Capture-LiveState {
   Copy-LiveFile -Source (Join-Path $updaterRoot 'update-transaction.json.bak') -DestinationName 'update-transaction.json.bak'
   Copy-LiveFile -Source (Join-Path $updaterRoot 'watchdog-evidence.json') -DestinationName 'watchdog-evidence.json'
   Copy-LiveFile -Source (Join-Path $updaterRoot 'watchdog-launcher.log') -DestinationName 'watchdog-launcher.log'
+  Copy-LiveFile -Source (Join-Path $updaterRoot 'watchdog-child.log') -DestinationName 'watchdog-child.log'
   Copy-LiveFile -Source (Join-Path $updaterRoot 'real-two-installer-acceptance.json') -DestinationName 'real-two-installer-acceptance.json'
   Copy-LiveFile -Source (Join-Path $updaterRoot 'real-two-installer-acceptance.json.bak') -DestinationName 'real-two-installer-acceptance.json.bak'
   Copy-LiveFile -Source (Join-Path $electronUpdaterCache 'pending\update-info.json') -DestinationName 'electron-updater-update-info.json'
