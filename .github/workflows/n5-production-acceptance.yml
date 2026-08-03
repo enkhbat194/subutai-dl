@@ -103,6 +103,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           pnpm test:release-engine
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          pnpm test:release-signing
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           pnpm test:integrity
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           pnpm test:mirror

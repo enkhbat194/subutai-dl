@@ -55,6 +55,9 @@ jobs:
       - name: Release version consistency
         run: pnpm test:release-version
 
+      - name: Fail-closed release signing policy
+        run: pnpm test:release-signing
+
       - name: Failure and recovery policy tests
         run: pnpm test:failure-policy
 
