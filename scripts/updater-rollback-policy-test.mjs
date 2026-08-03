@@ -37,25 +37,33 @@ for (const required of [
   'Cached rollback installer checksum mismatch',
   'Staged update installer checksum mismatch',
   'redactUpdateError',
-  '[System.Threading.Mutex]::new',
-  '$mutex = $null',
-  'if ($null -ne $mutex)',
-  'try { $mutex.ReleaseMutex() } catch {}',
+  'WATCHDOG_STARTUP_TIMEOUT_MS = 5_000',
+  'function powerShellExecutablePath()',
+  'waitForWatchdogStartup',
   "join(rootPath, 'watchdog-launcher.log')",
-  "Buffer.from(singleInstanceCommand, 'utf16le')",
-  "'-EncodedCommand', encodedCommand",
+  "'-File',",
+  'journal.watchdogPath',
+  "'-TransactionPath',",
+  'updateJournalPath(rootPath)',
+  "'-ParentProcessId',",
+  'String(parentProcessId)',
+  "'-LauncherLogPath',",
   "stdio: ['ignore', launcherLogFile, launcherLogFile]",
   'launcher-requested',
-  'launcher-started',
+  'watchdog-started',
+  'watchdog-start-acknowledged',
+  'watchdog-start-failed',
+  'child.kill()',
+  'child.unref()',
 ]) requireText(transaction, required, 'Transactional updater journal');
-if (!/const mutexScope = 'Local\\\\SubutaiUpdaterWatchdog';/u.test(transaction)) {
-  throw new Error('Watchdog launcher must use the Local\\SubutaiUpdaterWatchdog mutex namespace with a correctly escaped TypeScript source literal.');
+const startupTimeout = /WATCHDOG_STARTUP_TIMEOUT_MS\s*=\s*([\d_]+)/u.exec(transaction);
+if (!startupTimeout || Number(startupTimeout[1].replaceAll('_', '')) > 10_000) {
+  throw new Error('Watchdog startup acknowledgement must fail within 10 seconds.');
 }
-if (transaction.includes('New-Object System.Threading.Mutex(')) {
-  throw new Error('Watchdog launcher must use the typed Mutex constructor so constructor failures are caught and logged.');
-}
-if (transaction.includes("'-Command', singleInstanceCommand") || transaction.includes("stdio: 'ignore'")) {
-  throw new Error('Watchdog launcher must use an encoded PowerShell command and preserve child stdout/stderr diagnostics.');
+for (const forbidden of ['-Command', '-EncodedCommand', 'shell: true', "stdio: 'ignore'", 'quotePowerShellLiteral']) {
+  if (transaction.includes(forbidden)) {
+    throw new Error(`Watchdog launcher contains forbidden inline-shell behavior: ${forbidden}`);
+  }
 }
 
 for (const required of [
@@ -114,6 +122,28 @@ for (const required of [
   'corrupt-journal-no-action',
   'failed-safe',
   'Start-Process -FilePath $installedExecutable',
+  "'Local\\SubutaiUpdaterWatchdog'",
+  '[System.Threading.Mutex]::new',
+  '$mutex = $null',
+  'if ($null -ne $mutex)',
+  '$mutex.ReleaseMutex()',
+  'watchdog-started',
+  'mutex-created',
+  'transaction-loaded',
+  'parent-wait-started',
+  'health-deadline-wait',
+  'rollback-triggered',
+  'previous-installer-path-validated',
+  'previous-installer-sha256-verified',
+  'target-process-closed',
+  'rollback-installer-started',
+  'rollback-installer-exit',
+  'browser-registration-restored',
+  'rollback-journal-written',
+  'baseline-restarted',
+  'watchdog-completed',
+  'watchdog-error',
+  'watchdog-finished',
 ]) requireText(watchdog, required, 'External rollback watchdog');
 if (/Restart-Computer|shutdown\.exe|SetSuspendState|rundll32.+powrprof/iu.test(watchdog)) {
   throw new Error('Updater watchdog must never restart, shut down, sleep or hibernate Windows.');
@@ -132,6 +162,7 @@ for (const required of [
   'Registry]::CurrentUser.DeleteSubKeyTree',
   'Registry]::CurrentUser.CreateSubKey',
   'RegistryValueKind]::String',
+  '$entries = Get-Content -LiteralPath $InputPath -Raw | ConvertFrom-Json',
 ]) requireText(twoBuildAcceptance, required, 'Local two-build updater acceptance');
 
 for (const required of [
@@ -157,4 +188,4 @@ if (nativeWorkflow.includes('contents: write') || n5Workflow.includes('contents:
   throw new Error('Final updater validation workflows must remain check-only.');
 }
 
-console.log('Subutai updater rollback policy passed: durable journal, verified cache, startup health, encoded and durably logged external watchdog launcher, bounded rollback and read-only Windows gates.');
+console.log('Subutai updater rollback policy passed: durable journal, verified cache, startup health, direct -File watchdog launch with bounded acknowledgement, script-owned mutex/log phases, bounded rollback and read-only Windows gates.');

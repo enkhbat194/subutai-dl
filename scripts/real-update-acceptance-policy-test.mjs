@@ -8,6 +8,7 @@ const monitor = read('scripts', 'run-real-update-acceptance-monitored.ps1');
 const harness = read('scripts', 'real-two-installer-acceptance.ps1');
 const stateProbe = read('scripts', 'real-update-state-probe.mjs');
 const feedServer = read('scripts', 'real-update-feed-server.mjs');
+const watchdogSmoke = read('scripts', 'watchdog-process-smoke-test.ps1');
 const installerInclude = read('apps', 'desktop', 'build', 'installer.nsh');
 const acceptanceRuntime = read(
   'apps', 'desktop', 'src', 'main', 'system', 'real-update-acceptance.ts',
@@ -95,28 +96,75 @@ if (monitor.includes('if ($process.ExitCode -ne 0) { exit $process.ExitCode }'))
 }
 
 for (const required of [
-  'function quotePowerShellLiteral',
-  'watchdogPathLiteral',
-  'transactionPathLiteral',
+  'WATCHDOG_STARTUP_TIMEOUT_MS = 5_000',
+  'function powerShellExecutablePath()',
+  'waitForWatchdogStartup',
   "join(rootPath, 'watchdog-launcher.log')",
-  '-TransactionPath ${transactionPathLiteral}',
-  '-ParentProcessId ${parentProcessId}',
-  String.raw`const mutexScope = 'Local\\SubutaiUpdaterWatchdog';`,
-  "Buffer.from(singleInstanceCommand, 'utf16le')",
-  "'-EncodedCommand', encodedCommand",
+  "'-File',",
+  'journal.watchdogPath',
+  "'-TransactionPath',",
+  'updateJournalPath(rootPath)',
+  "'-ParentProcessId',",
+  'String(parentProcessId)',
+  "'-LauncherLogPath',",
   "stdio: ['ignore', launcherLogFile, launcherLogFile]",
   'launcher-requested',
-  'launcher-started',
-  "child.once('error', reject)",
-  "child.once('spawn'",
+  'watchdog-started',
+  'watchdog-start-acknowledged',
+  'watchdog-start-failed',
+  "spawned.once('error', reject)",
+  "spawned.once('spawn'",
+  'child.kill()',
+  'child.unref()',
 ]) {
   requireText(updateTransaction, required, 'Transactional watchdog launcher');
 }
-if (updateTransaction.includes('& $args[0] -TransactionPath $args[1] -ParentProcessId ([int]$args[2])')) {
-  throw new Error('The watchdog launcher must not depend on native PowerShell $args forwarding after -Command.');
+const startupTimeout = /WATCHDOG_STARTUP_TIMEOUT_MS\s*=\s*([\d_]+)/u.exec(updateTransaction);
+if (!startupTimeout || Number(startupTimeout[1].replaceAll('_', '')) > 10_000) {
+  throw new Error('Watchdog startup acknowledgement must fail within 10 seconds.');
 }
-if (updateTransaction.includes("'-Command', singleInstanceCommand") || updateTransaction.includes("stdio: 'ignore'")) {
-  throw new Error('The watchdog launcher must use encoded PowerShell and preserve stdout/stderr diagnostics.');
+for (const forbidden of ['-Command', '-EncodedCommand', 'shell: true', "stdio: 'ignore'", 'quotePowerShellLiteral']) {
+  if (updateTransaction.includes(forbidden)) {
+    throw new Error(`Transactional watchdog launcher contains forbidden inline-shell behavior: ${forbidden}`);
+  }
+}
+
+for (const required of [
+  "'Local\\SubutaiUpdaterWatchdog'",
+  '[System.Threading.Mutex]::new',
+  'watchdog-started',
+  'mutex-created',
+  'transaction-loaded',
+  'parent-wait-started',
+  'health-deadline-wait',
+  'rollback-triggered',
+  'previous-installer-path-validated',
+  'previous-installer-sha256-verified',
+  'target-process-closed',
+  'rollback-installer-started',
+  'rollback-installer-exit',
+  'browser-registration-restored',
+  'rollback-journal-written',
+  'baseline-restarted',
+  'watchdog-completed',
+  'watchdog-error',
+  'watchdog-finished',
+]) {
+  requireText(watchdog, required, 'Script-owned watchdog lifecycle');
+}
+
+for (const required of [
+  "'-File'",
+  'update-watchdog.ps1',
+  "'-TransactionPath'",
+  "'-LauncherLogPath'",
+  "'-WatchdogMutexName'",
+  '$startInfo.CreateNoWindow = $true',
+  'ProcessWindowStyle]::Hidden',
+  "@('watchdog-started', 'watchdog-error', 'watchdog-finished')",
+  'Stop-Process -Id $process.Id',
+]) {
+  requireText(watchdogSmoke, required, 'Watchdog process smoke test');
 }
 
 requireText(updateJournal, "'subutai download manager.exe'", 'TypeScript controlled executable validator');
@@ -211,6 +259,8 @@ for (const required of [
   'runs-on: [self-hosted, Windows, X64, subutai]',
   'contents: read',
   'pnpm test:real-update-policy',
+  'Run watchdog process smoke test',
+  'pnpm test:watchdog-process-smoke',
   './scripts/run-real-update-acceptance-monitored.ps1',
   '-ScenarioTimeoutSeconds 240',
   'real-two-installer-acceptance-report.json',
@@ -237,4 +287,4 @@ if (!workflow.includes('workflow_dispatch:') || !workflow.includes('pull_request
   throw new Error('Real updater acceptance must support manual and pull-request execution.');
 }
 
-console.log('Subutai real two-installer updater acceptance policy passed: acceptance-only appId with the production controlled executable identity, one-click per-user non-elevating NSIS install, deterministic sanitized-package install path, dynamic packaged executable browser registration, isolated runner state, encoded and durably logged watchdog launch, live transaction/watchdog snapshots with strict failure propagation, real A/B builds, loopback feed, healthy update, forced rollback, checksum rejection, durable user state, browser bridge evidence, bounded console diagnostics and read-only execution are locked.');
+console.log('Subutai real two-installer updater acceptance policy passed: acceptance-only appId with the production controlled executable identity, one-click per-user non-elevating NSIS install, deterministic sanitized-package install path, dynamic packaged executable browser registration, isolated runner state, direct -File watchdog launch with fail-fast acknowledgement and a pre-build process smoke gate, live transaction/watchdog snapshots with strict failure propagation, real A/B builds, loopback feed, healthy update, forced rollback, checksum rejection, durable user state, browser bridge evidence, bounded console diagnostics and read-only execution are locked.');

@@ -12,6 +12,7 @@ on:
       - "scripts/real-two-installer-acceptance.ps1"
       - "scripts/real-update-state-probe.mjs"
       - "scripts/real-update-feed-server.mjs"
+      - "scripts/watchdog-process-smoke-test.ps1"
       - "scripts/real-update-acceptance-policy-test.mjs"
       - "scripts/updater-rollback-acceptance.mjs"
       - "scripts/updater-two-build-acceptance.mjs"
@@ -94,6 +95,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           pnpm typecheck
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run watchdog process smoke test
+        shell: powershell
+        run: pnpm test:watchdog-process-smoke
 
       - name: Run real Setup A to Setup B update and rollback acceptance
         shell: powershell

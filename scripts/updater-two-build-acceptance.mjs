@@ -226,7 +226,7 @@ $result | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $OutputPath -Encodi
 `);
   await writeFile(restoreScript, String.raw`param([Parameter(Mandatory = $true)][string]$InputPath)
 $ErrorActionPreference = 'Stop'
-$entries = @(Get-Content -LiteralPath $InputPath -Raw | ConvertFrom-Json)
+$entries = Get-Content -LiteralPath $InputPath -Raw | ConvertFrom-Json
 foreach ($entry in $entries) {
   $providerPath = [string]$entry.key
   if ($providerPath -notmatch '^HKCU:\\') { throw "Unexpected registry path in snapshot: $providerPath" }
