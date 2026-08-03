@@ -12,12 +12,19 @@ $ffmpegBuild = "ffmpeg-N-123778-g3b55818764-win64-gpl"
 $ffmpegUrl = "https://github.com/yt-dlp/FFmpeg-Builds/releases/download/autobuild-2026-03-31-15-13/$ffmpegBuild.zip"
 $ffmpegSha256 = "43f9f3491b86264a3b4104935283955002fd8a1413377c7d04a4c484576d6c11"
 
+$nodeVersion = "22.23.1"
+$nodeArchiveName = "node-v$nodeVersion-win-x64.zip"
+$nodeUrl = "https://nodejs.org/dist/v$nodeVersion/$nodeArchiveName"
+$nodeSha256 = "7df0bc9375723f4a86b3aa1b7cc73342423d9677a8df4538aca31a049e309c29"
+
 $tempBase = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { [System.IO.Path]::GetTempPath() }
 $tempRoot = Join-Path $tempBase "SubutaiTemporaryMediaTools"
 $cacheRoot = Join-Path $env:USERPROFILE ".cache\subutai-media-tools"
 $ytDlpDownload = Join-Path $cacheRoot "yt-dlp-$ytDlpVersion.exe"
 $ffmpegArchive = Join-Path $cacheRoot "$ffmpegBuild.zip"
+$nodeArchive = Join-Path $cacheRoot $nodeArchiveName
 $ffmpegExtract = Join-Path $tempRoot "ffmpeg"
+$nodeExtract = Join-Path $tempRoot "node"
 
 function Test-ExpectedHash {
   param(
@@ -78,23 +85,29 @@ try {
 
   Get-VerifiedDownload -Url $ytDlpUrl -Destination $ytDlpDownload -ExpectedSha256 $ytDlpSha256
   Get-VerifiedDownload -Url $ffmpegUrl -Destination $ffmpegArchive -ExpectedSha256 $ffmpegSha256
+  Get-VerifiedDownload -Url $nodeUrl -Destination $nodeArchive -ExpectedSha256 $nodeSha256
 
   Expand-Archive -Path $ffmpegArchive -DestinationPath $ffmpegExtract -Force
+  Expand-Archive -Path $nodeArchive -DestinationPath $nodeExtract -Force
+
   $ffmpeg = Get-ChildItem $ffmpegExtract -Recurse -File -Filter "ffmpeg.exe" |
     Where-Object { $_.DirectoryName -match "[\\/]bin$" } |
     Select-Object -First 1
   $ffprobe = Get-ChildItem $ffmpegExtract -Recurse -File -Filter "ffprobe.exe" |
     Where-Object { $_.DirectoryName -match "[\\/]bin$" } |
     Select-Object -First 1
+  $node = Get-ChildItem $nodeExtract -Recurse -File -Filter "node.exe" | Select-Object -First 1
 
   if (-not $ffmpeg) { throw "Pinned FFmpeg archive did not contain bin\ffmpeg.exe." }
   if (-not $ffprobe) { throw "Pinned FFmpeg archive did not contain bin\ffprobe.exe." }
+  if (-not $node) { throw "Pinned Node archive did not contain node.exe." }
 
   Copy-Item $ytDlpDownload (Join-Path $EngineDir "yt-dlp.exe") -Force
   Copy-Item $ffmpeg.FullName (Join-Path $EngineDir "ffmpeg.exe") -Force
   Copy-Item $ffprobe.FullName (Join-Path $EngineDir "ffprobe.exe") -Force
+  Copy-Item $node.FullName (Join-Path $EngineDir "node.exe") -Force
 
-  foreach ($binary in @("yt-dlp.exe", "ffmpeg.exe", "ffprobe.exe")) {
+  foreach ($binary in @("yt-dlp.exe", "ffmpeg.exe", "ffprobe.exe", "node.exe")) {
     $path = Join-Path $EngineDir $binary
     if (-not (Test-Path $path)) { throw "Temporary media tool is missing: $path" }
     if ((Get-Item $path).Length -lt 64KB) { throw "Temporary media tool is unexpectedly small: $path" }
@@ -107,8 +120,9 @@ try {
   Test-ToolVersion -Executable (Join-Path $EngineDir "yt-dlp.exe") -Arguments @("--version") -Label "yt-dlp"
   Test-ToolVersion -Executable (Join-Path $EngineDir "ffmpeg.exe") -Arguments @("-version") -Label "FFmpeg"
   Test-ToolVersion -Executable (Join-Path $EngineDir "ffprobe.exe") -Arguments @("-version") -Label "FFprobe"
+  Test-ToolVersion -Executable (Join-Path $EngineDir "node.exe") -Arguments @("--version") -Label "Node.js"
 
-  Write-Host "Pinned temporary media tools installed and checksum verified."
+  Write-Host "Pinned temporary media tools and JavaScript runtime installed and checksum verified."
 } finally {
   Remove-Item $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
 }
