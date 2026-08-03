@@ -1,6 +1,17 @@
 name: Subutai Internal Windows MVP
 
 on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "apps/**"
+      - "engines/native/**"
+      - "packages/**"
+      - "scripts/install-temporary-media-tools.ps1"
+      - "scripts/validate-windows-package.ps1"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/mvp-internal-release.yml"
   push:
     branches:
       - "agent/release-0.2.0-rc1-preflight"
@@ -20,17 +31,20 @@ permissions:
   contents: write
 
 concurrency:
-  group: subutai-internal-windows-mvp
+  group: subutai-internal-windows-mvp-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
   build-and-publish:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: windows-latest
     timeout-minutes: 90
 
     steps:
       - name: Checkout exact branch head
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -79,7 +93,7 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag_name: internal-v0.2.0-rc.1
-          target_commitish: ${{ github.sha }}
+          target_commitish: ${{ github.event.pull_request.head.sha || github.sha }}
           name: Subutai Download Manager 0.2.0-rc.1 — Internal MVP
           body: |
             UNSIGNED INTERNAL TEST BUILD — not a production release.
