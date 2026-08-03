@@ -36,7 +36,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   windows-acceptance:
@@ -176,25 +176,3 @@ jobs:
       - name: Accept portable, installed and uninstalled product
         shell: powershell
         run: ./scripts/n5-windows-acceptance.ps1
-
-      - name: Publish unsigned internal Windows MVP prerelease
-        if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
-        uses: softprops/action-gh-release@v2
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          tag_name: internal-v0.2.0-rc.1
-          target_commitish: ${{ github.event.pull_request.head.sha || github.sha }}
-          name: Subutai Download Manager 0.2.0-rc.1 — Internal MVP
-          body: |
-            UNSIGNED INTERNAL TEST BUILD — not a production release.
-
-            This is the first usable Windows MVP for owner testing. N5 acceptance builds, launches, installs, verifies browser integration, uninstalls and cleans up both packages before publication.
-
-            Start with the Portable EXE. Windows SmartScreen may warn because production Authenticode credentials are not configured yet.
-          prerelease: true
-          make_latest: false
-          fail_on_unmatched_files: true
-          files: |
-            apps/desktop/release/Subutai-Setup-*.exe
-            apps/desktop/release/Subutai-Portable-*.exe
-            apps/desktop/release/SHA256SUMS.txt
