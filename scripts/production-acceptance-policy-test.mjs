@@ -110,6 +110,7 @@ for (const required of [
   'publish-native-large-queue-summary.mjs',
   'cargo build --release --manifest-path engines/native/Cargo.toml --bin subutai-engine',
   'pnpm test:production-acceptance',
+  'pnpm test:release-signing',
   './scripts/install-temporary-media-tools.ps1',
   './scripts/n5-windows-acceptance.ps1',
 ]) {
