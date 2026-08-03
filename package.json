@@ -34,6 +34,7 @@
     "test:telemetry": "node --experimental-strip-types scripts/telemetry-policy-test.mts",
     "test:production-acceptance": "node scripts/production-acceptance-policy-test.mjs && pnpm test:updater-policy && pnpm test:updater-acceptance && pnpm test:real-update-policy",
     "test:release-version": "node scripts/validate-release-version.mjs",
+    "test:release-signing": "node scripts/release-signing-policy-test.mjs",
     "test:release-engine": "node scripts/release-engine-policy-test.mjs",
     "test:dependency-lock": "node scripts/dependency-lock-policy-test.mjs",
     "test:brand": "node scripts/brand-policy-test.mjs"

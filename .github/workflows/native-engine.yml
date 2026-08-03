@@ -187,6 +187,10 @@ jobs:
         shell: powershell
         run: pnpm test:release-engine
 
+      - name: Check fail-closed release signing policy
+        shell: powershell
+        run: pnpm test:release-signing
+
       - name: Check reproducible dependency policy
         shell: powershell
         run: pnpm test:dependency-lock

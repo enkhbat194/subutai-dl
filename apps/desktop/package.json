@@ -11,6 +11,7 @@
     "build": "electron-vite build",
     "build:native-host": "cargo build --release --manifest-path ../../engines/native/Cargo.toml --bin subutai-engine-host",
     "build:win": "pnpm --filter @subutai/extension build && pnpm build:native-host && electron-vite build && electron-builder --win nsis portable",
+    "build:win:signed": "pnpm --filter @subutai/extension build && pnpm build:native-host && electron-vite build && electron-builder --win nsis portable --config.forceCodeSigning=true",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -77,7 +78,13 @@
       }
     ],
     "win": {
-      "target": ["nsis", "portable"]
+      "target": ["nsis", "portable"],
+      "verifyUpdateCodeSignature": true,
+      "signExts": ["subutai-engine-host.exe"],
+      "signtoolOptions": {
+        "signingHashAlgorithms": ["sha256"],
+        "rfc3161TimeStampServer": "http://timestamp.digicert.com"
+      }
     },
     "nsis": {
       "artifactName": "Subutai-Setup-${version}-${arch}.${ext}",

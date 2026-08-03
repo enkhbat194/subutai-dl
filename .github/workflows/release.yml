@@ -71,6 +71,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           pnpm test:release-engine
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          pnpm test:release-signing
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           pnpm test:dependency-lock
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           pnpm test:integrity
@@ -141,9 +143,16 @@ jobs:
           SUBUTAI_RESILIENCE_MB: 16
         run: pnpm test:resilience
 
-      - name: Build Windows installer and portable app
+      - name: Build signed Windows installer and portable app
         shell: pwsh
-        run: pnpm --filter @subutai/desktop build:win
+        env:
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+        run: pnpm --filter @subutai/desktop build:win:signed
+
+      - name: Verify Authenticode publisher and timestamp evidence
+        shell: pwsh
+        run: ./scripts/validate-windows-signatures.ps1
 
       - name: Validate release packages and launch
         shell: pwsh
@@ -164,6 +173,7 @@ jobs:
             apps/desktop/release/latest.yml
             apps/desktop/release/*.blockmap
             apps/desktop/release/SHA256SUMS.txt
+            apps/desktop/release/SIGNATURES.json
             artifacts/n5/native-soak-report.json
             artifacts/n5/native-large-queue-report.json
           if-no-files-found: warn
@@ -183,5 +193,6 @@ jobs:
             apps/desktop/release/latest.yml
             apps/desktop/release/*.blockmap
             apps/desktop/release/SHA256SUMS.txt
+            apps/desktop/release/SIGNATURES.json
             artifacts/n5/native-soak-report.json
             artifacts/n5/native-large-queue-report.json
