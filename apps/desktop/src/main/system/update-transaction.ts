@@ -124,7 +124,7 @@ export async function launchUpdateWatchdog(
   const watchdogPathLiteral = quotePowerShellLiteral(journal.watchdogPath);
   const transactionPathLiteral = quotePowerShellLiteral(updateJournalPath(rootPath));
   const launcherLogLiteral = quotePowerShellLiteral(join(rootPath, 'watchdog-launcher.log'));
-  const mutexScope = 'Local\SubutaiUpdaterWatchdog';
+  const mutexScope = 'Local\\SubutaiUpdaterWatchdog';
   const mutexNameLiteral = quotePowerShellLiteral(`${mutexScope}-${journal.transactionId}`);
   const singleInstanceCommand = String.raw`
 $createdNew = $false
