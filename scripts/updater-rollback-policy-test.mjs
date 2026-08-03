@@ -37,7 +37,6 @@ for (const required of [
   'Cached rollback installer checksum mismatch',
   'Staged update installer checksum mismatch',
   'redactUpdateError',
-  String.raw`Local\SubutaiUpdaterWatchdog`,
   '[System.Threading.Mutex]::new',
   '$mutex = $null',
   'if ($null -ne $mutex)',
@@ -49,6 +48,9 @@ for (const required of [
   'launcher-requested',
   'launcher-started',
 ]) requireText(transaction, required, 'Transactional updater journal');
+if (!/const mutexScope = 'Local\\\\SubutaiUpdaterWatchdog';/u.test(transaction)) {
+  throw new Error('Watchdog launcher must use the Local\\SubutaiUpdaterWatchdog mutex namespace with a correctly escaped TypeScript source literal.');
+}
 if (transaction.includes('New-Object System.Threading.Mutex(')) {
   throw new Error('Watchdog launcher must use the typed Mutex constructor so constructor failures are caught and logged.');
 }
