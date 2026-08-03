@@ -31,7 +31,7 @@ Status: **PASS on merged source and engineering workflows**
 
 Status: **IN PROGRESS on this PR**
 
-- [x] root package version is `0.2.0-rc.1`;
+- [x] root package version is `0.2.0-rc.2`;
 - [x] desktop package version matches;
 - [x] extension package version matches;
 - [x] shared package version matches;
@@ -106,7 +106,7 @@ Status: **PENDING**
 Only after G2–G5 pass:
 
 - [ ] merge the accepted version/preflight PR;
-- [ ] create exact tag `v0.2.0-rc.1`;
+- [ ] create exact tag `v0.2.0-rc.2`;
 - [ ] run the protected release workflow;
 - [ ] publish to `enkhbat194/subutai-releases` as a prerelease;
 - [ ] verify anonymous client discovery and signed-manifest validation;
@@ -116,8 +116,10 @@ Only after G2–G5 pass:
 
 This PR must not:
 
-- create a tag;
-- create a GitHub Release;
-- publish Setup or Portable artifacts;
+- create a production tag;
+- create a production GitHub Release;
+- publish signed production Setup or Portable artifacts;
 - deploy a production channel;
 - create or expose production secrets.
+
+An explicitly labelled unsigned internal owner-test prerelease is permitted for usability verification and remains separate from G2–G6 production release readiness.
