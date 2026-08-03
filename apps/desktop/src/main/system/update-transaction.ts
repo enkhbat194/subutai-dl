@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { appendFileSync, closeSync, openSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import {
   DEFAULT_HEALTH_TIMEOUT_MS,
@@ -123,19 +124,20 @@ export async function launchUpdateWatchdog(
   const rootPath = dirname(dirname(journal.watchdogPath));
   const watchdogPathLiteral = quotePowerShellLiteral(journal.watchdogPath);
   const transactionPathLiteral = quotePowerShellLiteral(updateJournalPath(rootPath));
-  const launcherLogLiteral = quotePowerShellLiteral(join(rootPath, 'watchdog-launcher.log'));
+  const launcherLogPath = join(rootPath, 'watchdog-launcher.log');
   const mutexScope = 'Local\\SubutaiUpdaterWatchdog';
   const mutexNameLiteral = quotePowerShellLiteral(`${mutexScope}-${journal.transactionId}`);
   const singleInstanceCommand = String.raw`
 $createdNew = $false
 $mutex = $null
 try {
+  Write-Output ('launcher-started ' + [DateTime]::UtcNow.ToString('o'))
   $mutex = [System.Threading.Mutex]::new($true, ${mutexNameLiteral}, [ref]$createdNew)
-  if (-not $createdNew) { exit 0 }
-  & ${watchdogPathLiteral} -TransactionPath ${transactionPathLiteral} -ParentProcessId ${parentProcessId} *>> ${launcherLogLiteral}
+  if (-not $createdNew) { Write-Output 'launcher-duplicate'; exit 0 }
+  & ${watchdogPathLiteral} -TransactionPath ${transactionPathLiteral} -ParentProcessId ${parentProcessId}
   exit $LASTEXITCODE
 } catch {
-  $_ | Out-String | Add-Content -LiteralPath ${launcherLogLiteral}
+  Write-Error ($_ | Out-String)
   exit 2
 } finally {
   if ($null -ne $mutex) {
@@ -144,9 +146,42 @@ try {
   }
 }
 `;
-  const child = spawn('powershell.exe', [
-    '-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
-    '-Command', singleInstanceCommand,
-  ], { windowsHide: true, detached: true, stdio: 'ignore' });
-  child.unref();
+  const encodedCommand = Buffer.from(singleInstanceCommand, 'utf16le').toString('base64');
+  appendFileSync(
+    launcherLogPath,
+    `${new Date().toISOString()} launcher-requested transaction=${journal.transactionId}\n`,
+    'utf8',
+  );
+
+  const launcherLogFile = openSync(launcherLogPath, 'a');
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const child = spawn('powershell.exe', [
+        '-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
+        '-EncodedCommand', encodedCommand,
+      ], {
+        windowsHide: true,
+        detached: true,
+        stdio: ['ignore', launcherLogFile, launcherLogFile],
+      });
+      child.once('error', reject);
+      child.once('spawn', () => {
+        child.unref();
+        resolve();
+      });
+    });
+  } catch (error) {
+    try {
+      appendFileSync(
+        launcherLogPath,
+        `${new Date().toISOString()} launcher-spawn-failed ${redactUpdateError(error)}\n`,
+        'utf8',
+      );
+    } catch {
+      // Preserve the original spawn error.
+    }
+    throw error;
+  } finally {
+    closeSync(launcherLogFile);
+  }
 }
