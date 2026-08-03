@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { dirname } from 'node:path';
+import { dirname, join } from 'node:path';
 import {
   DEFAULT_HEALTH_TIMEOUT_MS,
   type ReadJournalOptions,
@@ -32,6 +32,10 @@ async function replaceJournal(
   next.updatedAt = new Date().toISOString();
   await writeUpdateJournal(next, journalOptions);
   return next;
+}
+
+function quotePowerShellLiteral(value: string): string {
+  return `'${value.replaceAll("'", "''")}'`;
 }
 
 export async function armUpdateTransaction(
@@ -112,25 +116,32 @@ export async function launchUpdateWatchdog(
   if (await sha256File(journal.watchdogPath) !== journal.watchdogSha256) {
     throw new Error('Updater watchdog checksum mismatch.');
   }
+  if (!Number.isSafeInteger(parentProcessId) || parentProcessId < 0) {
+    throw new Error('Updater watchdog parent process identifier is invalid.');
+  }
+
   const rootPath = dirname(dirname(journal.watchdogPath));
+  const watchdogPathLiteral = quotePowerShellLiteral(journal.watchdogPath);
+  const transactionPathLiteral = quotePowerShellLiteral(updateJournalPath(rootPath));
+  const launcherLogLiteral = quotePowerShellLiteral(join(rootPath, 'watchdog-launcher.log'));
   const singleInstanceCommand = String.raw`
 $createdNew = $false
 $mutex = New-Object System.Threading.Mutex($true, 'Local\SubutaiUpdaterWatchdog', [ref]$createdNew)
 if (-not $createdNew) { $mutex.Dispose(); exit 0 }
 try {
-  & $args[0] -TransactionPath $args[1] -ParentProcessId ([int]$args[2])
+  & ${watchdogPathLiteral} -TransactionPath ${transactionPathLiteral} -ParentProcessId ${parentProcessId} *>> ${launcherLogLiteral}
   exit $LASTEXITCODE
+} catch {
+  $_ | Out-String | Add-Content -LiteralPath ${launcherLogLiteral}
+  exit 2
 } finally {
-  $mutex.ReleaseMutex()
+  if ($createdNew) { $mutex.ReleaseMutex() }
   $mutex.Dispose()
 }
 `;
   const child = spawn('powershell.exe', [
     '-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
     '-Command', singleInstanceCommand,
-    journal.watchdogPath,
-    updateJournalPath(rootPath),
-    String(parentProcessId),
   ], { windowsHide: true, detached: true, stdio: 'ignore' });
   child.unref();
 }
