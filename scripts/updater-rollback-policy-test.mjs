@@ -38,7 +38,15 @@ for (const required of [
   'Staged update installer checksum mismatch',
   'redactUpdateError',
   String.raw`Local\\SubutaiUpdaterWatchdog`,
+  '[System.Threading.Mutex]::new',
+  '$mutex = $null',
+  'if ($null -ne $mutex)',
+  'try { $mutex.ReleaseMutex() } catch {}',
+  "join(rootPath, 'watchdog-launcher.log')",
 ]) requireText(transaction, required, 'Transactional updater journal');
+if (transaction.includes('New-Object System.Threading.Mutex(')) {
+  throw new Error('Watchdog launcher must use the typed Mutex constructor so constructor failures are caught and logged.');
+}
 
 for (const required of [
   'autoUpdater.autoInstallOnAppQuit = false',
@@ -139,4 +147,4 @@ if (nativeWorkflow.includes('contents: write') || n5Workflow.includes('contents:
   throw new Error('Final updater validation workflows must remain check-only.');
 }
 
-console.log('Subutai updater rollback policy passed: durable journal, verified cache, startup health, external watchdog, bounded rollback and read-only Windows gates.');
+console.log('Subutai updater rollback policy passed: durable journal, verified cache, startup health, typed and logged external watchdog launcher, bounded rollback and read-only Windows gates.');
