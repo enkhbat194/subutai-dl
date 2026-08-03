@@ -12,6 +12,7 @@ on:
       - "scripts/validate-windows-package.ps1"
       - "package.json"
       - "pnpm-lock.yaml"
+      - ".github/workflows/n5-production-acceptance.yml"
       - ".github/workflows/mvp-internal-release.yml"
   workflow_dispatch:
 
