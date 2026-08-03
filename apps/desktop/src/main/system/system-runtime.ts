@@ -24,6 +24,7 @@ import {
   downloadNotificationTransitions,
   normalizeSystemSettings,
 } from './system-policy';
+import { toSanitizedUpdateFailure } from './update-error';
 
 const { autoUpdater } = electronUpdater;
 const SETTINGS_KEY = 'system-settings';
@@ -189,6 +190,12 @@ function setUpdate(next: Partial<UpdateState>, clearFields: ClearableUpdateField
   broadcast();
 }
 
+function recordUpdateFailure(error: unknown): void {
+  const failure = toSanitizedUpdateFailure(error);
+  console.error(`[subutai-updater] ${failure.diagnosticMessage}`);
+  setUpdate({ status: 'error', error: failure.publicMessage });
+}
+
 async function checkForUpdates(): Promise<SystemState> {
   if (!app.isPackaged) {
     setUpdate(
@@ -204,7 +211,7 @@ async function checkForUpdates(): Promise<SystemState> {
   try {
     await autoUpdater.checkForUpdates();
   } catch (error) {
-    setUpdate({ status: 'error', error: error instanceof Error ? error.message : String(error) });
+    recordUpdateFailure(error);
   }
   return state();
 }
@@ -215,7 +222,7 @@ async function downloadUpdate(): Promise<SystemState> {
     setUpdate({ status: 'downloading' }, ['error']);
     await autoUpdater.downloadUpdate();
   } catch (error) {
-    setUpdate({ status: 'error', error: error instanceof Error ? error.message : String(error) });
+    recordUpdateFailure(error);
   }
   return state();
 }
@@ -265,7 +272,7 @@ function configureUpdater(): void {
     }
   });
   autoUpdater.on('error', (error) => {
-    setUpdate({ status: 'error', error: error.message });
+    recordUpdateFailure(error);
   });
 }
 

@@ -2,6 +2,8 @@ param(
   [Parameter(Mandatory = $true)][string]$TransactionPath,
   [ValidateRange(0, 2147483647)][int]$ParentProcessId = 0,
   [string]$LauncherLogPath = '',
+  [string]$StartupSignalPath = '',
+  [string]$StartupSignal = '',
   [string]$WatchdogMutexName = 'Local\SubutaiUpdaterWatchdog',
   [ValidateRange(100, 10000)][int]$PollMilliseconds = 1000,
   [switch]$TestMode,
@@ -20,13 +22,41 @@ $script:watchdogLogPath = if ([string]::IsNullOrWhiteSpace($LauncherLogPath)) {
 } else {
   [System.IO.Path]::GetFullPath($LauncherLogPath)
 }
+$script:startupSignalPath = if ([string]::IsNullOrWhiteSpace($StartupSignalPath)) {
+  Join-Path $root 'watchdog-started.signal'
+} else {
+  [System.IO.Path]::GetFullPath($StartupSignalPath)
+}
+$script:startupSignal = if ([string]::IsNullOrWhiteSpace($StartupSignal)) {
+  $transactionFullPath
+} else { $StartupSignal }
+$rootPrefix = ([System.IO.Path]::GetFullPath($root)).TrimEnd('\') + '\'
+if (-not $script:startupSignalPath.StartsWith($rootPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+  throw 'Watchdog startup signal path must remain inside updater state.'
+}
 
 function Write-WatchdogLog {
   param([Parameter(Mandatory = $true)][string]$Message)
   $directory = Split-Path -Parent $script:watchdogLogPath
-  New-Item -ItemType Directory -Force -Path $directory | Out-Null
+  try { New-Item -ItemType Directory -Force -Path $directory | Out-Null } catch { return }
   $line = "{0} {1}`n" -f [DateTime]::UtcNow.ToString('o'), $Message
-  [System.IO.File]::AppendAllText($script:watchdogLogPath, $line, (New-Object System.Text.UTF8Encoding($false)))
+  for ($attempt = 1; $attempt -le 5; $attempt += 1) {
+    try {
+      [System.IO.File]::AppendAllText($script:watchdogLogPath, $line, (New-Object System.Text.UTF8Encoding($false)))
+      return
+    } catch {
+      if ($attempt -eq 5) { return }
+      Start-Sleep -Milliseconds 50
+    }
+  }
+}
+
+function Write-StartupSignal {
+  $directory = Split-Path -Parent $script:startupSignalPath
+  New-Item -ItemType Directory -Force -Path $directory | Out-Null
+  $temporary = "$($script:startupSignalPath).$PID.tmp"
+  [System.IO.File]::WriteAllText($temporary, $script:startupSignal, (New-Object System.Text.UTF8Encoding($false)))
+  [System.IO.File]::Move($temporary, $script:startupSignalPath)
 }
 
 function Quote-ProcessArgument {
@@ -36,6 +66,7 @@ function Quote-ProcessArgument {
 }
 
 if (-not $WorkerMode) {
+  Remove-Item -LiteralPath $script:startupSignalPath -Force -ErrorAction SilentlyContinue
   Write-WatchdogLog "watchdog-bootstrap-started pid=$PID transaction=$transactionFullPath"
   $powerShellPath = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
   if (-not (Test-Path -LiteralPath $powerShellPath -PathType Leaf)) { $powerShellPath = 'powershell.exe' }
@@ -45,6 +76,8 @@ if (-not $WorkerMode) {
     '-TransactionPath', (Quote-ProcessArgument $transactionFullPath),
     '-ParentProcessId', [string]$ParentProcessId,
     '-LauncherLogPath', (Quote-ProcessArgument $script:watchdogLogPath),
+    '-StartupSignalPath', (Quote-ProcessArgument $script:startupSignalPath),
+    '-StartupSignal', (Quote-ProcessArgument $script:startupSignal),
     '-WatchdogMutexName', (Quote-ProcessArgument $WatchdogMutexName),
     '-PollMilliseconds', [string]$PollMilliseconds,
     '-WorkerMode'
@@ -55,26 +88,13 @@ if (-not $WorkerMode) {
     $workerArguments += @('-TestRollbackMarker', (Quote-ProcessArgument $TestRollbackMarker))
   }
 
-  $startupOffset = if (Test-Path -LiteralPath $script:watchdogLogPath) {
-    (Get-Item -LiteralPath $script:watchdogLogPath).Length
-  } else { 0 }
   $worker = Start-Process -FilePath $powerShellPath -ArgumentList $workerArguments -WorkingDirectory $root -WindowStyle Hidden -PassThru
   Write-WatchdogLog "watchdog-worker-created pid=$($worker.Id) workingDirectory=$root"
   $startupDeadline = [DateTime]::UtcNow.AddSeconds(5)
   while ([DateTime]::UtcNow -lt $startupDeadline) {
-    if (Test-Path -LiteralPath $script:watchdogLogPath) {
-      $stream = [System.IO.File]::Open(
-        $script:watchdogLogPath,
-        [System.IO.FileMode]::Open,
-        [System.IO.FileAccess]::Read,
-        [System.IO.FileShare]::ReadWrite
-      )
-      try {
-        $stream.Position = [Math]::Min($startupOffset, $stream.Length)
-        $reader = New-Object System.IO.StreamReader($stream, (New-Object System.Text.UTF8Encoding($false)))
-        try { $startupLog = $reader.ReadToEnd() } finally { $reader.Dispose() }
-      } finally { $stream.Dispose() }
-      if ($startupLog.Contains('watchdog-started')) {
+    if (Test-Path -LiteralPath $script:startupSignalPath -PathType Leaf) {
+      $observedSignal = [System.IO.File]::ReadAllText($script:startupSignalPath)
+      if ($observedSignal -eq $script:startupSignal) {
         if ($TestMode) {
           $worker.WaitForExit()
           Write-WatchdogLog "watchdog-bootstrap-finished workerPid=$($worker.Id) workerExitCode=$($worker.ExitCode)"
@@ -93,6 +113,7 @@ if (-not $WorkerMode) {
 }
 
 Write-WatchdogLog "watchdog-started pid=$PID transaction=$transactionFullPath workingDirectory=$([Environment]::CurrentDirectory)"
+Write-StartupSignal
 
 $mutex = $null
 $mutexCreatedNew = $false

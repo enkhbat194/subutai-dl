@@ -83,6 +83,7 @@ for (const required of [
   "@subutaidesktop-updater",
   'Get-CimInstance Win32_Process',
   'Capture-LiveState',
+  '[System.IO.FileShare]::ReadWrite -bor [System.IO.FileShare]::Delete',
   'Start-Sleep -Milliseconds 250',
   '$process.WaitForExit()',
   '$process.Refresh()',
@@ -111,7 +112,7 @@ if (monitor.includes('if ($process.ExitCode -ne 0) { exit $process.ExitCode }'))
 }
 
 for (const required of [
-  'WATCHDOG_STARTUP_TIMEOUT_MS = 5_000',
+  'WATCHDOG_STARTUP_TIMEOUT_MS = 7_000',
   'function powerShellExecutablePath()',
   'waitForWatchdogStartup',
   "join(rootPath, 'watchdog-launcher.log')",
@@ -122,6 +123,9 @@ for (const required of [
   "'-ParentProcessId',",
   'String(parentProcessId)',
   "'-LauncherLogPath',",
+  "'-StartupSignalPath',",
+  "'-StartupSignal',",
+  'watchdog-started-${randomUUID()}.signal',
   "join(rootPath, 'watchdog-child.log')",
   'detached: false',
   'cwd: rootPath',
@@ -155,6 +159,8 @@ for (const required of [
   '-WorkingDirectory $root',
   'watchdog-bootstrap-finished',
   'watchdog-started',
+  'Write-StartupSignal',
+  'Watchdog startup signal path must remain inside updater state.',
   'workingDirectory=',
   'mutex-created',
   'transaction-loaded',
@@ -202,6 +208,8 @@ for (const required of [
   'watchdog-finished',
   'watchdog-electron-parent-fixture.cjs',
   'createRequire',
+  "'--disable-gpu'",
+  "'--in-process-gpu'",
   'electron-parent-exiting',
   'parent-exited',
   'rollback-journal-written',
@@ -213,6 +221,7 @@ for (const required of [
 
 for (const required of [
   "require('electron')",
+  'app.disableHardwareAcceleration()',
   "'-File'",
   'watchdogPath',
   'detached: false',

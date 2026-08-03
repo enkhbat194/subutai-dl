@@ -204,12 +204,25 @@ async function runProductionWatchdog(fixture) {
   ], { env: fixture.environment });
 
   const deadline = Date.now() + 15_000;
+  let lastMissingJournalError = null;
   while (Date.now() < deadline) {
-    const journal = JSON.parse(await readFile(fixture.transactionPath, 'utf8'));
-    if (['committed', 'rolled-back', 'failed-safe'].includes(journal.updateState)) return;
+    try {
+      const journal = JSON.parse(await readFile(fixture.transactionPath, 'utf8'));
+      if (['committed', 'rolled-back', 'failed-safe'].includes(journal.updateState)) return;
+      lastMissingJournalError = null;
+    } catch (error) {
+      if (!(error instanceof Error) || !('code' in error) || error.code !== 'ENOENT') throw error;
+      // The watchdog atomically replaces the journal, so its destination can be
+      // briefly absent between the old-file removal and final rename on Windows.
+      lastMissingJournalError = error;
+    }
     await new Promise((resolveDelay) => setTimeout(resolveDelay, 50));
   }
-  throw new Error('Script-owned watchdog worker did not reach a terminal transaction state within 15 seconds.');
+  throw new Error(
+    `Script-owned watchdog worker did not reach a terminal transaction state within 15 seconds.${
+      lastMissingJournalError ? ` Last journal read failed: ${lastMissingJournalError.message}` : ''
+    }`,
+  );
 }
 
 async function writeRegistryHelpers(workspace) {
@@ -320,6 +333,18 @@ try {
   assert.equal(resolve(chromiumManifest.path), resolve(failed.installedExecutablePath));
   assert.equal(resolve(firefoxManifest.path), resolve(failed.installedExecutablePath));
   console.log('Local two-build failed-startup rollback, browser bridge and user-data preservation acceptance passed.');
+} catch (error) {
+  for (const scenario of ['healthy-two-build', 'failed-two-build']) {
+    const updaterRoot = join(workspace, scenario, 'LocalAppData', 'Subutai', 'Updater');
+    for (const name of ['update-transaction.json', 'watchdog-evidence.json', 'watchdog-launcher.log']) {
+      const path = join(updaterRoot, name);
+      if (await exists(path)) {
+        const diagnostic = (await readFile(path, 'utf8')).slice(-16_000);
+        console.error(`--- ${scenario}/${name} ---\n${diagnostic}`);
+      }
+    }
+  }
+  throw error;
 } finally {
   try {
     if (registrySnapshot && registryHelpers && await exists(registrySnapshot)) {
