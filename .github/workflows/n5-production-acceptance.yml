@@ -18,10 +18,15 @@ on:
       - "scripts/install-temporary-media-tools.ps1"
       - "scripts/n5-windows-acceptance.ps1"
       - "scripts/production-acceptance-policy-test.mjs"
+      - "scripts/real-two-installer-acceptance.ps1"
+      - "scripts/real-update-state-probe.mjs"
+      - "scripts/real-update-feed-server.mjs"
+      - "scripts/real-update-acceptance-policy-test.mjs"
       - "scripts/validate-windows-package.ps1"
       - "package.json"
       - "pnpm-lock.yaml"
       - ".github/workflows/n5-production-acceptance.yml"
+      - ".github/workflows/real-update-acceptance.yml"
       - ".github/workflows/restart-recovery.yml"
       - ".github/workflows/release.yml"
   workflow_dispatch:
@@ -143,7 +148,6 @@ jobs:
           SUBUTAI_BENCHMARK_QUEUE_JOBS: 12
           SUBUTAI_BENCHMARK_QUEUE_MIB: 16
           SUBUTAI_BENCHMARK_CONCURRENCY: 3
-          SUBUTAI_BENCHMARK_SEGMENTS: 8
           SUBUTAI_BENCHMARK_REPORT: artifacts/n5/native-large-queue-report.json
         run: pnpm test:native-large-queue
 

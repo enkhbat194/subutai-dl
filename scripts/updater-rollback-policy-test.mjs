@@ -37,8 +37,37 @@ for (const required of [
   'Cached rollback installer checksum mismatch',
   'Staged update installer checksum mismatch',
   'redactUpdateError',
-  'Local\\SubutaiUpdaterWatchdog',
+  'WATCHDOG_STARTUP_TIMEOUT_MS = 5_000',
+  'function powerShellExecutablePath()',
+  'waitForWatchdogStartup',
+  "join(rootPath, 'watchdog-launcher.log')",
+  "'-File',",
+  'journal.watchdogPath',
+  "'-TransactionPath',",
+  'updateJournalPath(rootPath)',
+  "'-ParentProcessId',",
+  'String(parentProcessId)',
+  "'-LauncherLogPath',",
+  "join(rootPath, 'watchdog-child.log')",
+  'detached: false',
+  'cwd: rootPath',
+  "stdio: ['ignore', childOutputFile, childOutputFile]",
+  'launcher-requested',
+  'watchdog-started',
+  'watchdog-start-acknowledged',
+  'watchdog-start-failed',
+  'child.kill()',
+  'child.unref()',
 ]) requireText(transaction, required, 'Transactional updater journal');
+const startupTimeout = /WATCHDOG_STARTUP_TIMEOUT_MS\s*=\s*([\d_]+)/u.exec(transaction);
+if (!startupTimeout || Number(startupTimeout[1].replaceAll('_', '')) > 10_000) {
+  throw new Error('Watchdog startup acknowledgement must fail within 10 seconds.');
+}
+for (const forbidden of ['-Command', '-EncodedCommand', 'shell: true', 'detached: true', "stdio: 'ignore'", 'quotePowerShellLiteral']) {
+  if (transaction.includes(forbidden)) {
+    throw new Error(`Watchdog launcher contains forbidden inline-shell behavior: ${forbidden}`);
+  }
+}
 
 for (const required of [
   'autoUpdater.autoInstallOnAppQuit = false',
@@ -96,6 +125,41 @@ for (const required of [
   'corrupt-journal-no-action',
   'failed-safe',
   'Start-Process -FilePath $installedExecutable',
+  "'Local\\SubutaiUpdaterWatchdog'",
+  '[System.Threading.Mutex]::new',
+  '$mutex = $null',
+  'if ($null -ne $mutex)',
+  '$mutex.ReleaseMutex()',
+  '-WorkingDirectory $root',
+  'watchdog-started',
+  'workingDirectory=',
+  'mutex-created',
+  'transaction-loaded',
+  'parent-wait-started',
+  'health-deadline-wait',
+  'rollback-triggered',
+  'previous-installer-path-validated',
+  'previous-installer-sha256-verified',
+  'target-install-wait',
+  'target-install-ready',
+  'Target Subutai installation did not become ready within 120 seconds.',
+  "'installed-version.txt'",
+  'target-process-stop',
+  'target-process-tree-closed',
+  'Test-PathInside $Directory $processPath',
+  'Wait-InstallTreeUnlocked',
+  '[System.IO.FileShare]::None',
+  'target-file-locked',
+  'target-files-unlocked',
+  'target-process-closed',
+  'rollback-installer-started',
+  'rollback-installer-exit',
+  'browser-registration-restored',
+  'rollback-journal-written',
+  'baseline-restarted',
+  'watchdog-completed',
+  'watchdog-error',
+  'watchdog-finished',
 ]) requireText(watchdog, required, 'External rollback watchdog');
 if (/Restart-Computer|shutdown\.exe|SetSuspendState|rundll32.+powrprof/iu.test(watchdog)) {
   throw new Error('Updater watchdog must never restart, shut down, sleep or hibernate Windows.');
@@ -114,6 +178,7 @@ for (const required of [
   'Registry]::CurrentUser.DeleteSubKeyTree',
   'Registry]::CurrentUser.CreateSubKey',
   'RegistryValueKind]::String',
+  '$entries = Get-Content -LiteralPath $InputPath -Raw | ConvertFrom-Json',
 ]) requireText(twoBuildAcceptance, required, 'Local two-build updater acceptance');
 
 for (const required of [
@@ -139,4 +204,4 @@ if (nativeWorkflow.includes('contents: write') || n5Workflow.includes('contents:
   throw new Error('Final updater validation workflows must remain check-only.');
 }
 
-console.log('Subutai updater rollback policy passed: durable journal, verified cache, startup health, external watchdog, bounded rollback and read-only Windows gates.');
+console.log('Subutai updater rollback policy passed: durable journal, verified cache, startup health, direct -File watchdog launch with bounded acknowledgement, script-owned mutex/log phases, bounded rollback and read-only Windows gates.');

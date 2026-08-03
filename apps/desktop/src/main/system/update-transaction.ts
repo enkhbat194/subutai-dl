@@ -1,5 +1,13 @@
 import { spawn } from 'node:child_process';
-import { dirname } from 'node:path';
+import {
+  appendFileSync,
+  closeSync,
+  existsSync,
+  openSync,
+  readFileSync,
+  statSync,
+} from 'node:fs';
+import { dirname, join } from 'node:path';
 import {
   DEFAULT_HEALTH_TIMEOUT_MS,
   type ReadJournalOptions,
@@ -17,6 +25,9 @@ import {
 export * from './update-journal.ts';
 export * from './update-staging.ts';
 
+const WATCHDOG_STARTUP_TIMEOUT_MS = 5_000;
+const WATCHDOG_STARTUP_POLL_MS = 100;
+
 async function replaceJournal(
   rootPath: string,
   allowedInstallRoots: string[] | undefined,
@@ -32,6 +43,43 @@ async function replaceJournal(
   next.updatedAt = new Date().toISOString();
   await writeUpdateJournal(next, journalOptions);
   return next;
+}
+
+function powerShellExecutablePath(): string {
+  const windowsRoot = process.env.SystemRoot?.trim() || process.env.WINDIR?.trim();
+  if (windowsRoot) {
+    const systemPowerShell = join(
+      windowsRoot,
+      'System32',
+      'WindowsPowerShell',
+      'v1.0',
+      'powershell.exe',
+    );
+    if (existsSync(systemPowerShell)) return systemPowerShell;
+  }
+  return 'powershell.exe';
+}
+
+async function waitForWatchdogStartup(
+  child: ReturnType<typeof spawn>,
+  launcherLogPath: string,
+  startupOffset: number,
+): Promise<void> {
+  const deadline = Date.now() + WATCHDOG_STARTUP_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    try {
+      const log = readFileSync(launcherLogPath);
+      const newOutput = log.subarray(Math.min(startupOffset, log.length)).toString('utf8');
+      if (newOutput.includes('watchdog-started')) return;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
+    if (child.exitCode !== null) {
+      throw new Error(`Updater watchdog exited before startup acknowledgement with code ${child.exitCode}.`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, WATCHDOG_STARTUP_POLL_MS));
+  }
+  throw new Error(`Updater watchdog did not acknowledge startup within ${WATCHDOG_STARTUP_TIMEOUT_MS}ms.`);
 }
 
 export async function armUpdateTransaction(
@@ -112,25 +160,71 @@ export async function launchUpdateWatchdog(
   if (await sha256File(journal.watchdogPath) !== journal.watchdogSha256) {
     throw new Error('Updater watchdog checksum mismatch.');
   }
+  if (!Number.isSafeInteger(parentProcessId) || parentProcessId < 0) {
+    throw new Error('Updater watchdog parent process identifier is invalid.');
+  }
+
   const rootPath = dirname(dirname(journal.watchdogPath));
-  const singleInstanceCommand = String.raw`
-$createdNew = $false
-$mutex = New-Object System.Threading.Mutex($true, 'Local\SubutaiUpdaterWatchdog', [ref]$createdNew)
-if (-not $createdNew) { $mutex.Dispose(); exit 0 }
-try {
-  & $args[0] -TransactionPath $args[1] -ParentProcessId ([int]$args[2])
-  exit $LASTEXITCODE
-} finally {
-  $mutex.ReleaseMutex()
-  $mutex.Dispose()
-}
-`;
-  const child = spawn('powershell.exe', [
-    '-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
-    '-Command', singleInstanceCommand,
+  const launcherLogPath = join(rootPath, 'watchdog-launcher.log');
+  const childOutputPath = join(rootPath, 'watchdog-child.log');
+  appendFileSync(
+    launcherLogPath,
+    `${new Date().toISOString()} launcher-requested transaction=${journal.transactionId}\n`,
+    'utf8',
+  );
+  const startupOffset = statSync(launcherLogPath).size;
+  const watchdogArguments = [
+    '-NoLogo',
+    '-NoProfile',
+    '-NonInteractive',
+    '-ExecutionPolicy',
+    'Bypass',
+    '-File',
     journal.watchdogPath,
+    '-TransactionPath',
     updateJournalPath(rootPath),
+    '-ParentProcessId',
     String(parentProcessId),
-  ], { windowsHide: true, detached: true, stdio: 'ignore' });
-  child.unref();
+    '-LauncherLogPath',
+    launcherLogPath,
+  ];
+
+  const childOutputFile = openSync(childOutputPath, 'a');
+  let child: ReturnType<typeof spawn> | null = null;
+  try {
+    child = await new Promise<ReturnType<typeof spawn>>((resolve, reject) => {
+      const spawned = spawn(powerShellExecutablePath(), watchdogArguments, {
+        cwd: rootPath,
+        windowsHide: true,
+        detached: false,
+        stdio: ['ignore', childOutputFile, childOutputFile],
+      });
+      spawned.once('error', reject);
+      spawned.once('spawn', () => resolve(spawned));
+    });
+    await waitForWatchdogStartup(child, launcherLogPath, startupOffset);
+    appendFileSync(
+      launcherLogPath,
+      `${new Date().toISOString()} watchdog-start-acknowledged transaction=${journal.transactionId}\n`,
+      'utf8',
+    );
+    child.unref();
+  } catch (error) {
+    if (child) {
+      if (child.exitCode === null) child.kill();
+      child.unref();
+    }
+    try {
+      appendFileSync(
+        launcherLogPath,
+        `${new Date().toISOString()} watchdog-start-failed ${redactUpdateError(error)}\n`,
+        'utf8',
+      );
+    } catch {
+      // Preserve the original spawn error.
+    }
+    throw error;
+  } finally {
+    closeSync(childOutputFile);
+  }
 }

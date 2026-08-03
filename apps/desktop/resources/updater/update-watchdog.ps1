@@ -1,14 +1,102 @@
 param(
   [Parameter(Mandatory = $true)][string]$TransactionPath,
   [ValidateRange(0, 2147483647)][int]$ParentProcessId = 0,
+  [string]$LauncherLogPath = '',
+  [string]$WatchdogMutexName = 'Local\SubutaiUpdaterWatchdog',
   [ValidateRange(100, 10000)][int]$PollMilliseconds = 1000,
   [switch]$TestMode,
   [string]$TestAllowedInstallRoot = '',
-  [string]$TestRollbackMarker = ''
+  [string]$TestRollbackMarker = '',
+  [switch]$WorkerMode
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+
+$transactionFullPath = [System.IO.Path]::GetFullPath($TransactionPath)
+$root = Split-Path -Parent $transactionFullPath
+$script:watchdogLogPath = if ([string]::IsNullOrWhiteSpace($LauncherLogPath)) {
+  Join-Path $root 'watchdog-launcher.log'
+} else {
+  [System.IO.Path]::GetFullPath($LauncherLogPath)
+}
+
+function Write-WatchdogLog {
+  param([Parameter(Mandatory = $true)][string]$Message)
+  $directory = Split-Path -Parent $script:watchdogLogPath
+  New-Item -ItemType Directory -Force -Path $directory | Out-Null
+  $line = "{0} {1}`n" -f [DateTime]::UtcNow.ToString('o'), $Message
+  [System.IO.File]::AppendAllText($script:watchdogLogPath, $line, (New-Object System.Text.UTF8Encoding($false)))
+}
+
+function Quote-ProcessArgument {
+  param([Parameter(Mandatory = $true)][string]$Value)
+  if ($Value.Contains('"')) { throw 'Watchdog process argument contains an invalid quote.' }
+  return '"' + $Value + '"'
+}
+
+if (-not $WorkerMode) {
+  Write-WatchdogLog "watchdog-bootstrap-started pid=$PID transaction=$transactionFullPath"
+  $powerShellPath = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+  if (-not (Test-Path -LiteralPath $powerShellPath -PathType Leaf)) { $powerShellPath = 'powershell.exe' }
+  $workerArguments = @(
+    '-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
+    '-File', (Quote-ProcessArgument $PSCommandPath),
+    '-TransactionPath', (Quote-ProcessArgument $transactionFullPath),
+    '-ParentProcessId', [string]$ParentProcessId,
+    '-LauncherLogPath', (Quote-ProcessArgument $script:watchdogLogPath),
+    '-WatchdogMutexName', (Quote-ProcessArgument $WatchdogMutexName),
+    '-PollMilliseconds', [string]$PollMilliseconds,
+    '-WorkerMode'
+  )
+  if ($TestMode) {
+    $workerArguments += '-TestMode'
+    $workerArguments += @('-TestAllowedInstallRoot', (Quote-ProcessArgument $TestAllowedInstallRoot))
+    $workerArguments += @('-TestRollbackMarker', (Quote-ProcessArgument $TestRollbackMarker))
+  }
+
+  $startupOffset = if (Test-Path -LiteralPath $script:watchdogLogPath) {
+    (Get-Item -LiteralPath $script:watchdogLogPath).Length
+  } else { 0 }
+  $worker = Start-Process -FilePath $powerShellPath -ArgumentList $workerArguments -WorkingDirectory $root -WindowStyle Hidden -PassThru
+  Write-WatchdogLog "watchdog-worker-created pid=$($worker.Id) workingDirectory=$root"
+  $startupDeadline = [DateTime]::UtcNow.AddSeconds(5)
+  while ([DateTime]::UtcNow -lt $startupDeadline) {
+    if (Test-Path -LiteralPath $script:watchdogLogPath) {
+      $stream = [System.IO.File]::Open(
+        $script:watchdogLogPath,
+        [System.IO.FileMode]::Open,
+        [System.IO.FileAccess]::Read,
+        [System.IO.FileShare]::ReadWrite
+      )
+      try {
+        $stream.Position = [Math]::Min($startupOffset, $stream.Length)
+        $reader = New-Object System.IO.StreamReader($stream, (New-Object System.Text.UTF8Encoding($false)))
+        try { $startupLog = $reader.ReadToEnd() } finally { $reader.Dispose() }
+      } finally { $stream.Dispose() }
+      if ($startupLog.Contains('watchdog-started')) {
+        if ($TestMode) {
+          $worker.WaitForExit()
+          Write-WatchdogLog "watchdog-bootstrap-finished workerPid=$($worker.Id) workerExitCode=$($worker.ExitCode)"
+          exit $worker.ExitCode
+        }
+        Write-WatchdogLog "watchdog-bootstrap-finished workerPid=$($worker.Id)"
+        exit 0
+      }
+    }
+    $worker.Refresh()
+    if ($worker.HasExited) { throw "Watchdog worker exited before startup acknowledgement with code $($worker.ExitCode)." }
+    Start-Sleep -Milliseconds 50
+  }
+  try { Stop-Process -Id $worker.Id -Force -ErrorAction SilentlyContinue } catch { }
+  throw 'Watchdog worker did not acknowledge startup within 5000ms.'
+}
+
+Write-WatchdogLog "watchdog-started pid=$PID transaction=$transactionFullPath workingDirectory=$([Environment]::CurrentDirectory)"
+
+$mutex = $null
+$mutexCreatedNew = $false
+$mutexOwned = $false
 
 function Get-FullPath {
   param([Parameter(Mandatory = $true)][string]$Path)
@@ -46,11 +134,65 @@ function Write-AtomicJson {
   Move-Item -LiteralPath $temporary -Destination $Path -Force
 }
 
-$transactionFullPath = Get-FullPath $TransactionPath
 if ([System.IO.Path]::GetFileName($transactionFullPath) -ne 'update-transaction.json') {
   throw 'Transaction file name is not controlled by Subutai.'
 }
-$root = Split-Path -Parent $transactionFullPath
+
+function Wait-InstallTreeUnlocked {
+  param(
+    [Parameter(Mandatory = $true)][string]$Directory,
+    [ValidateRange(1, 120)][int]$TimeoutSeconds = 30
+  )
+  $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+  $reportedPaths = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+  $stableSamples = 0
+  $previousFileCount = -1
+  do {
+    $installedProcessesFound = $false
+    foreach ($process in Get-Process -ErrorAction SilentlyContinue) {
+      try { $processPath = if ($process.Path) { Get-FullPath $process.Path } else { '' } } catch { continue }
+      if (-not [string]::IsNullOrWhiteSpace($processPath) -and (Test-PathInside $Directory $processPath)) {
+        $installedProcessesFound = $true
+        Write-WatchdogLog "target-process-stop pid=$($process.Id) path=$processPath"
+        try { Stop-Process -Id $process.Id -Force -ErrorAction Stop } catch {
+          if ($_.Exception.Message -notmatch 'exited|cannot find') { throw }
+        }
+      }
+    }
+    $lockedPaths = New-Object System.Collections.Generic.List[string]
+    $fileCount = 0
+    foreach ($file in Get-ChildItem -LiteralPath $Directory -Recurse -File -Force -ErrorAction Stop) {
+      $fileCount++
+      $stream = $null
+      try {
+        $stream = [System.IO.File]::Open(
+          $file.FullName,
+          [System.IO.FileMode]::Open,
+          [System.IO.FileAccess]::Read,
+          [System.IO.FileShare]::None
+        )
+      } catch {
+        $lockedPaths.Add($file.FullName)
+        if ($reportedPaths.Add($file.FullName)) { Write-WatchdogLog "target-file-locked path=$($file.FullName)" }
+      } finally {
+        if ($null -ne $stream) { $stream.Dispose() }
+      }
+    }
+    if (-not $installedProcessesFound -and $lockedPaths.Count -eq 0 -and $fileCount -gt 0 -and $fileCount -eq $previousFileCount) {
+      $stableSamples++
+    } else {
+      $stableSamples = 0
+    }
+    if ($stableSamples -ge 4) {
+      Write-WatchdogLog "target-process-tree-closed directory=$Directory"
+      Write-WatchdogLog "target-files-unlocked count=$fileCount stableSamples=$stableSamples"
+      return
+    }
+    $previousFileCount = $fileCount
+    Start-Sleep -Milliseconds 250
+  } while ([DateTime]::UtcNow -lt $deadline)
+  throw "Installed Subutai files remained locked after $TimeoutSeconds seconds: $($lockedPaths.Count)."
+}
 $evidencePath = Join-Path $root 'watchdog-evidence.json'
 
 function Write-Evidence {
@@ -189,36 +331,59 @@ function Test-BrowserRegistration {
 }
 
 try {
+  if (-not $TestMode -and $WatchdogMutexName -ne 'Local\SubutaiUpdaterWatchdog') {
+    throw 'Production watchdog mutex name cannot be overridden.'
+  }
+  $mutex = [System.Threading.Mutex]::new($true, $WatchdogMutexName, [ref]$mutexCreatedNew)
+  $mutexOwned = $mutexCreatedNew
+  Write-WatchdogLog "mutex-created createdNew=$($mutexCreatedNew.ToString().ToLowerInvariant()) name=$WatchdogMutexName"
+  if (-not $mutexCreatedNew) {
+    Write-WatchdogLog 'already-running'
+    exit 0
+  }
+
   if (-not $TestMode) {
     $expectedRoot = Get-FullPath (Join-Path $env:LOCALAPPDATA 'Subutai\Updater')
     if ($root -ne $expectedRoot) { throw 'Updater root is not the controlled Subutai updater directory.' }
   }
 
+  $journal = Read-Journal
+  Assert-Journal $journal
+  Write-WatchdogLog "transaction-loaded transaction=$([string]$journal.transactionId) state=$([string]$journal.updateState)"
+
   if ($ParentProcessId -gt 0) {
+    Write-WatchdogLog "parent-wait-started pid=$ParentProcessId"
     try { Wait-Process -Id $ParentProcessId -Timeout 120 -ErrorAction Stop }
     catch {
       if (Get-Process -Id $ParentProcessId -ErrorAction SilentlyContinue) {
         throw 'Previous Subutai process did not exit before updater watchdog timeout.'
       }
     }
+    Write-WatchdogLog "parent-exited pid=$ParentProcessId"
+  } else {
+    Write-WatchdogLog 'parent-not-running pid=0'
   }
 
   $hardDeadline = [DateTime]::UtcNow.AddMinutes(15)
+  Write-WatchdogLog "health-deadline-wait deadline=$([string]$journal.healthDeadline)"
   while ($true) {
     $journal = Read-Journal
     Assert-Journal $journal
     $state = [string]$journal.updateState
     if ($state -in @('committed', 'rolled-back', 'failed-safe')) {
       Write-Evidence -Outcome $state
+      Write-WatchdogLog "watchdog-completed outcome=$state"
       exit 0
     }
     if ($state -ne 'awaiting-health') {
       Write-Evidence -Outcome "no-action-$state"
+      Write-WatchdogLog "watchdog-completed outcome=no-action-$state"
       exit 0
     }
     $intentionalExitAt = Get-JournalProperty -Journal $journal -Name 'intentionalExitAt'
     if (-not [string]::IsNullOrWhiteSpace([string]$intentionalExitAt)) {
       Write-Evidence -Outcome 'intentional-exit-no-rollback'
+      Write-WatchdogLog 'watchdog-completed outcome=intentional-exit-no-rollback'
       exit 0
     }
 
@@ -228,6 +393,52 @@ try {
     if ([DateTime]::UtcNow -ge $hardDeadline) { throw 'Updater watchdog exceeded its bounded monitoring window.' }
     Start-Sleep -Milliseconds $PollMilliseconds
   }
+
+  Write-WatchdogLog "rollback-triggered transaction=$([string]$journal.transactionId)"
+
+  $installedExecutable = Get-FullPath ([string]$journal.installedExecutablePath)
+  $targetInstallDeadline = [DateTime]::UtcNow.AddSeconds(120)
+  $lastObservedVersion = ''
+  while ($true) {
+    $journal = Read-Journal
+    Assert-Journal $journal
+    $state = [string]$journal.updateState
+    if ($state -in @('committed', 'rolled-back', 'failed-safe')) {
+      Write-Evidence -Outcome $state
+      Write-WatchdogLog "watchdog-completed outcome=$state"
+      exit 0
+    }
+    if ($state -ne 'awaiting-health') { throw "Target installation entered unexpected transaction state: $state." }
+
+    $observedVersion = ''
+    if ($TestMode -and (Test-Path -LiteralPath $installedExecutable -PathType Leaf)) {
+      $observedVersion = [string]$journal.targetVersion
+    } elseif (
+      -not [string]::IsNullOrWhiteSpace($env:SUBUTAI_FIXTURE_INSTALL_ROOT) -and
+      (Test-PathInside (Get-FullPath $env:SUBUTAI_FIXTURE_INSTALL_ROOT) $installedExecutable)
+    ) {
+      $fixtureVersionPath = Join-Path (Split-Path -Parent $installedExecutable) 'installed-version.txt'
+      if (Test-Path -LiteralPath $fixtureVersionPath -PathType Leaf) {
+        $observedVersion = (Get-Content -LiteralPath $fixtureVersionPath -Raw).Trim()
+      }
+    } elseif (Test-Path -LiteralPath $installedExecutable -PathType Leaf) {
+      try {
+        $versionInformation = (Get-Item -LiteralPath $installedExecutable).VersionInfo
+        foreach ($candidate in @([string]$versionInformation.ProductVersion, [string]$versionInformation.FileVersion)) {
+          if ($candidate -match '(\d+\.\d+\.\d+)') { $observedVersion = $Matches[1]; break }
+        }
+      } catch { $observedVersion = '' }
+    }
+    if ($observedVersion -ne $lastObservedVersion) {
+      $reportedVersion = if ([string]::IsNullOrWhiteSpace($observedVersion)) { 'missing' } else { $observedVersion }
+      Write-WatchdogLog "target-install-wait observedVersion=$reportedVersion expectedVersion=$([string]$journal.targetVersion)"
+      $lastObservedVersion = $observedVersion
+    }
+    if ($observedVersion -eq [string]$journal.targetVersion) { break }
+    if ([DateTime]::UtcNow -ge $targetInstallDeadline) { throw 'Target Subutai installation did not become ready within 120 seconds.' }
+    Start-Sleep -Milliseconds 250
+  }
+  Write-WatchdogLog "target-install-ready version=$([string]$journal.targetVersion) executable=$installedExecutable"
 
   if ([int]$journal.rollbackAttemptCount -ge 1 -or [string]$journal.rollbackState -in @('running', 'succeeded', 'blocked')) {
     Set-FailedSafe -Journal $journal -Reason 'Rollback attempt is already consumed; refusing an update/rollback loop.'
@@ -245,13 +456,17 @@ try {
     Set-FailedSafe -Journal $journal -Reason 'Verified previous installer is missing.'
     exit 4
   }
+  Write-WatchdogLog "previous-installer-path-validated path=$previousInstaller"
   $actualHash = (Get-FileHash -LiteralPath $previousInstaller -Algorithm SHA256).Hash.ToLowerInvariant()
   if ($actualHash -ne [string]$journal.previousInstallerSha256) {
     Set-FailedSafe -Journal $journal -Reason 'Previous installer checksum mismatch; rollback executable was not launched.'
     exit 5
   }
+  Write-WatchdogLog "previous-installer-sha256-verified sha256=$actualHash"
 
-  $installedExecutable = Get-FullPath ([string]$journal.installedExecutablePath)
+  $installedDirectory = Split-Path -Parent $installedExecutable
+  Wait-InstallTreeUnlocked -Directory $installedDirectory -TimeoutSeconds 30
+
   if ($TestMode) {
     if ([string]::IsNullOrWhiteSpace($TestRollbackMarker)) { throw 'Rollback marker is required in test mode.' }
     $markerPath = Get-FullPath $TestRollbackMarker
@@ -267,17 +482,13 @@ try {
     }
     Write-AtomicJson -Path (Join-Path $root 'browser-registration-fixture.json') -Value $registrationFixture
   } else {
-    foreach ($process in Get-Process -ErrorAction SilentlyContinue) {
-      try {
-        if ($process.Path -and (Get-FullPath $process.Path) -eq $installedExecutable) {
-          Stop-Process -Id $process.Id -Force -ErrorAction Stop
-        }
-      } catch {
-        if ($_.Exception.Message -notmatch 'access|exited|cannot find') { throw }
-      }
-    }
+    Write-WatchdogLog "target-process-closed executable=$installedExecutable"
 
+    Write-WatchdogLog "rollback-installer-started path=$previousInstaller"
+    # Keep the rollback non-interactive and preserve application data. The baseline
+    # is restarted explicitly only after registration and the journal are restored.
     $installerProcess = Start-Process -FilePath $previousInstaller -ArgumentList @('/S', '--updated') -Wait -PassThru
+    Write-WatchdogLog "rollback-installer-exit code=$($installerProcess.ExitCode)"
     if ($installerProcess.ExitCode -ne 0) { throw "Rollback installer failed with exit code $($installerProcess.ExitCode)." }
     if (-not (Test-Path -LiteralPath $installedExecutable -PathType Leaf)) { throw 'Previous Subutai executable was not restored.' }
 
@@ -287,6 +498,7 @@ try {
     & powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $registrationScript -ExecutablePath $installedExecutable
     if ($LASTEXITCODE -ne 0) { throw "Browser native-messaging registration failed with exit code $LASTEXITCODE." }
     Test-BrowserRegistration -ExecutablePath $installedExecutable
+    Write-WatchdogLog 'browser-registration-restored'
   }
 
   $journal = Read-Journal
@@ -296,14 +508,19 @@ try {
   Set-JournalProperty -Journal $journal -Name 'rollbackCompletedAt' -Value ([DateTime]::UtcNow.ToString('o'))
   Set-JournalProperty -Journal $journal -Name 'lastError' -Value 'New version did not pass startup health confirmation; previous verified version restored.'
   Save-Journal $journal
+  Write-WatchdogLog 'rollback-journal-written state=rolled-back rollbackState=succeeded'
   Write-Evidence -Outcome 'rolled-back'
 
   if (-not $TestMode) {
     Start-Process -FilePath $installedExecutable | Out-Null
+    Write-WatchdogLog "baseline-restarted executable=$installedExecutable"
   }
+  Write-WatchdogLog 'watchdog-completed outcome=rolled-back'
   exit 0
 } catch {
   $message = Protect-ErrorText $_.Exception.Message
+  $errorType = Protect-ErrorText $_.Exception.GetType().FullName
+  Write-WatchdogLog "watchdog-error type=$errorType message=$message"
   try {
     $journal = Read-Journal
     Assert-Journal $journal
@@ -315,6 +532,14 @@ try {
   } catch {
     Write-Evidence -Outcome 'corrupt-journal-no-action' -ErrorText $message
   }
-  Write-Error $message
+  Write-Error $message -ErrorAction Continue
   exit 2
+} finally {
+  if ($null -ne $mutex) {
+    if ($mutexOwned) {
+      try { $mutex.ReleaseMutex() } catch { }
+    }
+    $mutex.Dispose()
+  }
+  try { Write-WatchdogLog 'watchdog-finished' } catch { }
 }

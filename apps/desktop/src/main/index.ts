@@ -2,6 +2,14 @@ import { app, BrowserWindow } from 'electron';
 import { appendFileSync } from 'node:fs';
 import { isNativeMessagingInvocation, runNativeMessagingHost } from './browser/native-messaging';
 import { ensureNativeMessagingRegistered } from './browser/registration';
+import {
+  initializeRealUpdateAcceptance,
+  realUpdateAcceptanceTransactionOptions,
+  recordHealthyRealUpdateAcceptance,
+  recordRolledBackRealUpdateAcceptance,
+  shouldFailRealUpdateAcceptanceHealth,
+  startRealUpdateAcceptanceDriver,
+} from './system/real-update-acceptance';
 import { verifyUpdatedDesktopHealth } from './system/update-health';
 import { installTransactionalUpdaterGuard } from './system/transactional-updater';
 import {
@@ -63,11 +71,15 @@ async function loadDesktopRuntimes(): Promise<void> {
 async function startDesktop(): Promise<void> {
   await app.whenReady();
   writeSmokeLog('Electron app is ready.');
+  initializeRealUpdateAcceptance();
   installTransactionalUpdaterGuard();
 
   let startupTransaction = null;
   try {
-    startupTransaction = await beginStartupHealthAttempt(app.getVersion());
+    startupTransaction = await beginStartupHealthAttempt(
+      app.getVersion(),
+      realUpdateAcceptanceTransactionOptions(),
+    );
     if (startupTransaction) {
       writeSmokeLog(`Update health attempt ${startupTransaction.startupAttemptCount}/${startupTransaction.maxStartupAttempts}.`);
       await launchUpdateWatchdog(startupTransaction, 0);
@@ -85,11 +97,16 @@ async function startDesktop(): Promise<void> {
   }
 
   await loadDesktopRuntimes();
+  startRealUpdateAcceptanceDriver();
 
   if (startupTransaction) {
     try {
+      if (shouldFailRealUpdateAcceptanceHealth()) {
+        throw new Error('Real two-installer acceptance forced the target startup health failure.');
+      }
       await verifyUpdatedDesktopHealth(nativeMessagingRegistered);
       await confirmUpdateHealth(app.getVersion());
+      await recordHealthyRealUpdateAcceptance();
       writeSmokeLog('Update startup health confirmed and transaction committed.');
     } catch (error) {
       await recordStartupHealthFailure(app.getVersion(), error).catch(() => undefined);
@@ -97,6 +114,8 @@ async function startDesktop(): Promise<void> {
       writeSmokeLog(`Updated version failed startup health: ${formatError(error)}`);
       app.exit(70);
     }
+  } else {
+    await recordRolledBackRealUpdateAcceptance();
   }
 }
 
