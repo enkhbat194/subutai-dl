@@ -42,7 +42,7 @@ if (existsSync(legacyResourcePath)) {
 requireText(releaseWorkflow, './scripts/install-temporary-media-tools.ps1', 'Release workflow');
 requireText(releaseWorkflow, 'pnpm test:native-engine', 'Release workflow');
 requireText(releaseWorkflow, 'pnpm test:release-engine', 'Release workflow');
-requireText(releaseWorkflow, 'pnpm --filter @subutai/desktop build:win', 'Release workflow');
+requireText(releaseWorkflow, 'pnpm --filter @subutai/desktop build:win:signed', 'Release workflow');
 requireText(mediaInstaller, 'Get-FileHash', 'Pinned media installer');
 requireText(mediaInstaller, 'yt-dlp.exe', 'Pinned media installer');
 requireText(mediaInstaller, 'ffmpeg.exe', 'Pinned media installer');
