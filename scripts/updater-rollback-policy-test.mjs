@@ -37,15 +37,23 @@ for (const required of [
   'Cached rollback installer checksum mismatch',
   'Staged update installer checksum mismatch',
   'redactUpdateError',
-  String.raw`Local\\SubutaiUpdaterWatchdog`,
+  String.raw`Local\SubutaiUpdaterWatchdog`,
   '[System.Threading.Mutex]::new',
   '$mutex = $null',
   'if ($null -ne $mutex)',
   'try { $mutex.ReleaseMutex() } catch {}',
   "join(rootPath, 'watchdog-launcher.log')",
+  "Buffer.from(singleInstanceCommand, 'utf16le')",
+  "'-EncodedCommand', encodedCommand",
+  "stdio: ['ignore', launcherLogFile, launcherLogFile]",
+  'launcher-requested',
+  'launcher-started',
 ]) requireText(transaction, required, 'Transactional updater journal');
 if (transaction.includes('New-Object System.Threading.Mutex(')) {
   throw new Error('Watchdog launcher must use the typed Mutex constructor so constructor failures are caught and logged.');
+}
+if (transaction.includes("'-Command', singleInstanceCommand") || transaction.includes("stdio: 'ignore'")) {
+  throw new Error('Watchdog launcher must use an encoded PowerShell command and preserve child stdout/stderr diagnostics.');
 }
 
 for (const required of [
@@ -147,4 +155,4 @@ if (nativeWorkflow.includes('contents: write') || n5Workflow.includes('contents:
   throw new Error('Final updater validation workflows must remain check-only.');
 }
 
-console.log('Subutai updater rollback policy passed: durable journal, verified cache, startup health, typed and logged external watchdog launcher, bounded rollback and read-only Windows gates.');
+console.log('Subutai updater rollback policy passed: durable journal, verified cache, startup health, encoded and durably logged external watchdog launcher, bounded rollback and read-only Windows gates.');
