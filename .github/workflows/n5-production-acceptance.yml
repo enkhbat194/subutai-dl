@@ -176,3 +176,16 @@ jobs:
       - name: Accept portable, installed and uninstalled product
         shell: powershell
         run: ./scripts/n5-windows-acceptance.ps1
+
+      - name: Publish usable Windows MVP build
+        uses: actions/upload-artifact@v4
+        with:
+          name: Subutai-0.2.0-rc.1-Windows-MVP
+          path: |
+            apps/desktop/release/Subutai-Setup-*.exe
+            apps/desktop/release/Subutai-Portable-*.exe
+            apps/desktop/release/latest.yml
+            apps/desktop/release/*.blockmap
+            apps/desktop/release/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 30
