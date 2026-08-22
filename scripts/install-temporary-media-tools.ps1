@@ -107,6 +107,17 @@ try {
   Get-VerifiedDownload -Url $ytDlpUrl -Destination $ytDlpDownload -ExpectedSha256 $ytDlpSha256
   Copy-Item $ytDlpDownload (Join-Path $EngineDir "yt-dlp.exe") -Force
 
+  # yt-dlp automatically loads yt-dlp.conf next to its bundled executable. Keep the
+  # product media path at least as resilient as the owner acceptance harness by trying
+  # the current bounded YouTube player-client set for real app probes/downloads too.
+  $ytDlpPortableConfigPath = Join-Path $EngineDir "yt-dlp.conf"
+  $ytDlpPortableConfig = "--extractor-args youtube:player_client=default,android_vr,web_embedded,web_safari`r`n"
+  [System.IO.File]::WriteAllText(
+    $ytDlpPortableConfigPath,
+    $ytDlpPortableConfig,
+    (New-Object System.Text.UTF8Encoding($false))
+  )
+
   # setup-node already provisions Node on GitHub-hosted Windows. Reuse that executable
   # for the owner-test package to avoid a second large network download; retain the
   # pinned archive fallback for environments without Node on PATH.
@@ -151,6 +162,14 @@ try {
     if ((Get-Item $path).Length -lt 64KB) { throw "Temporary media tool is unexpectedly small: $path" }
   }
 
+  if (-not (Test-Path $ytDlpPortableConfigPath)) {
+    throw "Packaged yt-dlp portable configuration is missing: $ytDlpPortableConfigPath"
+  }
+  $portableConfigText = Get-Content $ytDlpPortableConfigPath -Raw
+  if ($portableConfigText -notmatch 'youtube:player_client=default,android_vr,web_embedded,web_safari') {
+    throw "Packaged yt-dlp portable configuration does not contain the resilient YouTube client set."
+  }
+
   if (Test-Path (Join-Path $EngineDir "aria2c.exe")) {
     throw "Legacy direct-download engine must not enter Subutai resources."
   }
@@ -160,7 +179,7 @@ try {
   Test-ToolVersion -Executable (Join-Path $EngineDir "ffprobe.exe") -Arguments @("-version") -Label "FFprobe"
   Test-ToolVersion -Executable (Join-Path $EngineDir "node.exe") -Arguments @("--version") -Label "Node.js"
 
-  Write-Host "Subutai media tools and JavaScript runtime staged and verified."
+  Write-Host "Subutai media tools, resilient YouTube defaults and JavaScript runtime staged and verified."
 } finally {
   Remove-Item $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
 }
