@@ -9,6 +9,7 @@ on:
       - "packages/**"
       - "scripts/install-temporary-media-tools.ps1"
       - "scripts/youtube-media-smoke.ps1"
+      - "scripts/youtube-profile-smoke.ps1"
       - "scripts/restart-recovery-harness.mjs"
       - "scripts/validate-windows-package.ps1"
       - "package.json"
@@ -17,12 +18,14 @@ on:
   push:
     branches:
       - "agent/rc2-live-owner-acceptance"
+      - "agent/rc2-youtube-client-fallback"
     paths:
       - "apps/**"
       - "engines/native/**"
       - "packages/**"
       - "scripts/install-temporary-media-tools.ps1"
       - "scripts/youtube-media-smoke.ps1"
+      - "scripts/youtube-profile-smoke.ps1"
       - "scripts/restart-recovery-harness.mjs"
       - "scripts/validate-windows-package.ps1"
       - "package.json"
@@ -97,6 +100,12 @@ jobs:
         shell: powershell
         run: ./scripts/youtube-media-smoke.ps1
 
+      - name: Probe alternate token-light YouTube client profiles
+        id: youtube_profiles
+        continue-on-error: true
+        shell: powershell
+        run: ./scripts/youtube-profile-smoke.ps1
+
       - name: Typecheck desktop, extension and shared contracts
         shell: powershell
         run: pnpm typecheck
@@ -138,7 +147,7 @@ jobs:
 
             This candidate replaces the crowded prototype dashboard with a focused one-link flow and routes recognised YouTube/media URLs automatically.
 
-            Publication requires the packaged yt-dlp/FFmpeg/Node media stack to download and validate a real media file, a live 64 MiB local HTTP transfer to be interrupted with durable partial/journal state and resumed to an exact SHA-256 match, transfer pause/resume control contracts, TypeScript checks, Windows Setup/Portable construction and packaged Electron launch smoke. The workflow also attempts a public YouTube download. GitHub-hosted datacenter IPs can be challenged by YouTube; if that happens, the workflow records owner-network YouTube acceptance as pending instead of misclassifying the packaged media stack as broken.
+            Publication requires the packaged yt-dlp/FFmpeg/Node media stack to download and validate a real media file, a live 64 MiB local HTTP transfer to be interrupted with durable partial/journal state and resumed to an exact SHA-256 match, transfer pause/resume control contracts, TypeScript checks, Windows Setup/Portable construction and packaged Electron launch smoke. The workflow also attempts a public YouTube download and records whether a token-light alternate YouTube client works on the hosted runner. GitHub-hosted datacenter IPs can be challenged by YouTube; if that happens, owner-network YouTube acceptance remains pending instead of misclassifying the packaged media stack as broken.
 
             Start with `Subutai-Portable-${{ steps.version.outputs.version }}-x64.exe`. Windows SmartScreen may warn because this owner-test build is unsigned.
           prerelease: true
