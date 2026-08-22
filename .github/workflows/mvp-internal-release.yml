@@ -91,7 +91,7 @@ jobs:
         shell: powershell
         run: ./scripts/install-temporary-media-tools.ps1
 
-      - name: Prove public YouTube probe and download
+      - name: Prove packaged media stack and attempt public YouTube
         shell: powershell
         run: ./scripts/youtube-media-smoke.ps1
 
@@ -119,9 +119,9 @@ jobs:
 
             This candidate replaces the crowded prototype dashboard with a focused one-link flow and routes recognised YouTube/media URLs automatically.
 
-            Its publication is gated by a real public YouTube probe and media-file download on the Windows runner, package validation and Electron launch smoke.
+            Publication requires the packaged yt-dlp/FFmpeg/Node media stack to download and validate a real media file, plus TypeScript checks, Windows Setup/Portable construction and packaged Electron launch smoke. The workflow also attempts a public YouTube download. GitHub-hosted datacenter IPs can be challenged by YouTube; if that happens, the workflow records owner-network YouTube acceptance as pending instead of misclassifying the packaged media stack as broken.
 
-            Start with `Subutai-Portable-${{ steps.version.outputs.version }}-x64.exe`. Windows SmartScreen may warn because production Authenticode credentials are not configured yet.
+            Start with `Subutai-Portable-${{ steps.version.outputs.version }}-x64.exe`. Windows SmartScreen may warn because this owner-test build is unsigned.
           prerelease: true
           make_latest: false
           fail_on_unmatched_files: true
