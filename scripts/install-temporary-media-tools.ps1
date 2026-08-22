@@ -4,9 +4,9 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$ytDlpVersion = "2026.06.09"
+$ytDlpVersion = "2026.08.19"
 $ytDlpUrl = "https://github.com/yt-dlp/yt-dlp/releases/download/$ytDlpVersion/yt-dlp.exe"
-$ytDlpSha256 = "3a48cb955d55c8821b60ccbdbbc6f61bc958f2f3d3b7ad5eaf3d83a543293a27"
+$ytDlpSha256 = "66674953fe251b89f4d08c5f0e35e0728679bd67ab3d7d05c0562af101dd3e7a"
 
 $ffmpegBuild = "ffmpeg-N-123778-g3b55818764-win64-gpl"
 $ffmpegUrl = "https://github.com/yt-dlp/FFmpeg-Builds/releases/download/autobuild-2026-03-31-15-13/$ffmpegBuild.zip"
