@@ -9,19 +9,21 @@ on:
       - "packages/**"
       - "scripts/install-temporary-media-tools.ps1"
       - "scripts/youtube-media-smoke.ps1"
+      - "scripts/restart-recovery-harness.mjs"
       - "scripts/validate-windows-package.ps1"
       - "package.json"
       - "pnpm-lock.yaml"
       - ".github/workflows/mvp-internal-release.yml"
   push:
     branches:
-      - "agent/mvp-0.2.0-rc2-usability"
+      - "agent/rc2-live-owner-acceptance"
     paths:
       - "apps/**"
       - "engines/native/**"
       - "packages/**"
       - "scripts/install-temporary-media-tools.ps1"
       - "scripts/youtube-media-smoke.ps1"
+      - "scripts/restart-recovery-harness.mjs"
       - "scripts/validate-windows-package.ps1"
       - "package.json"
       - "pnpm-lock.yaml"
@@ -99,6 +101,23 @@ jobs:
         shell: powershell
         run: pnpm typecheck
 
+      - name: Build native direct engine for live transfer acceptance
+        shell: powershell
+        run: cargo build --release --manifest-path engines/native/Cargo.toml --bin subutai-engine
+
+      - name: Prove live HTTP interruption and durable restart recovery
+        shell: powershell
+        env:
+          SUBUTAI_RESTART_WORKSPACE: ${{ runner.temp }}\subutai-owner-acceptance\restart
+          SUBUTAI_RESTART_FILE_MIB: 64
+          SUBUTAI_RESTART_MINIMUM_PROGRESS_MIB: 8
+          SUBUTAI_RESTART_SEGMENTS: 8
+        run: node scripts/restart-recovery-harness.mjs self-test
+
+      - name: Run transfer pause resume control contracts
+        shell: powershell
+        run: pnpm test:transfer
+
       - name: Build Windows Setup and Portable MVP
         shell: powershell
         run: pnpm --filter @subutai/desktop build:win
@@ -119,7 +138,7 @@ jobs:
 
             This candidate replaces the crowded prototype dashboard with a focused one-link flow and routes recognised YouTube/media URLs automatically.
 
-            Publication requires the packaged yt-dlp/FFmpeg/Node media stack to download and validate a real media file, plus TypeScript checks, Windows Setup/Portable construction and packaged Electron launch smoke. The workflow also attempts a public YouTube download. GitHub-hosted datacenter IPs can be challenged by YouTube; if that happens, the workflow records owner-network YouTube acceptance as pending instead of misclassifying the packaged media stack as broken.
+            Publication requires the packaged yt-dlp/FFmpeg/Node media stack to download and validate a real media file, a live 64 MiB local HTTP transfer to be interrupted with durable partial/journal state and resumed to an exact SHA-256 match, transfer pause/resume control contracts, TypeScript checks, Windows Setup/Portable construction and packaged Electron launch smoke. The workflow also attempts a public YouTube download. GitHub-hosted datacenter IPs can be challenged by YouTube; if that happens, the workflow records owner-network YouTube acceptance as pending instead of misclassifying the packaged media stack as broken.
 
             Start with `Subutai-Portable-${{ steps.version.outputs.version }}-x64.exe`. Windows SmartScreen may warn because this owner-test build is unsigned.
           prerelease: true
