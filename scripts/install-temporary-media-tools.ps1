@@ -50,7 +50,18 @@ function Get-VerifiedDownload {
   }
 
   Remove-Item $Destination -Force -ErrorAction SilentlyContinue
-  Invoke-WebRequest -Uri $Url -OutFile $Destination -UseBasicParsing -TimeoutSec 180
+  $curl = Get-Command curl.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+  if ($curl) {
+    Write-Host "Downloading media dependency with curl: $Url"
+    & $curl.Source -L --fail --silent --show-error --retry 3 --retry-delay 2 --connect-timeout 20 --max-time 240 --output $Destination $Url
+    if ($LASTEXITCODE -ne 0) {
+      throw "curl failed downloading $Url with exit code $LASTEXITCODE."
+    }
+  } else {
+    Write-Host "curl.exe unavailable; using Invoke-WebRequest for $Url"
+    Invoke-WebRequest -Uri $Url -OutFile $Destination -UseBasicParsing -TimeoutSec 240
+  }
+
   if (-not (Test-ExpectedHash -Path $Destination -ExpectedSha256 $ExpectedSha256)) {
     $actual = if (Test-Path $Destination) {
       (Get-FileHash -Path $Destination -Algorithm SHA256).Hash.ToLowerInvariant()
