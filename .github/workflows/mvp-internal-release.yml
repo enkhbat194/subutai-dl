@@ -38,7 +38,7 @@ concurrency:
 jobs:
   build-and-publish:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [self-hosted, Windows, X64, subutai]
+    runs-on: windows-2025
     timeout-minutes: 100
 
     steps:
