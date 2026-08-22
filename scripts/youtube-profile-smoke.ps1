@@ -39,6 +39,10 @@ function Invoke-Profile {
   $stderr = Join-Path $tempRoot "stderr.log"
   $args = @(
     "--no-playlist",
+    "--socket-timeout", "15",
+    "--extractor-retries", "1",
+    "--retries", "1",
+    "--fragment-retries", "1",
     "--js-runtimes", "node:$node",
     "--ffmpeg-location", $resolvedEngineDir,
     "--format", "worstvideo*+worstaudio/worst",
