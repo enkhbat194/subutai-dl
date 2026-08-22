@@ -12,10 +12,10 @@ $ffmpegBuild = "ffmpeg-N-123778-g3b55818764-win64-gpl"
 $ffmpegUrl = "https://github.com/yt-dlp/FFmpeg-Builds/releases/download/autobuild-2026-03-31-15-13/$ffmpegBuild.zip"
 $ffmpegSha256 = "43f9f3491b86264a3b4104935283955002fd8a1413377c7d04a4c484576d6c11"
 
-$nodeVersion = "22.23.1"
+$nodeVersion = "22.23.2"
 $nodeArchiveName = "node-v$nodeVersion-win-x64.zip"
 $nodeUrl = "https://nodejs.org/dist/v$nodeVersion/$nodeArchiveName"
-$nodeSha256 = "7df0bc9375723f4a86b3aa1b7cc73342423d9677a8df4538aca31a049e309c29"
+$nodeSha256 = "1177b4137ba5adaa56354ae40f1080c7450e8ae09cecb47da459d1c52ac99f97"
 
 $tempBase = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { [System.IO.Path]::GetTempPath() }
 $tempRoot = Join-Path $tempBase "SubutaiTemporaryMediaTools"
