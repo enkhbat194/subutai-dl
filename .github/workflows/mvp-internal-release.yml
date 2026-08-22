@@ -9,6 +9,7 @@ on:
       - "packages/**"
       - "scripts/install-temporary-media-tools.ps1"
       - "scripts/youtube-media-smoke.ps1"
+      - "scripts/owner-youtube-acceptance.ps1"
       - "scripts/restart-recovery-harness.mjs"
       - "scripts/validate-windows-package.ps1"
       - "package.json"
@@ -23,6 +24,7 @@ on:
       - "packages/**"
       - "scripts/install-temporary-media-tools.ps1"
       - "scripts/youtube-media-smoke.ps1"
+      - "scripts/owner-youtube-acceptance.ps1"
       - "scripts/restart-recovery-harness.mjs"
       - "scripts/validate-windows-package.ps1"
       - "package.json"
@@ -52,7 +54,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 22.23.2
 
       - name: Install pinned Rust toolchain
         shell: powershell
@@ -84,6 +86,21 @@ jobs:
             throw "Internal MVP workflow requires an explicit 0.2.0 RC version; received $version."
           }
           "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Validate owner-network acceptance harness syntax
+        shell: powershell
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path ./scripts/owner-youtube-acceptance.ps1),
+            [ref]$tokens,
+            [ref]$errors
+          ) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Error $_.Message }
+            throw "owner-youtube-acceptance.ps1 contains PowerShell parse errors."
+          }
 
       - name: Install locked dependencies
         shell: powershell

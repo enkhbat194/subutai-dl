@@ -1,115 +1,96 @@
 # Subutai — Authoritative Project Status
 
-Last audited: 2026-08-03  
-Audited `main`: `aec8e72c8eb5a7a8acc3656a70a535349f3e80ca` (PR #43)
+Last audited: 2026-08-23  
+Audited `main`: `b348c929b3d605694fa74cc57355e7572cadc892` (through PR #51)
 
 ## Current conclusion
 
-Subutai is an engineering-complete **`0.2.0-rc.1` release-candidate baseline**, not a signed public release.
+Subutai has a working unsigned **`0.2.0-rc.2` owner-test Windows baseline** with real Setup and Portable artifacts. It is **not yet declared owner-ready** because a real owner-network YouTube download through the packaged media stack has not produced acceptance evidence. GitHub-hosted Windows is challenged by YouTube before extraction, so neutral media fallback is not counted as YouTube acceptance.
 
-The core runtime, package, update transaction, rollback, public update channel, release-signing policy and signed update-manifest verification are implemented. Remaining blockers are external credentials and clean physical Windows acceptance.
+For normal direct downloads, restart recovery, pause/resume contracts, packaging and launch, the current rc.2 path is passing. Production signing/public-release gates remain separate from owner-test readiness.
 
-## Merged release baseline
+## Merged owner-test baseline
 
 | PR | Result |
 |---|---|
-| #34 | Real NSIS two-installer update, forced rollback and checksum-rejection acceptance |
-| #40 | User-visible updater error redaction and Windows watchdog reliability hardening |
-| #41 | Fail-closed Authenticode build, signature and timestamp verification |
-| #42 | Anonymous client updates through public binary-only `subutai-releases` |
-| #43 | Ed25519-signed update manifests, channel isolation and downgrade/replay protection |
+| #45 | Focused one-link UI, automatic media routing, packaged yt-dlp/FFmpeg/Node stack, Setup/Portable owner-test publication |
+| #47 | Real live HTTP transfer interruption, durable partial/journal persistence and exact restart-resume verification |
+| #51 | Bounded YouTube player-client fallback attempts before neutral hosted-runner fallback |
 
-PR #33 was closed without merge because it was based on the pre-#34 `main` state and contained obsolete release claims.
+Earlier merged release engineering remains preserved, including native direct engine, queue/persistence, browser integration, transactional update/rollback, checksum rejection, Authenticode release policy and signed update-manifest policy.
 
-## Capability status
+## Current owner-use acceptance matrix
 
-| Area | Implemented | Automated/runner evidence | External acceptance |
-|---|---:|---:|---:|
-| First-party Rust direct engine | Yes | PASS | Physical smoke pending |
-| Queue, scheduler and persistence | Yes | PASS | Physical UX pending |
-| Chrome, Edge and Firefox integration | Yes | PASS on controlled install | Installed-browser matrix pending |
-| Media path using temporary tools | Yes | Automated partial | Physical media matrix pending |
-| Setup and Portable packaging | Yes | PASS | Clean-machine signed acceptance pending |
-| Transactional update and rollback | Yes | Real A/B installer PASS | Signed public-channel acceptance pending |
-| Checksum/tamper rejection | Yes | PASS | Signed candidate retest pending |
-| Public binary update channel | Yes | Policy PASS | Publishing token required |
-| Authenticode signing workflow | Yes | Policy PASS | Production certificate required |
-| Signed update manifest | Yes | Policy/unit PASS | Offline release key required |
+| Critical path | Status | Evidence |
+|---|---:|---|
+| Windows app launches | PASS | Packaged Electron launch smoke |
+| Normal HTTP/direct engine | PASS | Live native HTTP transfer harness |
+| Large-file interruption/resume | PASS | 64 MiB ranged transfer, durable partial state, exact SHA-256 completion |
+| Unfinished download survives app/engine restart | PASS | Two-phase restart recovery harness |
+| Pause/resume control contracts | PASS | `pnpm test:transfer` |
+| Setup build exists | PASS | `Subutai-Setup-0.2.0-rc.2-x64.exe` |
+| Portable build exists | PASS | `Subutai-Portable-0.2.0-rc.2-x64.exe` |
+| Packaged yt-dlp/FFmpeg/Node media stack | PASS | Real neutral media download + ffprobe validation |
+| Real public YouTube on GitHub-hosted Windows | BLOCKED BY HOST NETWORK | YouTube challenges datacenter IP; not counted as product pass |
+| Real owner-network YouTube using packaged tools/browser state | PENDING | Final owner-use acceptance gap |
+| Chrome/Edge/Firefox extension contract | PASS | Build/contract checks; controlled installer registration exists from release acceptance |
 
-## Exact verified updater behavior
+## Exact recent Windows evidence
 
-The merged Windows acceptance verifies:
+Subutai Internal Windows MVP workflow run `32595813634` / run number `35` on PR #51 head `3fc8df350aa1c1a41db771195d4e4864473c517f` passed:
 
-1. healthy `0.1.0 -> 0.2.0` update and committed startup health;
-2. deterministic target-health failure and automatic rollback to `0.1.0`;
-3. corrupted target installer rejection before transaction arm/install;
-4. preservation of settings, SQLite state, queue and partial-download sentinels;
-5. Chrome, Edge and Firefox native-messaging restoration;
-6. bounded watchdog execution and cleanup.
+1. packaged media tool staging;
+2. hosted YouTube attempts across default, `android_vr`, `web_embedded` and `web_safari` profiles;
+3. neutral fallback media download and ffprobe validation when YouTube challenged the runner;
+4. TypeScript + extension contracts;
+5. production Rust direct-engine build;
+6. live 64 MiB HTTP interruption with 8 MiB durable partial progress;
+7. restart/resume to exact 64 MiB verified output;
+8. pause/resume transfer policy contracts;
+9. Windows Setup and Portable construction;
+10. packaged Electron launch smoke;
+11. internal prerelease asset publication.
 
-The candidate version bump to `0.2.0-rc.1` changes package identity only. It does not publish a tag, release or installer.
+Published internal owner-test tag: `internal-v0.2.0-rc.2`.
 
-## Release workflow status
+The hosted-runner media result intentionally records `SUBUTAI_YOUTUBE_OWNER_ACCEPTANCE=PENDING_HOSTED_RUNNER_CHALLENGE`; therefore this evidence is not sufficient to declare owner readiness.
 
-The release workflow already fails closed when any required secret is missing:
+## Active final owner-test work
 
-- `SUBUTAI_RELEASES_TOKEN`
-- `WIN_CSC_LINK`
-- `WIN_CSC_KEY_PASSWORD`
-- `SUBUTAI_UPDATE_SIGNING_KEY_BASE64`
-- `SUBUTAI_UPDATE_PUBLIC_KEY_BASE64`
+PR #52 (`agent/rc2-owner-youtube-final`) is the current final owner-network acceptance path. It:
 
-It also requires version/tag equality, frozen dependencies, native and product policy tests, updater acceptance, signed package construction, Authenticode verification, signed update-manifest generation and package acceptance before publication.
+- refreshes the checksum-pinned standalone Windows yt-dlp to upstream stable `2026.08.19`;
+- adds `scripts/owner-youtube-acceptance.ps1`;
+- uses the packaged yt-dlp/FFmpeg/ffprobe/Node binaries from the built or installed app;
+- tries anonymous mode plus Chrome, Edge and Firefox local browser-cookie state;
+- tries bounded YouTube player-client profiles;
+- accepts only a real playable media file validated by packaged ffprobe;
+- records SHA-256 evidence;
+- emits `SUBUTAI_YOUTUBE_OWNER_ACCEPTANCE=PASS` only on a true real YouTube success.
 
-## Remaining external blockers
+The owner-network harness must pass on a real Windows owner machine before the exact sentence announcing completion is permitted.
 
-### Production signing
+## Browser interception/media behavior
 
-- obtain a trusted Windows Authenticode certificate or approved signing service;
-- provision `WIN_CSC_LINK` and `WIN_CSC_KEY_PASSWORD` in protected GitHub release infrastructure;
-- retain the private key outside source, logs, artifacts and PR comments.
+The Chromium/Firefox extension implementation retains download interception, native messaging, request-header capture, local browser cookies, referer/user-agent forwarding, context-menu download routing and direct handoff into the desktop queue. Existing installer acceptance also preserves browser native-messaging registration. These capabilities must not be removed while resolving YouTube acceptance.
 
-### Update-manifest signing
+## Production release boundary
 
-- generate and securely retain an offline Ed25519 key pair;
-- provision `SUBUTAI_UPDATE_SIGNING_KEY_BASE64`;
-- provision the matching `SUBUTAI_UPDATE_PUBLIC_KEY_BASE64`;
-- rotate keys only through an explicit trust migration.
+The following remain required for a signed public release but are not prerequisites for an unsigned owner-test decision:
 
-### Publication
-
-- provision a least-privilege `SUBUTAI_RELEASES_TOKEN` with Contents write access only to `enkhbat194/subutai-releases`;
-- do not embed the token in the application.
-
-### Clean physical acceptance
-
-- clean physical Windows 10 x64 machine;
-- clean physical Windows 11 x64 machine;
-- signed Setup and Portable acceptance on both;
-- install, first launch, native engine, browser registration, update, rollback, checksum rejection, uninstall and user-data preservation;
-- exact commit SHA, OS build, workflow IDs, artifact hashes and cleanup evidence.
-
-## Release state
-
-| Stage | Status |
-|---|---|
-| Source implementation | PASS |
-| Automated policy/typecheck | Required on this PR |
-| Windows engineering runner | Required on this PR |
-| Production credentials | BLOCKED |
-| Signed candidate build | BLOCKED |
-| Clean Windows 10 physical acceptance | BLOCKED |
-| Clean Windows 11 physical acceptance | BLOCKED |
-| `v0.2.0-rc.1` tag/prerelease | NOT CREATED |
-| Public installer publication | NOT PERFORMED |
+- `SUBUTAI_RELEASES_TOKEN`;
+- `WIN_CSC_LINK`;
+- `WIN_CSC_KEY_PASSWORD`;
+- `SUBUTAI_UPDATE_SIGNING_KEY_BASE64`;
+- `SUBUTAI_UPDATE_PUBLIC_KEY_BASE64`;
+- clean physical Windows 10 x64 signed acceptance;
+- clean physical Windows 11 x64 signed acceptance.
 
 ## Next correct sequence
 
-1. Merge this preflight/version PR only after all branch checks pass.
-2. Provision protected release credentials.
-3. Build signed `0.2.0-rc.1` artifacts without publishing.
-4. Run clean physical Windows 10/11 signed acceptance.
-5. Create `v0.2.0-rc.1` and publish a prerelease only after the external gates pass.
-6. Promote to stable `0.2.0` only after prerelease evidence is accepted.
-
-No tag, GitHub Release, installer publication or deployment is part of this PR.
+1. Make PR #52 pass all current Windows CI gates without weakening any existing acceptance.
+2. Merge the current yt-dlp refresh and owner-network acceptance harness.
+3. Run the owner-network harness against the packaged/installed rc.2 build on a real Windows owner machine, preferably with the owner already signed into YouTube in Chrome/Edge/Firefox.
+4. If it fails, use the harness diagnostics to harden the packaged media path; do not substitute neutral hosted media for YouTube acceptance.
+5. Declare owner readiness only after `SUBUTAI_YOUTUBE_OWNER_ACCEPTANCE=PASS` plus the already-passing direct/recovery/package/launch gates.
+6. Keep production signing and clean-machine public-release promotion as a later release track.
