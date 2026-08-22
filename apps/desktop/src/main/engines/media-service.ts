@@ -90,10 +90,10 @@ export class MediaService {
       '--dump-single-json',
       '--skip-download',
       '--no-warnings',
-      '--no-call-home',
       '--socket-timeout', String(this.transferSettings.connectTimeoutSeconds),
       '--extractor-retries', String(this.transferSettings.retryMaxAttempts),
     ];
+    this.appendJavaScriptRuntime(args);
     this.appendTransferArguments(args, 0);
     this.appendRequestArguments(args, headers, sourcePageUrl);
     args.push(url);
@@ -192,8 +192,9 @@ export class MediaService {
     const running = Array.from(this.tasks.values()).some((task) => task.process !== null);
     const ytDlpPath = this.resolveYtDlp();
     const ffmpegPath = this.resolveFfmpeg();
+    const nodePath = this.resolveNode();
     const result: MediaServiceHealth = {
-      available: this.looksAvailable(ytDlpPath) && this.looksAvailable(ffmpegPath),
+      available: this.looksAvailable(ytDlpPath) && this.looksAvailable(ffmpegPath) && this.looksAvailable(nodePath),
       running,
     };
     if (this.ytDlpVersion) result.version = this.ytDlpVersion;
@@ -212,7 +213,8 @@ export class MediaService {
     if (task.process) return;
     const ytDlp = this.resolveYtDlp();
     const ffmpeg = this.resolveFfmpeg();
-    const args = this.buildDownloadArguments(task, ffmpeg);
+    const node = this.resolveNode();
+    const args = this.buildDownloadArguments(task, ffmpeg, node);
 
     const child = spawn(ytDlp, args, {
       windowsHide: true,
@@ -237,7 +239,7 @@ export class MediaService {
         const trimmed = line.trim();
         if (!trimmed) continue;
         task.stderr.push(trimmed);
-        if (task.stderr.length > 12) task.stderr.shift();
+        if (task.stderr.length > 24) task.stderr.shift();
       }
     });
     child.once('error', (error) => {
@@ -256,7 +258,7 @@ export class MediaService {
         task.status.etaSeconds = 0;
         if (task.status.totalBytes > 0) task.status.downloadedBytes = task.status.totalBytes;
       } else {
-        const detail = task.stderr.slice(-4).join(' | ');
+        const detail = this.preferredError(task.stderr);
         task.status.status = 'error';
         task.status.speedBytesPerSecond = 0;
         task.status.etaSeconds = null;
@@ -268,7 +270,7 @@ export class MediaService {
     void this.refreshVersions(ytDlp, ffmpeg);
   }
 
-  private buildDownloadArguments(task: MediaTask, ffmpegPath: string): string[] {
+  private buildDownloadArguments(task: MediaTask, ffmpegPath: string, nodePath: string): string[] {
     const options = task.options;
     const quality = options.quality ?? 'best';
     const qualityHeight = quality === 'best' ? null : Number.parseInt(quality, 10);
@@ -277,7 +279,6 @@ export class MediaService {
       '--newline',
       '--continue',
       '--part',
-      '--no-call-home',
       '--socket-timeout', String(this.transferSettings.transferTimeoutSeconds),
       '--retries', String(this.transferSettings.retryMaxAttempts),
       '--fragment-retries', String(this.transferSettings.retryMaxAttempts),
@@ -288,6 +289,7 @@ export class MediaService {
       '--progress-template', 'download:SUBUTAI_PROGRESS|%(progress.downloaded_bytes)s|%(progress.total_bytes_estimate)s|%(progress.speed)s|%(progress.eta)s|%(progress.status)s|%(info.title)s|%(info.playlist_index)s|%(info.playlist_count)s',
       '--print', 'after_move:SUBUTAI_FILE|%(filepath)s',
     ];
+    this.appendJavaScriptRuntime(args, nodePath);
     this.appendFfmpegLocation(args, ffmpegPath);
     this.appendTransferArguments(args, task.speedLimitBytesPerSecond ?? 0);
 
@@ -321,6 +323,11 @@ export class MediaService {
     this.appendRequestArguments(args, task.headers, task.sourcePageUrl);
     args.push(task.url);
     return args;
+  }
+
+  private appendJavaScriptRuntime(args: string[], nodePath = this.resolveNode()): void {
+    const runtime = nodePath === basename(nodePath) && !existsSync(nodePath) ? 'node' : `node:${nodePath}`;
+    args.push('--js-runtimes', runtime);
   }
 
   private appendTransferArguments(args: string[], taskSpeedLimit: number): void {
@@ -400,7 +407,8 @@ export class MediaService {
       child.once('error', (error) => reject(new Error(this.publicError(error.message))));
       child.once('exit', (code) => {
         if (code !== 0) {
-          reject(new Error(this.publicError(stderr.trim() || `Media probe exited with code ${code ?? 'unknown'}`)));
+          const detail = this.preferredError(stderr.split(/\r?\n/));
+          reject(new Error(this.publicError(detail || `Media probe exited with code ${code ?? 'unknown'}`)));
           return;
         }
         try {
@@ -418,6 +426,10 @@ export class MediaService {
 
   private resolveFfmpeg(): string {
     return this.resolveBinary('SUBUTAI_FFMPEG_PATH', process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg');
+  }
+
+  private resolveNode(): string {
+    return this.resolveBinary('SUBUTAI_NODE_PATH', process.platform === 'win32' ? 'node.exe' : 'node');
   }
 
   private resolveBinary(environmentName: string, binary: string): string {
@@ -456,9 +468,25 @@ export class MediaService {
     });
   }
 
+  private preferredError(lines: string[]): string {
+    const useful = lines.map((line) => line.trim()).filter(Boolean);
+    const explicit = [...useful].reverse().find((line) => /^ERROR:/i.test(line) || /\berror:/i.test(line));
+    if (explicit) return explicit;
+    const withoutWarnings = useful.filter((line) => !/^WARNING:/i.test(line) && !/deprecated/i.test(line));
+    return (withoutWarnings.length > 0 ? withoutWarnings : useful).slice(-4).join(' | ');
+  }
+
   private publicError(message: string): string {
-    return message
+    const normalized = message
       .replaceAll(/yt-dlp(?:\.exe)?/gi, 'Subutai Media')
-      .replaceAll(/ffmpeg(?:\.exe)?/gi, 'Subutai Media');
+      .replaceAll(/ffmpeg(?:\.exe)?/gi, 'Subutai Media')
+      .replaceAll(/node(?:\.exe)?/gi, 'Subutai JavaScript Runtime');
+    if (/sign in to confirm|not a bot|cookies-from-browser/i.test(normalized)) {
+      return 'YouTube энэ видеонд нэвтрэлт шаардаж байна. Browser integration-оор дахин оролдох эсвэл өөр public видео туршина уу.';
+    }
+    if (/javascript runtime|js runtime|challenge solver/i.test(normalized)) {
+      return 'YouTube боловсруулах JavaScript хөдөлгүүр эхэлсэнгүй. Subutai-г дахин нээгээд оролдоно уу.';
+    }
+    return normalized;
   }
 }

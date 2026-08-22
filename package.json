@@ -1,6 +1,6 @@
 {
   "name": "subutai-dl",
-  "version": "0.1.0",
+  "version": "0.2.0-rc.2",
   "private": true,
   "description": "Subutai Download Manager monorepo",
   "packageManager": "pnpm@10.15.0",
@@ -32,7 +32,8 @@
     "test:integrity": "node --experimental-strip-types scripts/integrity-policy-test.mts",
     "test:mirror": "node --experimental-strip-types scripts/mirror-policy-test.mts",
     "test:telemetry": "node --experimental-strip-types scripts/telemetry-policy-test.mts",
-    "test:production-acceptance": "node scripts/production-acceptance-policy-test.mjs && pnpm test:updater-policy && pnpm test:updater-acceptance && pnpm test:real-update-policy",
+    "test:release-preflight": "node scripts/release-preflight-policy-test.mjs",
+    "test:production-acceptance": "pnpm test:release-preflight && node scripts/production-acceptance-policy-test.mjs && pnpm test:updater-policy && pnpm test:updater-acceptance && pnpm test:real-update-policy",
     "test:release-version": "node scripts/validate-release-version.mjs",
     "test:release-signing": "node scripts/release-signing-policy-test.mjs",
     "test:release-engine": "node scripts/release-engine-policy-test.mjs",

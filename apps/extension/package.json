@@ -1,10 +1,10 @@
 {
   "name": "@subutai/extension",
-  "version": "0.1.0",
+  "version": "0.2.0-rc.2",
   "private": true,
   "type": "module",
   "scripts": {
     "build": "node ../../scripts/build-extensions.mjs",
-    "typecheck": "node ../../scripts/extension-contract-test.mjs"
+    "typecheck": "node ../../scripts/build-extensions.mjs && node ../../scripts/extension-contract-test.mjs"
   }
 }

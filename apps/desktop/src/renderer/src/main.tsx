@@ -1,15 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { RootApp } from './RootApp';
-import './styles.css';
-import './live.css';
-import './media.css';
-import './queue.css';
-import './transfer.css';
-import './batch.css';
-import './resilience.css';
-import './tools.css';
-import './system.css';
+import './mvp.css';
 
 const root = document.getElementById('root');
 

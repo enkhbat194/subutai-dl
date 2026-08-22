@@ -73,7 +73,9 @@ if ($RequireUpdateTrust) {
 $requiredEngines = @(
   "subutai-engine-host.exe",
   "yt-dlp.exe",
-  "ffmpeg.exe"
+  "ffmpeg.exe",
+  "ffprobe.exe",
+  "node.exe"
 )
 foreach ($engine in $requiredEngines) {
   $enginePath = Join-Path $engineDir $engine
@@ -83,6 +85,11 @@ foreach ($engine in $requiredEngines) {
   if ((Get-Item $enginePath).Length -lt 64KB) {
     throw "Packaged engine is unexpectedly small: $enginePath"
   }
+}
+
+$nodeVersion = & (Join-Path $engineDir "node.exe") --version 2>&1 | Select-Object -First 1
+if ($LASTEXITCODE -ne 0 -or -not $nodeVersion -or $nodeVersion -notmatch '^v22\.') {
+  throw "Packaged Node.js runtime must be executable Node 22.x; received: $nodeVersion"
 }
 
 $legacyDirectEngine = Join-Path $engineDir "aria2c.exe"
@@ -165,6 +172,6 @@ Write-Host "Subutai Windows package validation passed."
 Write-Host "Setup: $($setupFiles[0].Name)"
 Write-Host "Portable: $($portableFiles[0].Name)"
 Write-Host "Native direct engine: subutai-engine-host.exe"
-Write-Host "Temporary media tools: yt-dlp.exe, ffmpeg.exe"
+Write-Host "Media stack: yt-dlp.exe, ffmpeg.exe, ffprobe.exe, node.exe ($nodeVersion)"
 Write-Host "Manifest: latest.yml"
 Write-Host "Checksums: SHA256SUMS.txt"

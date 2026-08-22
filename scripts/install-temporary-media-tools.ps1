@@ -12,12 +12,19 @@ $ffmpegBuild = "ffmpeg-N-123778-g3b55818764-win64-gpl"
 $ffmpegUrl = "https://github.com/yt-dlp/FFmpeg-Builds/releases/download/autobuild-2026-03-31-15-13/$ffmpegBuild.zip"
 $ffmpegSha256 = "43f9f3491b86264a3b4104935283955002fd8a1413377c7d04a4c484576d6c11"
 
+$nodeVersion = "22.23.1"
+$nodeArchiveName = "node-v$nodeVersion-win-x64.zip"
+$nodeUrl = "https://nodejs.org/dist/v$nodeVersion/$nodeArchiveName"
+$nodeSha256 = "7df0bc9375723f4a86b3aa1b7cc73342423d9677a8df4538aca31a049e309c29"
+
 $tempBase = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { [System.IO.Path]::GetTempPath() }
 $tempRoot = Join-Path $tempBase "SubutaiTemporaryMediaTools"
 $cacheRoot = Join-Path $env:USERPROFILE ".cache\subutai-media-tools"
 $ytDlpDownload = Join-Path $cacheRoot "yt-dlp-$ytDlpVersion.exe"
 $ffmpegArchive = Join-Path $cacheRoot "$ffmpegBuild.zip"
+$nodeArchive = Join-Path $cacheRoot $nodeArchiveName
 $ffmpegExtract = Join-Path $tempRoot "ffmpeg"
+$nodeExtract = Join-Path $tempRoot "node"
 
 function Test-ExpectedHash {
   param(
@@ -43,7 +50,18 @@ function Get-VerifiedDownload {
   }
 
   Remove-Item $Destination -Force -ErrorAction SilentlyContinue
-  Invoke-WebRequest -Uri $Url -OutFile $Destination -UseBasicParsing
+  $curl = Get-Command curl.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+  if ($curl) {
+    Write-Host "Downloading media dependency with curl: $Url"
+    & $curl.Source -L --fail --silent --show-error --retry 3 --retry-delay 2 --connect-timeout 20 --max-time 240 --output $Destination $Url
+    if ($LASTEXITCODE -ne 0) {
+      throw "curl failed downloading $Url with exit code $LASTEXITCODE."
+    }
+  } else {
+    Write-Host "curl.exe unavailable; using Invoke-WebRequest for $Url"
+    Invoke-WebRequest -Uri $Url -OutFile $Destination -UseBasicParsing -TimeoutSec 240
+  }
+
   if (-not (Test-ExpectedHash -Path $Destination -ExpectedSha256 $ExpectedSha256)) {
     $actual = if (Test-Path $Destination) {
       (Get-FileHash -Path $Destination -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -52,6 +70,15 @@ function Get-VerifiedDownload {
     }
     throw "Downloaded media tool checksum mismatch for $Url. Expected $ExpectedSha256; received $actual."
   }
+}
+
+function Get-PathExecutable {
+  param([Parameter(Mandatory = $true)][string]$Name)
+  $command = Get-Command $Name -ErrorAction SilentlyContinue | Select-Object -First 1
+  if (-not $command) { return $null }
+  if ($command.Source -and (Test-Path $command.Source)) { return $command.Source }
+  if ($command.Path -and (Test-Path $command.Path)) { return $command.Path }
+  return $null
 }
 
 function Test-ToolVersion {
@@ -76,25 +103,49 @@ try {
   New-Item -ItemType Directory -Force -Path $tempRoot, $cacheRoot, $EngineDir | Out-Null
   Get-ChildItem $EngineDir -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force
 
+  # yt-dlp must be the standalone executable so the packaged app does not depend on Python.
   Get-VerifiedDownload -Url $ytDlpUrl -Destination $ytDlpDownload -ExpectedSha256 $ytDlpSha256
-  Get-VerifiedDownload -Url $ffmpegUrl -Destination $ffmpegArchive -ExpectedSha256 $ffmpegSha256
-
-  Expand-Archive -Path $ffmpegArchive -DestinationPath $ffmpegExtract -Force
-  $ffmpeg = Get-ChildItem $ffmpegExtract -Recurse -File -Filter "ffmpeg.exe" |
-    Where-Object { $_.DirectoryName -match "[\\/]bin$" } |
-    Select-Object -First 1
-  $ffprobe = Get-ChildItem $ffmpegExtract -Recurse -File -Filter "ffprobe.exe" |
-    Where-Object { $_.DirectoryName -match "[\\/]bin$" } |
-    Select-Object -First 1
-
-  if (-not $ffmpeg) { throw "Pinned FFmpeg archive did not contain bin\ffmpeg.exe." }
-  if (-not $ffprobe) { throw "Pinned FFmpeg archive did not contain bin\ffprobe.exe." }
-
   Copy-Item $ytDlpDownload (Join-Path $EngineDir "yt-dlp.exe") -Force
-  Copy-Item $ffmpeg.FullName (Join-Path $EngineDir "ffmpeg.exe") -Force
-  Copy-Item $ffprobe.FullName (Join-Path $EngineDir "ffprobe.exe") -Force
 
-  foreach ($binary in @("yt-dlp.exe", "ffmpeg.exe", "ffprobe.exe")) {
+  # setup-node already provisions Node on GitHub-hosted Windows. Reuse that executable
+  # for the owner-test package to avoid a second large network download; retain the
+  # pinned archive fallback for environments without Node on PATH.
+  $nodeFromPath = Get-PathExecutable -Name "node.exe"
+  if ($nodeFromPath) {
+    Write-Host "Using Node.js from the prepared runner: $nodeFromPath"
+    Copy-Item $nodeFromPath (Join-Path $EngineDir "node.exe") -Force
+  } else {
+    Get-VerifiedDownload -Url $nodeUrl -Destination $nodeArchive -ExpectedSha256 $nodeSha256
+    Expand-Archive -Path $nodeArchive -DestinationPath $nodeExtract -Force
+    $node = Get-ChildItem $nodeExtract -Recurse -File -Filter "node.exe" | Select-Object -First 1
+    if (-not $node) { throw "Pinned Node archive did not contain node.exe." }
+    Copy-Item $node.FullName (Join-Path $EngineDir "node.exe") -Force
+  }
+
+  # Prefer the FFmpeg pair already present on the hosted runner. If either binary is
+  # unavailable, fall back to the checksum-pinned archive used by release acceptance.
+  $ffmpegFromPath = Get-PathExecutable -Name "ffmpeg.exe"
+  $ffprobeFromPath = Get-PathExecutable -Name "ffprobe.exe"
+  if ($ffmpegFromPath -and $ffprobeFromPath) {
+    Write-Host "Using FFmpeg from the prepared runner: $ffmpegFromPath"
+    Copy-Item $ffmpegFromPath (Join-Path $EngineDir "ffmpeg.exe") -Force
+    Copy-Item $ffprobeFromPath (Join-Path $EngineDir "ffprobe.exe") -Force
+  } else {
+    Get-VerifiedDownload -Url $ffmpegUrl -Destination $ffmpegArchive -ExpectedSha256 $ffmpegSha256
+    Expand-Archive -Path $ffmpegArchive -DestinationPath $ffmpegExtract -Force
+    $ffmpeg = Get-ChildItem $ffmpegExtract -Recurse -File -Filter "ffmpeg.exe" |
+      Where-Object { $_.DirectoryName -match "[\\/]bin$" } |
+      Select-Object -First 1
+    $ffprobe = Get-ChildItem $ffmpegExtract -Recurse -File -Filter "ffprobe.exe" |
+      Where-Object { $_.DirectoryName -match "[\\/]bin$" } |
+      Select-Object -First 1
+    if (-not $ffmpeg) { throw "Pinned FFmpeg archive did not contain bin\ffmpeg.exe." }
+    if (-not $ffprobe) { throw "Pinned FFmpeg archive did not contain bin\ffprobe.exe." }
+    Copy-Item $ffmpeg.FullName (Join-Path $EngineDir "ffmpeg.exe") -Force
+    Copy-Item $ffprobe.FullName (Join-Path $EngineDir "ffprobe.exe") -Force
+  }
+
+  foreach ($binary in @("yt-dlp.exe", "ffmpeg.exe", "ffprobe.exe", "node.exe")) {
     $path = Join-Path $EngineDir $binary
     if (-not (Test-Path $path)) { throw "Temporary media tool is missing: $path" }
     if ((Get-Item $path).Length -lt 64KB) { throw "Temporary media tool is unexpectedly small: $path" }
@@ -107,8 +158,9 @@ try {
   Test-ToolVersion -Executable (Join-Path $EngineDir "yt-dlp.exe") -Arguments @("--version") -Label "yt-dlp"
   Test-ToolVersion -Executable (Join-Path $EngineDir "ffmpeg.exe") -Arguments @("-version") -Label "FFmpeg"
   Test-ToolVersion -Executable (Join-Path $EngineDir "ffprobe.exe") -Arguments @("-version") -Label "FFprobe"
+  Test-ToolVersion -Executable (Join-Path $EngineDir "node.exe") -Arguments @("--version") -Label "Node.js"
 
-  Write-Host "Pinned temporary media tools installed and checksum verified."
+  Write-Host "Subutai media tools and JavaScript runtime staged and verified."
 } finally {
   Remove-Item $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
 }

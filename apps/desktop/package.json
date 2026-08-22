@@ -1,6 +1,6 @@
 {
   "name": "@subutai/desktop",
-  "version": "0.1.0",
+  "version": "0.2.0-rc.2",
   "private": true,
   "description": "Subutai Download Manager desktop application",
   "author": "enkhbat194",
@@ -47,7 +47,9 @@
       {
         "from": "resources/engines/win32-x64",
         "to": "engines",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       },
       {
         "from": "../../engines/native/target/release/subutai-engine-host.exe",
@@ -56,22 +58,30 @@
       {
         "from": "resources/native-messaging",
         "to": "native-messaging",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       },
       {
         "from": "resources/updater",
         "to": "updater",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       },
       {
         "from": "resources/update",
         "to": "update",
-        "filter": ["trust.json"]
+        "filter": [
+          "trust.json"
+        ]
       },
       {
         "from": "../extension/dist",
         "to": "browser-extension",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "publish": [
@@ -83,11 +93,18 @@
       }
     ],
     "win": {
-      "target": ["nsis", "portable"],
+      "target": [
+        "nsis",
+        "portable"
+      ],
       "verifyUpdateCodeSignature": true,
-      "signExts": ["subutai-engine-host.exe"],
+      "signExts": [
+        "subutai-engine-host.exe"
+      ],
       "signtoolOptions": {
-        "signingHashAlgorithms": ["sha256"],
+        "signingHashAlgorithms": [
+          "sha256"
+        ],
         "rfc3161TimeStampServer": "http://timestamp.digicert.com"
       }
     },
