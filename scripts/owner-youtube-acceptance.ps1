@@ -93,6 +93,34 @@ function Add-UniqueCandidate {
   if ($Seen.Add($Candidate)) { $List.Add($Candidate) }
 }
 
+function Add-FirefoxProfiles {
+  param(
+    [System.Collections.Generic.List[string]]$List,
+    [System.Collections.Generic.HashSet[string]]$Seen,
+    [string]$FirefoxRoot
+  )
+
+  Add-UniqueCandidate -List $List -Seen $Seen -Candidate "firefox"
+  if (-not $FirefoxRoot -or -not (Test-Path $FirefoxRoot)) { return }
+
+  $profilesIni = Join-Path (Split-Path $FirefoxRoot -Parent) "profiles.ini"
+  if (Test-Path $profilesIni) {
+    Get-Content $profilesIni -ErrorAction SilentlyContinue |
+      ForEach-Object {
+        if ($_ -match '^Name=(.+)$') {
+          $profileName = $Matches[1].Trim()
+          if ($profileName) {
+            Add-UniqueCandidate -List $List -Seen $Seen -Candidate "firefox:$profileName"
+          }
+        }
+      }
+  }
+
+  foreach ($fallbackName in @("default-release", "default")) {
+    Add-UniqueCandidate -List $List -Seen $Seen -Candidate "firefox:$fallbackName"
+  }
+}
+
 function Add-ChromiumProfiles {
   param(
     [System.Collections.Generic.List[string]]$List,
@@ -126,9 +154,10 @@ function Get-InstalledBrowserCandidates {
   Add-UniqueCandidate -List $result -Seen $seen -Candidate "none"
 
   # Firefox is intentionally early: yt-dlp can read its cookie DB directly and it often
-  # avoids Chromium's locked-cookie/keyring edge cases on Windows.
-  if ($env:APPDATA -and (Test-Path (Join-Path $env:APPDATA "Mozilla\Firefox\Profiles"))) {
-    Add-UniqueCandidate -List $result -Seen $seen -Candidate "firefox"
+  # avoids Chromium's locked-cookie/keyring edge cases on Windows. Try named Firefox
+  # profiles too, because the signed-in YouTube session is not always the default profile.
+  if ($env:APPDATA) {
+    Add-FirefoxProfiles -List $result -Seen $seen -FirefoxRoot (Join-Path $env:APPDATA "Mozilla\Firefox\Profiles")
   }
 
   if ($env:LOCALAPPDATA) {
@@ -142,6 +171,8 @@ function Get-InstalledBrowserCandidates {
   # Preserve deterministic fallbacks even when profile discovery is unavailable.
   foreach ($candidate in @(
     "firefox",
+    "firefox:default-release",
+    "firefox:default",
     "chrome",
     "chrome:Default",
     "chrome:Profile 1",
