@@ -498,7 +498,7 @@ export class MediaService {
     if (options.embedThumbnail) args.push('--embed-thumbnail');
 
     this.appendBrowserCookies(args, task.browserCookieSources, task.browserCookieSourceIndex);
-    this.appendRequestArguments(args, task.headers, task.sourcePageUrl);
+    this.appendRequestArguments(args, task.headers, task.sourcePageUrl, task.browserCookieSourceIndex < 0);
     args.push(task.url);
     return args;
   }
@@ -538,7 +538,12 @@ export class MediaService {
     if (source) args.push('--cookies-from-browser', source);
   }
 
-  private appendRequestArguments(args: string[], headers?: DownloadRequestHeaders, sourcePageUrl?: string): void {
+  private appendRequestArguments(
+    args: string[],
+    headers?: DownloadRequestHeaders,
+    sourcePageUrl?: string,
+    includeCookie = true,
+  ): void {
     if (sourcePageUrl) args.push('--referer', sourcePageUrl);
     if (!headers) return;
     for (const [name, value] of Object.entries(headers)) {
@@ -548,7 +553,7 @@ export class MediaService {
       } else if (lower === 'user-agent') {
         args.push('--user-agent', value);
       } else if (lower === 'cookie') {
-        args.push('--add-header', `Cookie:${value.replace(/[\r\n]+/g, ' ')}`);
+        if (includeCookie) args.push('--add-header', `Cookie:${value.replace(/[\r\n]+/g, ' ')}`);
       } else {
         const header = sanitizeHeader(name, value);
         if (header) args.push('--add-header', header);
@@ -590,9 +595,19 @@ export class MediaService {
       if (!isYouTubeUrl(url) || !looksLikeYouTubeAuthChallenge(this.diagnosticFromError(error))) throw error;
       let lastError: unknown = error;
       const baseArgs = args.slice(0, -1);
+      const browserArgs: string[] = [];
+      for (let index = 0; index < baseArgs.length; index += 1) {
+        const argument = baseArgs[index];
+        const next = baseArgs[index + 1];
+        if (argument === '--add-header' && /^Cookie:/i.test(next ?? '')) {
+          index += 1;
+          continue;
+        }
+        browserArgs.push(argument);
+      }
       for (const source of discoverBrowserCookieSources()) {
         try {
-          return await this.captureJson([...baseArgs, '--cookies-from-browser', source, url]);
+          return await this.captureJson([...browserArgs, '--cookies-from-browser', source, url]);
         } catch (browserError) {
           lastError = browserError;
         }
