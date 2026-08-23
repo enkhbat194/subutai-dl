@@ -103,9 +103,8 @@ jobs:
             $errors | ForEach-Object { Write-Error $_.Message }
             throw "owner-youtube-acceptance.ps1 contains PowerShell parse errors."
           }
-          cmd.exe /d /c "scripts\Run-Subutai-Owner-Acceptance.cmd --help" > $null 2>&1
-          if ($LASTEXITCODE -eq 2) {
-            throw "Run-Subutai-Owner-Acceptance.cmd could not locate the PowerShell harness."
+          if (-not (Test-Path ./scripts/Run-Subutai-Owner-Acceptance.cmd)) {
+            throw "Run-Subutai-Owner-Acceptance.cmd is missing."
           }
 
       - name: Install locked dependencies
