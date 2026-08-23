@@ -8,6 +8,7 @@ on:
       - "engines/native/**"
       - "packages/**"
       - "scripts/install-temporary-media-tools.ps1"
+      - "scripts/stage-youtube-pot-provider.ps1"
       - "scripts/youtube-media-smoke.ps1"
       - "scripts/owner-youtube-acceptance.ps1"
       - "scripts/owner-critical-packaged-acceptance.mjs"
@@ -26,6 +27,7 @@ on:
       - "engines/native/**"
       - "packages/**"
       - "scripts/install-temporary-media-tools.ps1"
+      - "scripts/stage-youtube-pot-provider.ps1"
       - "scripts/youtube-media-smoke.ps1"
       - "scripts/owner-youtube-acceptance.ps1"
       - "scripts/owner-critical-packaged-acceptance.mjs"
@@ -107,6 +109,15 @@ jobs:
             $errors | ForEach-Object { Write-Error $_.Message }
             throw "owner-youtube-acceptance.ps1 contains PowerShell parse errors."
           }
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path ./scripts/stage-youtube-pot-provider.ps1),
+            [ref]$tokens,
+            [ref]$errors
+          ) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Error $_.Message }
+            throw "stage-youtube-pot-provider.ps1 contains PowerShell parse errors."
+          }
           node --check ./scripts/owner-critical-packaged-acceptance.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           if (-not (Test-Path ./scripts/Run-Subutai-Owner-Acceptance.cmd)) {
@@ -120,6 +131,10 @@ jobs:
       - name: Install pinned media tools and JavaScript runtime
         shell: powershell
         run: ./scripts/install-temporary-media-tools.ps1
+
+      - name: Stage pinned YouTube PO-token provider
+        shell: powershell
+        run: ./scripts/stage-youtube-pot-provider.ps1
 
       - name: Prove packaged media stack and attempt public YouTube
         shell: powershell
@@ -185,7 +200,7 @@ jobs:
 
             This candidate replaces the crowded prototype dashboard with a focused one-link flow and routes recognised YouTube/media URLs automatically.
 
-            Publication requires a checksum-verified normal HTTP download through the first-party native engine, a live 64 MiB interruption/restart recovery run, transfer pause/resume contracts, and an additional packaged `subutai-engine-host.exe` acceptance that performs normal HTTP, explicit pause/resume, controller shutdown/restart, durable recovery-state verification and exact SHA-256 completion using the same binaries shipped in the Windows package. It also requires the packaged yt-dlp/FFmpeg/Node media stack, TypeScript checks, Windows Setup/Portable construction and packaged Electron launch smoke. The workflow attempts a public YouTube download; GitHub-hosted datacenter IPs can be challenged by YouTube, so owner-network YouTube acceptance remains a separate physical-owner gate when that occurs.
+            Publication requires a checksum-verified normal HTTP download through the first-party native engine, a live 64 MiB interruption/restart recovery run, transfer pause/resume contracts, and an additional packaged `subutai-engine-host.exe` acceptance that performs normal HTTP, explicit pause/resume, controller shutdown/restart, durable recovery-state verification and exact SHA-256 completion using the same binaries shipped in the Windows package. It also requires the packaged yt-dlp/FFmpeg/Node media stack, the pinned YouTube PO-token provider runtime, TypeScript checks, Windows Setup/Portable construction and packaged Electron launch smoke. The workflow attempts a public YouTube download; GitHub-hosted datacenter IPs can still be challenged by YouTube, so owner-network YouTube acceptance remains a separate physical-owner gate when that occurs.
 
             Start with `Subutai-Portable-${{ steps.version.outputs.version }}-x64.exe`. The owner-network YouTube acceptance launcher and critical direct acceptance harness are bundled under `resources\owner-acceptance` inside the Windows package. Windows SmartScreen may warn because this owner-test build is unsigned.
           prerelease: true
