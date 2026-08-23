@@ -1,6 +1,6 @@
 import { app } from 'electron';
 import { spawn, type ChildProcess } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import type {
   DownloadRequestHeaders,
@@ -12,9 +12,92 @@ import { DEFAULT_TRANSFER_SETTINGS, resolveProxyUrl, ytDlpSpeed } from '../netwo
 
 export type MediaTaskState = 'waiting' | 'active' | 'paused' | 'complete' | 'error' | 'removed';
 
-type BrowserCookieSource = 'chrome' | 'edge' | 'firefox';
+type BrowserCookieSource = string;
 
-const BROWSER_COOKIE_SOURCES: readonly BrowserCookieSource[] = ['chrome', 'edge', 'firefox'];
+function addUniqueBrowserCookieSource(target: BrowserCookieSource[], seen: Set<string>, source: string): void {
+  if (!source) return;
+  const key = source.toLowerCase();
+  if (seen.has(key)) return;
+  seen.add(key);
+  target.push(source);
+}
+
+function addChromiumProfiles(
+  target: BrowserCookieSource[],
+  seen: Set<string>,
+  browser: string,
+  userDataRoot: string,
+): void {
+  addUniqueBrowserCookieSource(target, seen, browser);
+  if (!userDataRoot || !existsSync(userDataRoot)) return;
+
+  const profileNames: string[] = [];
+  if (existsSync(join(userDataRoot, 'Default'))) profileNames.push('Default');
+  try {
+    const numbered = readdirSync(userDataRoot, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && /^Profile \d+$/.test(entry.name))
+      .map((entry) => entry.name)
+      .sort((left, right) => Number(left.slice(8)) - Number(right.slice(8)))
+      .slice(0, 20);
+    profileNames.push(...numbered);
+  } catch {
+    // Browser profile discovery is best-effort; deterministic fallbacks remain below.
+  }
+
+  for (const profileName of profileNames) {
+    addUniqueBrowserCookieSource(target, seen, browser + ':' + profileName);
+  }
+}
+
+function discoverBrowserCookieSources(): readonly BrowserCookieSource[] {
+  const result: BrowserCookieSource[] = [];
+  const seen = new Set<string>();
+
+  if (process.platform === 'win32') {
+    const roaming = process.env.APPDATA?.trim();
+    if (roaming && existsSync(join(roaming, 'Mozilla', 'Firefox', 'Profiles'))) {
+      addUniqueBrowserCookieSource(result, seen, 'firefox');
+    }
+
+    const local = process.env.LOCALAPPDATA?.trim();
+    if (local) {
+      addChromiumProfiles(result, seen, 'chrome', join(local, 'Google', 'Chrome', 'User Data'));
+      addChromiumProfiles(result, seen, 'edge', join(local, 'Microsoft', 'Edge', 'User Data'));
+      addChromiumProfiles(result, seen, 'brave', join(local, 'BraveSoftware', 'Brave-Browser', 'User Data'));
+      addChromiumProfiles(result, seen, 'chromium', join(local, 'Chromium', 'User Data'));
+      addChromiumProfiles(result, seen, 'vivaldi', join(local, 'Vivaldi', 'User Data'));
+    }
+  }
+
+  for (const fallback of [
+    'firefox',
+    'chrome',
+    'chrome:Default',
+    'chrome:Profile 1',
+    'chrome:Profile 2',
+    'chrome:Profile 3',
+    'chrome:Profile 4',
+    'chrome:Profile 5',
+    'edge',
+    'edge:Default',
+    'edge:Profile 1',
+    'edge:Profile 2',
+    'edge:Profile 3',
+    'edge:Profile 4',
+    'edge:Profile 5',
+    'brave',
+    'brave:Default',
+    'brave:Profile 1',
+    'chromium',
+    'vivaldi',
+  ]) {
+    addUniqueBrowserCookieSource(result, seen, fallback);
+  }
+
+  return result;
+}
+
+const BROWSER_COOKIE_SOURCES = discoverBrowserCookieSources();
 
 interface DiagnosticError extends Error {
   diagnostic?: string;
@@ -560,7 +643,7 @@ export class MediaService {
       .replaceAll(/ffmpeg(?:\.exe)?/gi, 'Subutai Media')
       .replaceAll(/node(?:\.exe)?/gi, 'Subutai JavaScript Runtime');
     if (/sign in to confirm|not a bot|cookies-from-browser/i.test(normalized)) {
-      return 'YouTube энэ видеонд нэвтрэлт шаардаж байна. Subutai Chrome, Edge, Firefox session-оос автоматаар оролдсон ч амжилтгүй бол browser-доо YouTube-д нэвтэрч дахин оролдоно уу.';
+      return 'YouTube энэ видеонд нэвтрэлт шаардаж байна. Subutai Firefox болон Chromium төрлийн суулгасан browser/profile session-уудаас автоматаар оролдсон ч амжилтгүй бол browser-доо YouTube-д нэвтэрч дахин оролдоно уу.';
     }
     if (/javascript runtime|js runtime|challenge solver/i.test(normalized)) {
       return 'YouTube боловсруулах JavaScript хөдөлгүүр эхэлсэнгүй. Subutai-г дахин нээгээд оролдоно уу.';
