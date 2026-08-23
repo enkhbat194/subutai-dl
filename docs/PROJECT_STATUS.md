@@ -1,13 +1,13 @@
 # Subutai — Authoritative Project Status
 
 Last audited: 2026-08-23  
-Audited `main`: `d5c68b2cb83cce029b36ad45b58c282680f1d005` (through PR #65)
+Audited `main`: `0c23e88a367d7dab9c8522ebc0abada5e761df6e` (through PR #69)
 
 ## Current conclusion
 
 Subutai has a working unsigned **`0.2.0-rc.2` owner-test Windows baseline** with real Setup and Portable artifacts. It is **not yet declared owner-ready** because a real owner-network YouTube download through the packaged application/tools has not produced `SUBUTAI_YOUTUBE_OWNER_ACCEPTANCE=PASS` evidence.
 
-Normal HTTP downloads through the first-party native engine, large-file interruption/restart recovery, pause/resume control, packaging, launch, browser integration and the packaged media runtime are passing. Production signing/public-release gates remain separate from owner-test readiness.
+Normal HTTP downloads through the first-party native engine, packaged desktop-host HTTP downloads, explicit large-file pause/resume, controller/app restart recovery, packaging, launch, browser integration and the packaged media runtime are passing. Production signing/public-release gates remain separate from owner-test readiness.
 
 ## Merged owner-test baseline
 
@@ -23,9 +23,12 @@ Normal HTTP downloads through the first-party native engine, large-file interrup
 | #57 | Windows owner build gated by a checksum-verified normal HTTP download through the first-party native engine; obsolete aria2c smoke removed from readiness |
 | #58 | Real packaged media service retries Chrome, Edge and Firefox browser sessions automatically after a YouTube authentication challenge |
 | #60 | Owner-network acceptance broadens browser-session discovery to Firefox first, Chromium default/recent profiles, Edge profiles and Brave while preserving strict YouTube PASS semantics |
-| #62 | Owner acceptance now discovers installed Firefox and Chromium-family profiles on Windows and covers Chrome, Edge, Brave, Chromium and Vivaldi profile directories before deterministic fallbacks |
-| #63 | Real packaged MediaService now mirrors installed Chromium-family profile discovery from the owner acceptance harness while preserving extension headers/cookies and all existing transfer/recovery gates |
-| #65 | Owner-network acceptance now reads Firefox `profiles.ini`, retries named Firefox profiles and preserves deterministic `default-release` / `default` fallbacks before Chromium-family attempts |
+| #62 | Owner acceptance discovers installed Firefox and Chromium-family profiles on Windows and covers Chrome, Edge, Brave, Chromium and Vivaldi profile directories before deterministic fallbacks |
+| #63 | Real packaged MediaService mirrors installed Chromium-family profile discovery from the owner acceptance harness while preserving extension headers/cookies and transfer/recovery gates |
+| #65 | Owner-network acceptance reads Firefox `profiles.ini`, retries named Firefox profiles and preserves deterministic `default-release` / `default` fallbacks before Chromium-family attempts |
+| #67 | Owner acceptance retries explicit Firefox profile paths when named-profile cookie lookup is insufficient |
+| #68 | The packaged media path mirrors the named/explicit Firefox profile fallback behavior |
+| #69 | Windows owner build now exercises the packaged `subutai-engine-host.exe` over the real desktop IPC protocol for normal HTTP, explicit pause/resume and controller shutdown/restart recovery before publication |
 
 Earlier merged release engineering remains preserved, including native direct engine, queue/persistence, browser integration, transactional update/rollback, checksum rejection, Authenticode release policy and signed update-manifest policy.
 
@@ -35,25 +38,29 @@ Earlier merged release engineering remains preserved, including native direct en
 |---|---:|---|
 | Windows app launches | PASS | Packaged Electron launch smoke |
 | Normal HTTP/direct engine | PASS | Checksum-verified real download through `subutai-engine` |
+| Packaged desktop host normal HTTP | PASS | PR #69, Internal Windows MVP run #58 |
 | Large-file interruption/resume | PASS | 64 MiB ranged transfer, durable partial state, exact SHA-256 completion |
-| Unfinished download survives app/engine restart | PASS | Two-phase restart recovery harness |
+| Explicit packaged-host pause/resume | PASS | PR #69, 64 MiB package acceptance via desktop IPC |
+| Unfinished download survives app/controller restart | PASS | PR #69 packaged-host EOF/restart path plus two-phase restart recovery harness |
 | Pause/resume control contracts | PASS | `pnpm test:transfer` |
 | Setup build exists | PASS | `Subutai-Setup-0.2.0-rc.2-x64.exe` |
 | Portable build exists | PASS | `Subutai-Portable-0.2.0-rc.2-x64.exe` |
 | Packaged yt-dlp/FFmpeg/Node media stack | PASS | Real neutral media download + ffprobe validation |
 | Resilient YouTube player-client defaults are in packaged app | PASS | PR #53 + staging validation |
-| Real app retries local browser sessions and installed Chromium-family profiles | PASS | PR #63 + TypeScript/package/launch acceptance |
+| Real app retries local Chromium-family and Firefox browser profiles | PASS | PR #68 + package/launch acceptance |
 | Owner acceptance launcher is inside the Windows package | PASS | PR #56 + package validation |
-| Owner acceptance discovers installed Chromium-family and named Firefox profiles | PASS | PR #65 + Internal Windows MVP run #51 |
+| Owner acceptance discovers installed Chromium-family and named/explicit Firefox profiles | PASS | PR #67/#68 |
 | Real public YouTube on GitHub-hosted Windows | BLOCKED BY HOST NETWORK | YouTube challenges datacenter IP; neutral fallback is not counted as YouTube acceptance |
 | Real owner-network YouTube using packaged tools/browser state | PENDING | Final owner-use acceptance gap |
 | Chrome/Edge/Firefox extension contract | PASS | Build/contract checks; installer registration preserved |
 
 ## Exact recent Windows evidence
 
-Subutai Internal Windows MVP workflow run `32635872223` / run number `51` on PR #65 head `e60f0701be041a9cc22c13f6d2d5a8ca673aded3` passed the complete hosted owner-test workflow after named Firefox profile discovery was added to the bundled owner acceptance harness. The run passed owner-acceptance harness syntax validation, packaged media/runtime validation, TypeScript/browser contracts, first-party native HTTP download, live interruption/restart recovery, pause/resume control contracts, Windows Setup/Portable construction, packaged Electron launch smoke and prerelease publication.
+Subutai Internal Windows MVP workflow run `32647885163` / run number `58` on PR #69 head `54656a62b5c8d9cbc98a52035009ae378c9f31b7` passed the strengthened hosted owner-test path. The run passed owner-acceptance harness syntax validation, packaged media/runtime validation, TypeScript/browser contracts, first-party native HTTP download, live 64 MiB interruption/restart recovery, pause/resume control contracts, Windows Setup/Portable construction, the new packaged desktop-host normal HTTP + explicit pause/resume + controller shutdown/restart recovery gate, packaged Electron launch smoke and prerelease publication.
 
-The fully enumerated owner-use path remains validated: real direct transfer, live 64 MiB interruption with durable partial/journal state, restart/resume to exact SHA-256 output, pause/resume contracts, packaged media stack, Setup/Portable build and launch smoke all pass. The hosted runner still cannot establish the final owner-network YouTube condition because YouTube challenges datacenter addresses. This is an external acceptance-environment limitation, not grounds to weaken the gate.
+The packaged-host gate uses the actual `win-unpacked\resources\engines\subutai-engine-host.exe` and packaged Node runtime. It drives the same binary desktop IPC protocol used by the application, pauses an in-flight 64 MiB ranged transfer, requires persisted resumable state, restarts the host, resumes to an exact SHA-256 match, then repeats the recovery path by closing the controller input to model application/controller shutdown.
+
+The hosted runner still cannot establish the final owner-network YouTube condition because YouTube challenges datacenter addresses. The media-stack fallback remains intentionally insufficient for owner-ready declaration; this gate is not weakened.
 
 Published internal owner-test tag remains `internal-v0.2.0-rc.2` and contains the Windows owner-test packages plus bundled owner-network acceptance assets.
 
@@ -64,15 +71,15 @@ The owner acceptance launcher is available both beside the internal prerelease a
 `scripts/owner-youtube-acceptance.ps1` uses the actual packaged binaries from the unpacked/installed application and:
 
 - tries anonymous YouTube extraction first;
-- reads Firefox `profiles.ini` and tries named Firefox profiles, then deterministic `default-release` / `default` fallbacks;
+- reads Firefox `profiles.ini`, tries named Firefox profiles and explicit profile paths, then deterministic fallbacks;
 - discovers Chromium-family profile directories on Windows;
-- covers Chrome, Edge, Brave, Chromium and Vivaldi `Default` / numbered profiles when present, while preserving deterministic fallbacks;
+- covers Chrome, Edge, Brave, Chromium and Vivaldi `Default` / numbered profiles when present;
 - tries bounded `default`, `android_vr`, `web_embedded` and `web_safari` player-client profiles;
 - accepts only a real playable YouTube media file validated by packaged `ffprobe`;
 - records the result SHA-256;
 - emits `SUBUTAI_YOUTUBE_OWNER_ACCEPTANCE=PASS` only on a true success.
 
-The packaged application itself mirrors installed Chromium-family profile discovery and retries local browser sessions automatically if an anonymous YouTube probe/download is challenged, while retaining extension-supplied cookies/headers and the bounded player-client defaults from `resources/engines/yt-dlp.conf`.
+The packaged application mirrors these browser-session fallbacks while retaining extension-supplied cookies/headers and the bounded player-client defaults from `resources/engines/yt-dlp.conf`.
 
 The final harness still must pass on a real owner Windows network before the exact completion sentence is permitted.
 
@@ -94,7 +101,7 @@ The following remain required for a signed public release but are not prerequisi
 
 ## Next correct sequence
 
-1. Keep the current hosted Windows MVP gates passing without weakening direct/recovery/package/launch checks.
+1. Keep the strengthened hosted Windows MVP gates passing without weakening packaged direct/recovery/package/launch checks.
 2. Run the bundled `resources\owner-acceptance\Run-Subutai-Owner-Acceptance.cmd` against the packaged/installed rc.2 build on a real Windows owner network, preferably while signed into YouTube in Firefox, Chrome, Edge, Brave, Chromium or Vivaldi.
 3. If it fails, use the exact browser/profile diagnostics to harden the packaged media path; do not substitute neutral hosted media for YouTube acceptance.
 4. Declare owner readiness only after `SUBUTAI_YOUTUBE_OWNER_ACCEPTANCE=PASS` plus the already-passing direct/recovery/package/launch gates.
