@@ -83,6 +83,91 @@ function Read-Tail {
   return ($lines | Select-Object -Last 10) -join " | "
 }
 
+function Add-UniqueCandidate {
+  param(
+    [System.Collections.Generic.List[string]]$List,
+    [System.Collections.Generic.HashSet[string]]$Seen,
+    [string]$Candidate
+  )
+  if (-not $Candidate) { return }
+  if ($Seen.Add($Candidate)) { $List.Add($Candidate) }
+}
+
+function Add-ChromiumProfiles {
+  param(
+    [System.Collections.Generic.List[string]]$List,
+    [System.Collections.Generic.HashSet[string]]$Seen,
+    [string]$BrowserName,
+    [string]$UserDataRoot
+  )
+
+  Add-UniqueCandidate -List $List -Seen $Seen -Candidate $BrowserName
+  if (-not $UserDataRoot -or -not (Test-Path $UserDataRoot)) { return }
+
+  $profileNames = New-Object System.Collections.Generic.List[string]
+  if (Test-Path (Join-Path $UserDataRoot "Default")) { $profileNames.Add("Default") }
+  Get-ChildItem $UserDataRoot -Directory -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -match '^Profile [0-9]+$' } |
+    Sort-Object {
+      if ($_.Name -match '^Profile ([0-9]+)$') { [int]$Matches[1] } else { [int]::MaxValue }
+    } |
+    ForEach-Object { $profileNames.Add($_.Name) }
+
+  foreach ($profileName in $profileNames | Select-Object -First 20) {
+    Add-UniqueCandidate -List $List -Seen $Seen -Candidate "${BrowserName}:$profileName"
+  }
+}
+
+function Get-InstalledBrowserCandidates {
+  $result = New-Object System.Collections.Generic.List[string]
+  $seen = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+
+  # Anonymous first: no dependency on a local browser session.
+  Add-UniqueCandidate -List $result -Seen $seen -Candidate "none"
+
+  # Firefox is intentionally early: yt-dlp can read its cookie DB directly and it often
+  # avoids Chromium's locked-cookie/keyring edge cases on Windows.
+  if ($env:APPDATA -and (Test-Path (Join-Path $env:APPDATA "Mozilla\Firefox\Profiles"))) {
+    Add-UniqueCandidate -List $result -Seen $seen -Candidate "firefox"
+  }
+
+  if ($env:LOCALAPPDATA) {
+    Add-ChromiumProfiles -List $result -Seen $seen -BrowserName "chrome" -UserDataRoot (Join-Path $env:LOCALAPPDATA "Google\Chrome\User Data")
+    Add-ChromiumProfiles -List $result -Seen $seen -BrowserName "edge" -UserDataRoot (Join-Path $env:LOCALAPPDATA "Microsoft\Edge\User Data")
+    Add-ChromiumProfiles -List $result -Seen $seen -BrowserName "brave" -UserDataRoot (Join-Path $env:LOCALAPPDATA "BraveSoftware\Brave-Browser\User Data")
+    Add-ChromiumProfiles -List $result -Seen $seen -BrowserName "chromium" -UserDataRoot (Join-Path $env:LOCALAPPDATA "Chromium\User Data")
+    Add-ChromiumProfiles -List $result -Seen $seen -BrowserName "vivaldi" -UserDataRoot (Join-Path $env:LOCALAPPDATA "Vivaldi\User Data")
+  }
+
+  # Preserve deterministic fallbacks even when profile discovery is unavailable.
+  foreach ($candidate in @(
+    "firefox",
+    "chrome",
+    "chrome:Default",
+    "chrome:Profile 1",
+    "chrome:Profile 2",
+    "chrome:Profile 3",
+    "chrome:Profile 4",
+    "chrome:Profile 5",
+    "edge",
+    "edge:Default",
+    "edge:Profile 1",
+    "edge:Profile 2",
+    "edge:Profile 3",
+    "edge:Profile 4",
+    "edge:Profile 5",
+    "brave",
+    "brave:Default",
+    "brave:Profile 1",
+    "chromium",
+    "vivaldi"
+  )) {
+    Add-UniqueCandidate -List $result -Seen $seen -Candidate $candidate
+  }
+
+  return @($result)
+}
+
 $app = Resolve-AppRoot -Requested $AppRoot
 $engineDir = Join-Path $app "resources\engines"
 $ytDlp = Join-Path $engineDir "yt-dlp.exe"
@@ -103,23 +188,7 @@ New-Item -ItemType Directory -Force -Path $OutputRoot | Out-Null
 $browserCandidates = if ($Browser -and $Browser -ne "auto") {
   @($Browser)
 } else {
-  @(
-    "none",
-    "firefox",
-    "chrome",
-    "chrome:Default",
-    "chrome:Profile 1",
-    "chrome:Profile 2",
-    "chrome:Profile 3",
-    "chrome:Profile 4",
-    "chrome:Profile 5",
-    "edge",
-    "edge:Default",
-    "edge:Profile 1",
-    "edge:Profile 2",
-    "edge:Profile 3",
-    "brave"
-  )
+  @(Get-InstalledBrowserCandidates)
 }
 
 $playerProfiles = @(
