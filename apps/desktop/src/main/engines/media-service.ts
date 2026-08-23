@@ -1,6 +1,6 @@
 import { app } from 'electron';
 import { spawn, type ChildProcess } from 'node:child_process';
-import { existsSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import type {
   DownloadRequestHeaders,
@@ -20,6 +20,33 @@ function addUniqueBrowserCookieSource(target: BrowserCookieSource[], seen: Set<s
   if (seen.has(key)) return;
   seen.add(key);
   target.push(source);
+}
+
+function addFirefoxProfiles(
+  target: BrowserCookieSource[],
+  seen: Set<string>,
+  firefoxRoot: string,
+): void {
+  addUniqueBrowserCookieSource(target, seen, 'firefox');
+  if (!firefoxRoot || !existsSync(firefoxRoot)) return;
+
+  const profilesIni = join(dirname(firefoxRoot), 'profiles.ini');
+  if (existsSync(profilesIni)) {
+    try {
+      const profileNames = readFileSync(profilesIni, 'utf8')
+        .split(/\r?\n/)
+        .map((line) => /^Name=(.+)$/.exec(line)?.[1]?.trim())
+        .filter((name): name is string => Boolean(name));
+      for (const profileName of profileNames.slice(0, 20)) {
+        addUniqueBrowserCookieSource(target, seen, `firefox:${profileName}`);
+      }
+    } catch {
+      // Firefox profile discovery is best-effort; deterministic fallbacks remain below.
+    }
+  }
+
+  addUniqueBrowserCookieSource(target, seen, 'firefox:default-release');
+  addUniqueBrowserCookieSource(target, seen, 'firefox:default');
 }
 
 function addChromiumProfiles(
@@ -55,8 +82,8 @@ function discoverBrowserCookieSources(): readonly BrowserCookieSource[] {
 
   if (process.platform === 'win32') {
     const roaming = process.env.APPDATA?.trim();
-    if (roaming && existsSync(join(roaming, 'Mozilla', 'Firefox', 'Profiles'))) {
-      addUniqueBrowserCookieSource(result, seen, 'firefox');
+    if (roaming) {
+      addFirefoxProfiles(result, seen, join(roaming, 'Mozilla', 'Firefox', 'Profiles'));
     }
 
     const local = process.env.LOCALAPPDATA?.trim();
@@ -71,6 +98,8 @@ function discoverBrowserCookieSources(): readonly BrowserCookieSource[] {
 
   for (const fallback of [
     'firefox',
+    'firefox:default-release',
+    'firefox:default',
     'chrome',
     'chrome:Default',
     'chrome:Profile 1',
