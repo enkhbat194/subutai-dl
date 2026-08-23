@@ -1,0 +1,57 @@
+name: Agent one-shot media cookie fallback patch
+
+on:
+  push:
+    branches:
+      - agent/media-cookie-fallback-precedence
+    paths:
+      - ".github/workflows/agent-cookie-fallback-patch.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/media-cookie-fallback-precedence
+      - name: Patch media cookie fallback precedence
+        shell: python
+        run: |
+          from pathlib import Path
+          path = Path("apps/desktop/src/main/engines/media-service.ts")
+          text = path.read_text(encoding="utf-8")
+          replacements = [
+              (
+                  "    this.appendRequestArguments(args, task.headers, task.sourcePageUrl);",
+                  "    this.appendRequestArguments(args, task.headers, task.sourcePageUrl, task.browserCookieSourceIndex < 0);",
+              ),
+              (
+                  "  private appendRequestArguments(args: string[], headers?: DownloadRequestHeaders, sourcePageUrl?: string): void {",
+                  "  private appendRequestArguments(\n    args: string[],\n    headers?: DownloadRequestHeaders,\n    sourcePageUrl?: string,\n    includeCookie = true,\n  ): void {",
+              ),
+              (
+                  "      } else if (lower === 'cookie') {\n        args.push('--add-header', `Cookie:${value.replace(/[\\r\\n]+/g, ' ')}`);",
+                  "      } else if (lower === 'cookie') {\n        if (includeCookie) args.push('--add-header', `Cookie:${value.replace(/[\\r\\n]+/g, ' ')}`);",
+              ),
+              (
+                  "      const baseArgs = args.slice(0, -1);\n      for (const source of discoverBrowserCookieSources()) {\n        try {\n          return await this.captureJson([...baseArgs, '--cookies-from-browser', source, url]);",
+                  "      const baseArgs = args.slice(0, -1);\n      const browserArgs: string[] = [];\n      for (let index = 0; index < baseArgs.length; index += 1) {\n        const argument = baseArgs[index];\n        const next = baseArgs[index + 1];\n        if (argument === '--add-header' && /^Cookie:/i.test(next ?? '')) {\n          index += 1;\n          continue;\n        }\n        browserArgs.push(argument);\n      }\n      for (const source of discoverBrowserCookieSources()) {\n        try {\n          return await this.captureJson([...browserArgs, '--cookies-from-browser', source, url]);",
+              ),
+          ]
+          for old, new in replacements:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"Expected exactly one match, got {count}: {old[:80]!r}")
+              text = text.replace(old, new, 1)
+          path.write_text(text, encoding="utf-8")
+      - name: Commit patch
+        shell: bash
+        run: |
+          git config user.name "subutai-agent"
+          git config user.email "actions@users.noreply.github.com"
+          git add apps/desktop/src/main/engines/media-service.ts
+          git commit -m "Avoid stale extension cookies during browser fallback"
+          git push origin HEAD:agent/media-cookie-fallback-precedence
