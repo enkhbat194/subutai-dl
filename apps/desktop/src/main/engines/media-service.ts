@@ -228,7 +228,7 @@ function isYouTubeUrl(value: string): boolean {
 }
 
 function looksLikeYouTubeAuthChallenge(value: string): boolean {
-  return /sign in to confirm|not a bot|authentication[^\n]*cookies|cookies[^\n]*authentication|youtube cookies|cookies-from-browser/i.test(value);
+  return /sign in to confirm|not a bot|authentication[^\n]*cookies|cookies[^\n]*authentication|youtube cookies|cookies-from-browser|http(?: response)? error:? 403|\b403 forbidden\b/i.test(value);
 }
 
 export class MediaService {
