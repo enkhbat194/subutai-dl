@@ -11,6 +11,7 @@ on:
       - "scripts/youtube-media-smoke.ps1"
       - "scripts/owner-youtube-acceptance.ps1"
       - "scripts/Run-Subutai-Owner-Acceptance.cmd"
+      - "scripts/direct-download-smoke.mjs"
       - "scripts/restart-recovery-harness.mjs"
       - "scripts/validate-windows-package.ps1"
       - "package.json"
@@ -27,6 +28,7 @@ on:
       - "scripts/youtube-media-smoke.ps1"
       - "scripts/owner-youtube-acceptance.ps1"
       - "scripts/Run-Subutai-Owner-Acceptance.cmd"
+      - "scripts/direct-download-smoke.mjs"
       - "scripts/restart-recovery-harness.mjs"
       - "scripts/validate-windows-package.ps1"
       - "package.json"
@@ -127,6 +129,12 @@ jobs:
         shell: powershell
         run: cargo build --release --manifest-path engines/native/Cargo.toml --bin subutai-engine
 
+      - name: Prove normal HTTP download through the native engine
+        shell: powershell
+        env:
+          SUBUTAI_NATIVE_ENGINE_PATH: ${{ github.workspace }}\engines\native\target\release\subutai-engine.exe
+        run: node scripts/direct-download-smoke.mjs
+
       - name: Prove live HTTP interruption and durable restart recovery
         shell: powershell
         env:
@@ -160,9 +168,9 @@ jobs:
 
             This candidate replaces the crowded prototype dashboard with a focused one-link flow and routes recognised YouTube/media URLs automatically.
 
-            Publication requires the packaged yt-dlp/FFmpeg/Node media stack to download and validate a real media file, a live 64 MiB local HTTP transfer to be interrupted with durable partial/journal state and resumed to an exact SHA-256 match, transfer pause/resume control contracts, TypeScript checks, Windows Setup/Portable construction and packaged Electron launch smoke. The workflow also attempts a public YouTube download. GitHub-hosted datacenter IPs can be challenged by YouTube; if that happens, the workflow records owner-network YouTube acceptance as pending instead of misclassifying the packaged media stack as broken.
+            Publication requires a checksum-verified normal HTTP download through the first-party native engine, the packaged yt-dlp/FFmpeg/Node media stack to download and validate a real media file, a live 64 MiB local HTTP transfer to be interrupted with durable partial/journal state and resumed to an exact SHA-256 match, transfer pause/resume control contracts, TypeScript checks, Windows Setup/Portable construction and packaged Electron launch smoke. The workflow also attempts a public YouTube download. GitHub-hosted datacenter IPs can be challenged by YouTube; if that happens, the workflow records owner-network YouTube acceptance as pending instead of misclassifying the packaged media stack as broken.
 
-            Start with `Subutai-Portable-${{ steps.version.outputs.version }}-x64.exe`. For the final owner-network YouTube gate, download `owner-youtube-acceptance.ps1` and `Run-Subutai-Owner-Acceptance.cmd` beside each other and run the CMD on the owner Windows machine. Windows SmartScreen may warn because this owner-test build is unsigned.
+            Start with `Subutai-Portable-${{ steps.version.outputs.version }}-x64.exe`. The owner-network YouTube acceptance launcher is also bundled under `resources\owner-acceptance` inside the Windows package, and the same scripts are published beside the release assets. Windows SmartScreen may warn because this owner-test build is unsigned.
           prerelease: true
           make_latest: false
           fail_on_unmatched_files: true
