@@ -36,86 +36,31 @@
     "appId": "com.subutai.downloadmanager",
     "productName": "Subutai Download Manager",
     "asar": true,
-    "directories": {
-      "output": "release"
-    },
-    "files": [
-      "out/**/*",
-      "package.json"
-    ],
+    "directories": { "output": "release" },
+    "files": ["out/**/*", "package.json"],
     "extraResources": [
-      {
-        "from": "resources/engines/win32-x64",
-        "to": "engines",
-        "filter": [
-          "**/*"
-        ]
-      },
-      {
-        "from": "../../engines/native/target/release/subutai-engine-host.exe",
-        "to": "engines/subutai-engine-host.exe"
-      },
-      {
-        "from": "resources/native-messaging",
-        "to": "native-messaging",
-        "filter": [
-          "**/*"
-        ]
-      },
-      {
-        "from": "resources/updater",
-        "to": "updater",
-        "filter": [
-          "**/*"
-        ]
-      },
-      {
-        "from": "resources/update",
-        "to": "update",
-        "filter": [
-          "trust.json"
-        ]
-      },
-      {
-        "from": "../extension/dist",
-        "to": "browser-extension",
-        "filter": [
-          "**/*"
-        ]
-      },
+      { "from": "resources/engines/win32-x64", "to": "engines", "filter": ["**/*"] },
+      { "from": "../../engines/native/target/release/subutai-engine-host.exe", "to": "engines/subutai-engine-host.exe" },
+      { "from": "resources/native-messaging", "to": "native-messaging", "filter": ["**/*"] },
+      { "from": "resources/updater", "to": "updater", "filter": ["**/*"] },
+      { "from": "resources/update", "to": "update", "filter": ["trust.json"] },
+      { "from": "../extension/dist", "to": "browser-extension", "filter": ["**/*"] },
       {
         "from": "../../scripts",
         "to": "owner-acceptance",
         "filter": [
           "owner-youtube-acceptance.ps1",
-          "owner-critical-download-acceptance.mjs",
+          "owner-critical-packaged-acceptance.mjs",
           "Run-Subutai-Owner-Acceptance.cmd"
         ]
       }
     ],
-    "publish": [
-      {
-        "provider": "github",
-        "owner": "enkhbat194",
-        "repo": "subutai-releases",
-        "releaseType": "release"
-      }
-    ],
+    "publish": [{ "provider": "github", "owner": "enkhbat194", "repo": "subutai-releases", "releaseType": "release" }],
     "win": {
-      "target": [
-        "nsis",
-        "portable"
-      ],
+      "target": ["nsis", "portable"],
       "verifyUpdateCodeSignature": true,
-      "signExts": [
-        "subutai-engine-host.exe"
-      ],
-      "signtoolOptions": {
-        "signingHashAlgorithms": [
-          "sha256"
-        ],
-        "rfc3161TimeStampServer": "http://timestamp.digicert.com"
-      }
+      "signExts": ["subutai-engine-host.exe"],
+      "signtoolOptions": { "signingHashAlgorithms": ["sha256"], "rfc3161TimeStampServer": "http://timestamp.digicert.com" }
     },
     "nsis": {
       "artifactName": "Subutai-Setup-${version}-${arch}.${ext}",
@@ -127,8 +72,6 @@
       "shortcutName": "Subutai Download Manager",
       "deleteAppDataOnUninstall": false
     },
-    "portable": {
-      "artifactName": "Subutai-Portable-${version}-${arch}.${ext}"
-    }
+    "portable": { "artifactName": "Subutai-Portable-${version}-${arch}.${ext}" }
   }
 }
