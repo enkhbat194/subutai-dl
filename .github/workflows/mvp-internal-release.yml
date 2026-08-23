@@ -9,6 +9,7 @@ on:
       - "packages/**"
       - "scripts/install-temporary-media-tools.ps1"
       - "scripts/stage-youtube-pot-provider.ps1"
+      - "scripts/validate-youtube-pot-package.ps1"
       - "scripts/youtube-media-smoke.ps1"
       - "scripts/owner-youtube-acceptance.ps1"
       - "scripts/owner-critical-packaged-acceptance.mjs"
@@ -28,6 +29,7 @@ on:
       - "packages/**"
       - "scripts/install-temporary-media-tools.ps1"
       - "scripts/stage-youtube-pot-provider.ps1"
+      - "scripts/validate-youtube-pot-package.ps1"
       - "scripts/youtube-media-smoke.ps1"
       - "scripts/owner-youtube-acceptance.ps1"
       - "scripts/owner-critical-packaged-acceptance.mjs"
@@ -98,25 +100,22 @@ jobs:
       - name: Validate owner-network acceptance harness syntax
         shell: powershell
         run: |
-          $tokens = $null
-          $errors = $null
-          [System.Management.Automation.Language.Parser]::ParseFile(
-            (Resolve-Path ./scripts/owner-youtube-acceptance.ps1),
-            [ref]$tokens,
-            [ref]$errors
-          ) | Out-Null
-          if ($errors.Count -gt 0) {
-            $errors | ForEach-Object { Write-Error $_.Message }
-            throw "owner-youtube-acceptance.ps1 contains PowerShell parse errors."
-          }
-          [System.Management.Automation.Language.Parser]::ParseFile(
-            (Resolve-Path ./scripts/stage-youtube-pot-provider.ps1),
-            [ref]$tokens,
-            [ref]$errors
-          ) | Out-Null
-          if ($errors.Count -gt 0) {
-            $errors | ForEach-Object { Write-Error $_.Message }
-            throw "stage-youtube-pot-provider.ps1 contains PowerShell parse errors."
+          foreach ($script in @(
+            "./scripts/owner-youtube-acceptance.ps1",
+            "./scripts/stage-youtube-pot-provider.ps1",
+            "./scripts/validate-youtube-pot-package.ps1"
+          )) {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path $script),
+              [ref]$tokens,
+              [ref]$errors
+            ) | Out-Null
+            if ($errors.Count -gt 0) {
+              $errors | ForEach-Object { Write-Error $_.Message }
+              throw "$script contains PowerShell parse errors."
+            }
           }
           node --check ./scripts/owner-critical-packaged-acceptance.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -170,6 +169,10 @@ jobs:
       - name: Build Windows Setup and Portable MVP
         shell: powershell
         run: pnpm --filter @subutai/desktop build:win
+
+      - name: Validate packaged YouTube PO-token provider
+        shell: powershell
+        run: ./scripts/validate-youtube-pot-package.ps1
 
       - name: Prove packaged desktop host direct pause resume and restart recovery
         shell: powershell
