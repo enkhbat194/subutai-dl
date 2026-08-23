@@ -10,6 +10,7 @@ on:
       - "scripts/install-temporary-media-tools.ps1"
       - "scripts/youtube-media-smoke.ps1"
       - "scripts/owner-youtube-acceptance.ps1"
+      - "scripts/Run-Subutai-Owner-Acceptance.cmd"
       - "scripts/restart-recovery-harness.mjs"
       - "scripts/validate-windows-package.ps1"
       - "package.json"
@@ -25,6 +26,7 @@ on:
       - "scripts/install-temporary-media-tools.ps1"
       - "scripts/youtube-media-smoke.ps1"
       - "scripts/owner-youtube-acceptance.ps1"
+      - "scripts/Run-Subutai-Owner-Acceptance.cmd"
       - "scripts/restart-recovery-harness.mjs"
       - "scripts/validate-windows-package.ps1"
       - "package.json"
@@ -101,6 +103,9 @@ jobs:
             $errors | ForEach-Object { Write-Error $_.Message }
             throw "owner-youtube-acceptance.ps1 contains PowerShell parse errors."
           }
+          if (-not (Test-Path ./scripts/Run-Subutai-Owner-Acceptance.cmd)) {
+            throw "Run-Subutai-Owner-Acceptance.cmd is missing."
+          }
 
       - name: Install locked dependencies
         shell: powershell
@@ -157,7 +162,7 @@ jobs:
 
             Publication requires the packaged yt-dlp/FFmpeg/Node media stack to download and validate a real media file, a live 64 MiB local HTTP transfer to be interrupted with durable partial/journal state and resumed to an exact SHA-256 match, transfer pause/resume control contracts, TypeScript checks, Windows Setup/Portable construction and packaged Electron launch smoke. The workflow also attempts a public YouTube download. GitHub-hosted datacenter IPs can be challenged by YouTube; if that happens, the workflow records owner-network YouTube acceptance as pending instead of misclassifying the packaged media stack as broken.
 
-            Start with `Subutai-Portable-${{ steps.version.outputs.version }}-x64.exe`. Windows SmartScreen may warn because this owner-test build is unsigned.
+            Start with `Subutai-Portable-${{ steps.version.outputs.version }}-x64.exe`. For the final owner-network YouTube gate, download `owner-youtube-acceptance.ps1` and `Run-Subutai-Owner-Acceptance.cmd` beside each other and run the CMD on the owner Windows machine. Windows SmartScreen may warn because this owner-test build is unsigned.
           prerelease: true
           make_latest: false
           fail_on_unmatched_files: true
@@ -165,3 +170,5 @@ jobs:
             apps/desktop/release/Subutai-Setup-*.exe
             apps/desktop/release/Subutai-Portable-*.exe
             apps/desktop/release/SHA256SUMS.txt
+            scripts/owner-youtube-acceptance.ps1
+            scripts/Run-Subutai-Owner-Acceptance.cmd
