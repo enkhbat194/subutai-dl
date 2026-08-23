@@ -88,6 +88,7 @@
         "to": "owner-acceptance",
         "filter": [
           "owner-youtube-acceptance.ps1",
+          "owner-critical-download-acceptance.mjs",
           "Run-Subutai-Owner-Acceptance.cmd"
         ]
       }
