@@ -116,6 +116,16 @@ function Add-FirefoxProfiles {
       }
   }
 
+  # yt-dlp accepts either a Firefox profile name or an explicit profile path.
+  # A profile's friendly Name= entry can differ from its actual on-disk directory,
+  # so try the newest real Firefox profile directories as an additional bounded path.
+  Get-ChildItem $FirefoxRoot -Directory -ErrorAction SilentlyContinue |
+    Sort-Object LastWriteTimeUtc -Descending |
+    Select-Object -First 20 |
+    ForEach-Object {
+      Add-UniqueCandidate -List $List -Seen $Seen -Candidate ("firefox:" + $_.FullName)
+    }
+
   foreach ($fallbackName in @("default-release", "default")) {
     Add-UniqueCandidate -List $List -Seen $Seen -Candidate "firefox:$fallbackName"
   }
@@ -154,8 +164,8 @@ function Get-InstalledBrowserCandidates {
   Add-UniqueCandidate -List $result -Seen $seen -Candidate "none"
 
   # Firefox is intentionally early: yt-dlp can read its cookie DB directly and it often
-  # avoids Chromium's locked-cookie/keyring edge cases on Windows. Try named Firefox
-  # profiles too, because the signed-in YouTube session is not always the default profile.
+  # avoids Chromium's locked-cookie/keyring edge cases on Windows. Try named and explicit
+  # Firefox profile paths because the signed-in YouTube session may not be the default.
   if ($env:APPDATA) {
     Add-FirefoxProfiles -List $result -Seen $seen -FirefoxRoot (Join-Path $env:APPDATA "Mozilla\Firefox\Profiles")
   }
