@@ -10,6 +10,7 @@ on:
       - "scripts/install-temporary-media-tools.ps1"
       - "scripts/youtube-media-smoke.ps1"
       - "scripts/owner-youtube-acceptance.ps1"
+      - "scripts/owner-critical-packaged-acceptance.mjs"
       - "scripts/Run-Subutai-Owner-Acceptance.cmd"
       - "scripts/direct-download-smoke.mjs"
       - "scripts/restart-recovery-harness.mjs"
@@ -27,6 +28,7 @@ on:
       - "scripts/install-temporary-media-tools.ps1"
       - "scripts/youtube-media-smoke.ps1"
       - "scripts/owner-youtube-acceptance.ps1"
+      - "scripts/owner-critical-packaged-acceptance.mjs"
       - "scripts/Run-Subutai-Owner-Acceptance.cmd"
       - "scripts/direct-download-smoke.mjs"
       - "scripts/restart-recovery-harness.mjs"
@@ -105,6 +107,8 @@ jobs:
             $errors | ForEach-Object { Write-Error $_.Message }
             throw "owner-youtube-acceptance.ps1 contains PowerShell parse errors."
           }
+          node --check ./scripts/owner-critical-packaged-acceptance.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           if (-not (Test-Path ./scripts/Run-Subutai-Owner-Acceptance.cmd)) {
             throw "Run-Subutai-Owner-Acceptance.cmd is missing."
           }
@@ -152,6 +156,19 @@ jobs:
         shell: powershell
         run: pnpm --filter @subutai/desktop build:win
 
+      - name: Prove packaged desktop host direct pause resume and restart recovery
+        shell: powershell
+        env:
+          SUBUTAI_OWNER_CRITICAL_MIB: 64
+        run: |
+          $appRoot = (Resolve-Path ./apps/desktop/release/win-unpacked).Path
+          $node = Join-Path $appRoot "resources\engines\node.exe"
+          $acceptance = Join-Path $appRoot "resources\owner-acceptance\owner-critical-packaged-acceptance.mjs"
+          if (-not (Test-Path $node)) { throw "Packaged Node runtime is missing: $node" }
+          if (-not (Test-Path $acceptance)) { throw "Packaged critical acceptance harness is missing: $acceptance" }
+          & $node $acceptance $appRoot
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Validate package and launch smoke
         shell: powershell
         run: ./scripts/validate-windows-package.ps1 -LaunchSmoke
@@ -168,9 +185,9 @@ jobs:
 
             This candidate replaces the crowded prototype dashboard with a focused one-link flow and routes recognised YouTube/media URLs automatically.
 
-            Publication requires a checksum-verified normal HTTP download through the first-party native engine, the packaged yt-dlp/FFmpeg/Node media stack to download and validate a real media file, a live 64 MiB local HTTP transfer to be interrupted with durable partial/journal state and resumed to an exact SHA-256 match, transfer pause/resume control contracts, TypeScript checks, Windows Setup/Portable construction and packaged Electron launch smoke. The workflow also attempts a public YouTube download. GitHub-hosted datacenter IPs can be challenged by YouTube; if that happens, the workflow records owner-network YouTube acceptance as pending instead of misclassifying the packaged media stack as broken.
+            Publication requires a checksum-verified normal HTTP download through the first-party native engine, a live 64 MiB interruption/restart recovery run, transfer pause/resume contracts, and an additional packaged `subutai-engine-host.exe` acceptance that performs normal HTTP, explicit pause/resume, controller shutdown/restart, durable recovery-state verification and exact SHA-256 completion using the same binaries shipped in the Windows package. It also requires the packaged yt-dlp/FFmpeg/Node media stack, TypeScript checks, Windows Setup/Portable construction and packaged Electron launch smoke. The workflow attempts a public YouTube download; GitHub-hosted datacenter IPs can be challenged by YouTube, so owner-network YouTube acceptance remains a separate physical-owner gate when that occurs.
 
-            Start with `Subutai-Portable-${{ steps.version.outputs.version }}-x64.exe`. The owner-network YouTube acceptance launcher is also bundled under `resources\owner-acceptance` inside the Windows package, and the same scripts are published beside the release assets. Windows SmartScreen may warn because this owner-test build is unsigned.
+            Start with `Subutai-Portable-${{ steps.version.outputs.version }}-x64.exe`. The owner-network YouTube acceptance launcher and critical direct acceptance harness are bundled under `resources\owner-acceptance` inside the Windows package. Windows SmartScreen may warn because this owner-test build is unsigned.
           prerelease: true
           make_latest: false
           fail_on_unmatched_files: true
