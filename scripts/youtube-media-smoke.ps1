@@ -20,6 +20,13 @@ foreach ($path in @($ytDlp, $ffmpeg, $ffprobe, $node)) {
   if (-not (Test-Path $path)) { throw "Media smoke dependency is missing: $path" }
 }
 
+$providerHome = Join-Path $resolvedEngineDir "pot-provider\server"
+$providerScript = Join-Path $providerHome "build\generate_once.js"
+if (Test-Path $providerScript) {
+  $env:SUBUTAI_POT_SERVER_HOME = $providerHome
+  Write-Host "YouTube smoke is using the packaged PO-token provider runtime."
+}
+
 if (-not $TestUrls -or $TestUrls.Count -eq 0) {
   throw "YouTube smoke requires at least one public test URL."
 }
@@ -68,7 +75,9 @@ function Test-HostedYouTubeChallenge {
     $Diagnostic -match "Sign in to confirm" -or
     $Diagnostic -match "not a bot" -or
     $Diagnostic -match "authentication" -and $Diagnostic -match "cookies" -or
-    $Diagnostic -match "YouTube cookies"
+    $Diagnostic -match "YouTube cookies" -or
+    $Diagnostic -match "HTTP(?: Response)? Error:? 403" -or
+    $Diagnostic -match "403 Forbidden"
   )
 }
 
@@ -134,6 +143,7 @@ try {
   $passed = $false
   $playerClientProfiles = @(
     @{ Name = "default"; Arguments = @() },
+    @{ Name = "mweb-pot"; Arguments = @("--extractor-args", "youtube:player_client=mweb") },
     @{ Name = "android_vr"; Arguments = @("--extractor-args", "youtube:player_client=android_vr") },
     @{ Name = "web_embedded"; Arguments = @("--extractor-args", "youtube:player_client=web_embedded") },
     @{ Name = "web_safari"; Arguments = @("--extractor-args", "youtube:player_client=web_safari") }
