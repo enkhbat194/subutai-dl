@@ -50,6 +50,7 @@
         "to": "owner-acceptance",
         "filter": [
           "owner-youtube-acceptance.ps1",
+          "owner-youtube-fresh-url-retry.ps1",
           "owner-critical-packaged-acceptance.mjs",
           "Run-Subutai-Owner-Acceptance.cmd"
         ]
