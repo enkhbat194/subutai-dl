@@ -1,7 +1,7 @@
 # Subutai — Authoritative Project Status
 
 Last audited: 2026-08-23  
-Audited `main`: `9dc098edb7a1ce1b3f7c00db7d866f13a363a59b` (through PR #63)
+Audited `main`: `d5c68b2cb83cce029b36ad45b58c282680f1d005` (through PR #65)
 
 ## Current conclusion
 
@@ -25,6 +25,7 @@ Normal HTTP downloads through the first-party native engine, large-file interrup
 | #60 | Owner-network acceptance broadens browser-session discovery to Firefox first, Chromium default/recent profiles, Edge profiles and Brave while preserving strict YouTube PASS semantics |
 | #62 | Owner acceptance now discovers installed Firefox and Chromium-family profiles on Windows and covers Chrome, Edge, Brave, Chromium and Vivaldi profile directories before deterministic fallbacks |
 | #63 | Real packaged MediaService now mirrors installed Chromium-family profile discovery from the owner acceptance harness while preserving extension headers/cookies and all existing transfer/recovery gates |
+| #65 | Owner-network acceptance now reads Firefox `profiles.ini`, retries named Firefox profiles and preserves deterministic `default-release` / `default` fallbacks before Chromium-family attempts |
 
 Earlier merged release engineering remains preserved, including native direct engine, queue/persistence, browser integration, transactional update/rollback, checksum rejection, Authenticode release policy and signed update-manifest policy.
 
@@ -43,14 +44,14 @@ Earlier merged release engineering remains preserved, including native direct en
 | Resilient YouTube player-client defaults are in packaged app | PASS | PR #53 + staging validation |
 | Real app retries local browser sessions and installed Chromium-family profiles | PASS | PR #63 + TypeScript/package/launch acceptance |
 | Owner acceptance launcher is inside the Windows package | PASS | PR #56 + package validation |
-| Owner acceptance discovers installed browser profiles | PASS | PR #62 + Internal Windows MVP run #49 |
+| Owner acceptance discovers installed Chromium-family and named Firefox profiles | PASS | PR #65 + Internal Windows MVP run #51 |
 | Real public YouTube on GitHub-hosted Windows | BLOCKED BY HOST NETWORK | YouTube challenges datacenter IP; neutral fallback is not counted as YouTube acceptance |
 | Real owner-network YouTube using packaged tools/browser state | PENDING | Final owner-use acceptance gap |
 | Chrome/Edge/Firefox extension contract | PASS | Build/contract checks; installer registration preserved |
 
 ## Exact recent Windows evidence
 
-Subutai Internal Windows MVP workflow run `32630234945` / run number `50` on PR #63 head `24d89d8ac9ba62f442e066cd66fc238ff85fad8b` passed the complete hosted owner-test workflow after the real packaged MediaService gained installed-browser profile discovery. The run passed owner-acceptance harness syntax validation, packaged media/runtime validation, TypeScript/browser contracts, first-party native HTTP download, live interruption/restart recovery, pause/resume control contracts, Windows Setup/Portable construction, packaged Electron launch smoke and prerelease publication.
+Subutai Internal Windows MVP workflow run `32635872223` / run number `51` on PR #65 head `e60f0701be041a9cc22c13f6d2d5a8ca673aded3` passed the complete hosted owner-test workflow after named Firefox profile discovery was added to the bundled owner acceptance harness. The run passed owner-acceptance harness syntax validation, packaged media/runtime validation, TypeScript/browser contracts, first-party native HTTP download, live interruption/restart recovery, pause/resume control contracts, Windows Setup/Portable construction, packaged Electron launch smoke and prerelease publication.
 
 The fully enumerated owner-use path remains validated: real direct transfer, live 64 MiB interruption with durable partial/journal state, restart/resume to exact SHA-256 output, pause/resume contracts, packaged media stack, Setup/Portable build and launch smoke all pass. The hosted runner still cannot establish the final owner-network YouTube condition because YouTube challenges datacenter addresses. This is an external acceptance-environment limitation, not grounds to weaken the gate.
 
@@ -63,14 +64,15 @@ The owner acceptance launcher is available both beside the internal prerelease a
 `scripts/owner-youtube-acceptance.ps1` uses the actual packaged binaries from the unpacked/installed application and:
 
 - tries anonymous YouTube extraction first;
-- discovers installed Firefox profile state and Chromium-family profile directories on Windows;
+- reads Firefox `profiles.ini` and tries named Firefox profiles, then deterministic `default-release` / `default` fallbacks;
+- discovers Chromium-family profile directories on Windows;
 - covers Chrome, Edge, Brave, Chromium and Vivaldi `Default` / numbered profiles when present, while preserving deterministic fallbacks;
 - tries bounded `default`, `android_vr`, `web_embedded` and `web_safari` player-client profiles;
 - accepts only a real playable YouTube media file validated by packaged `ffprobe`;
 - records the result SHA-256;
 - emits `SUBUTAI_YOUTUBE_OWNER_ACCEPTANCE=PASS` only on a true success.
 
-The packaged application itself now mirrors the installed Chromium-family profile discovery and retries local browser sessions automatically if an anonymous YouTube probe/download is challenged, while retaining extension-supplied cookies/headers and the bounded player-client defaults from `resources/engines/yt-dlp.conf`.
+The packaged application itself mirrors installed Chromium-family profile discovery and retries local browser sessions automatically if an anonymous YouTube probe/download is challenged, while retaining extension-supplied cookies/headers and the bounded player-client defaults from `resources/engines/yt-dlp.conf`.
 
 The final harness still must pass on a real owner Windows network before the exact completion sentence is permitted.
 
