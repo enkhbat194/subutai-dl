@@ -10,7 +10,7 @@ on:
       - "scripts/install-temporary-media-tools.ps1"
       - "scripts/youtube-media-smoke.ps1"
       - "scripts/owner-youtube-acceptance.ps1"
-      - "scripts/owner-critical-download-acceptance.mjs"
+      - "scripts/owner-critical-packaged-acceptance.mjs"
       - "scripts/Run-Subutai-Owner-Acceptance.cmd"
       - "scripts/direct-download-smoke.mjs"
       - "scripts/restart-recovery-harness.mjs"
@@ -28,7 +28,7 @@ on:
       - "scripts/install-temporary-media-tools.ps1"
       - "scripts/youtube-media-smoke.ps1"
       - "scripts/owner-youtube-acceptance.ps1"
-      - "scripts/owner-critical-download-acceptance.mjs"
+      - "scripts/owner-critical-packaged-acceptance.mjs"
       - "scripts/Run-Subutai-Owner-Acceptance.cmd"
       - "scripts/direct-download-smoke.mjs"
       - "scripts/restart-recovery-harness.mjs"
@@ -107,7 +107,7 @@ jobs:
             $errors | ForEach-Object { Write-Error $_.Message }
             throw "owner-youtube-acceptance.ps1 contains PowerShell parse errors."
           }
-          node --check ./scripts/owner-critical-download-acceptance.mjs
+          node --check ./scripts/owner-critical-packaged-acceptance.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           if (-not (Test-Path ./scripts/Run-Subutai-Owner-Acceptance.cmd)) {
             throw "Run-Subutai-Owner-Acceptance.cmd is missing."
@@ -163,7 +163,7 @@ jobs:
         run: |
           $appRoot = (Resolve-Path ./apps/desktop/release/win-unpacked).Path
           $node = Join-Path $appRoot "resources\engines\node.exe"
-          $acceptance = Join-Path $appRoot "resources\owner-acceptance\owner-critical-download-acceptance.mjs"
+          $acceptance = Join-Path $appRoot "resources\owner-acceptance\owner-critical-packaged-acceptance.mjs"
           if (-not (Test-Path $node)) { throw "Packaged Node runtime is missing: $node" }
           if (-not (Test-Path $acceptance)) { throw "Packaged critical acceptance harness is missing: $acceptance" }
           & $node $acceptance $appRoot
