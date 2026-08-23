@@ -10,14 +10,19 @@ Subutai exposes one application, one queue, one settings model, one recovery mod
 
 | Component | Internal role | Boundary | Release requirement |
 |---|---|---|---|
-| aria2 | Direct HTTP(S)/FTP segmented transfer process | Local JSON-RPC adapter | Pin version, verify checksum, retain license notice |
+| aria2 | Historical direct HTTP(S)/FTP reference; no longer shipped in the current owner-test direct path | Legacy adapter only | Do not package in current owner-test builds |
 | yt-dlp | Media URL resolution, formats, playlists, subtitles and metadata | Managed subprocess | Pin version, verify checksum, retain license notice |
+| bgutil-ytdlp-pot-provider | YouTube proof-of-origin token generation for current PO-token enforcement | yt-dlp plugin + local Node script provider | Pin exact source commit, ship GPL-3.0 license and corresponding provider source beside runtime |
 | FFmpeg / ffprobe | Media probing, merge, remux and conversion | Managed subprocess | Record build configuration and applicable license |
 | Electron | Windows desktop runtime | Main/preload/renderer boundary | Pin version and monitor security updates |
 | React | Renderer UI | Renderer only | Pin version and retain license notice |
 | electron-builder | Setup, Portable and update metadata | Release pipeline | Pin version and validate produced artifacts |
 | electron-updater | GitHub release update client | Main process only | Validate update metadata and signed release path |
 | SQLite through Node runtime | Queue, history, settings and recovery state | Main process storage adapter | Version schema and test migrations |
+
+### YouTube PO-token provider provenance
+
+The current owner-test pipeline stages `Brainicism/bgutil-ytdlp-pot-provider` version `1.3.1` from exact commit `7608dd51ee813b48cf9a6d68c6e42cb197ce10e0`. It is GPL-3.0-only. Subutai keeps it at the yt-dlp/plugin subprocess boundary, packages its license, README, exact plugin source, server TypeScript source and package manifests beside the generated runtime, and records the exact commit in `SUBUTAI-PROVENANCE.txt`.
 
 ## Reference-only projects
 
