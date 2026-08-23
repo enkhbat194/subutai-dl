@@ -103,7 +103,23 @@ New-Item -ItemType Directory -Force -Path $OutputRoot | Out-Null
 $browserCandidates = if ($Browser -and $Browser -ne "auto") {
   @($Browser)
 } else {
-  @("none", "chrome", "edge", "firefox")
+  @(
+    "none",
+    "firefox",
+    "chrome",
+    "chrome:Default",
+    "chrome:Profile 1",
+    "chrome:Profile 2",
+    "chrome:Profile 3",
+    "chrome:Profile 4",
+    "chrome:Profile 5",
+    "edge",
+    "edge:Default",
+    "edge:Profile 1",
+    "edge:Profile 2",
+    "edge:Profile 3",
+    "brave"
+  )
 }
 
 $playerProfiles = @(
