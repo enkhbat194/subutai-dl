@@ -1,5 +1,6 @@
 import { app, BrowserWindow } from 'electron';
-import { appendFileSync } from 'node:fs';
+import { appendFileSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { isNativeMessagingInvocation, runNativeMessagingHost } from './browser/native-messaging';
 import { ensureNativeMessagingRegistered } from './browser/registration';
 import {
@@ -38,6 +39,15 @@ function writeSmokeLog(message: string): void {
   }
 }
 
+function configurePackagedMediaEnvironment(): void {
+  const providerHome = join(process.resourcesPath, 'engines', 'pot-provider', 'server');
+  const providerScript = join(providerHome, 'build', 'generate_once.js');
+  if (existsSync(providerScript)) {
+    process.env.SUBUTAI_POT_SERVER_HOME = providerHome;
+    writeSmokeLog('Packaged YouTube token provider runtime configured.');
+  }
+}
+
 async function loadDesktopRuntimes(): Promise<void> {
   writeSmokeLog('Loading desktop runtimes.');
   const { enqueueBrowserArguments } = await import('./subutai-runtime');
@@ -71,6 +81,7 @@ async function loadDesktopRuntimes(): Promise<void> {
 async function startDesktop(): Promise<void> {
   await app.whenReady();
   writeSmokeLog('Electron app is ready.');
+  configurePackagedMediaEnvironment();
   initializeRealUpdateAcceptance();
   installTransactionalUpdaterGuard();
 

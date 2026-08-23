@@ -116,9 +116,6 @@ function Add-FirefoxProfiles {
       }
   }
 
-  # yt-dlp accepts either a Firefox profile name or an explicit profile path.
-  # A profile's friendly Name= entry can differ from its actual on-disk directory,
-  # so try the newest real Firefox profile directories as an additional bounded path.
   Get-ChildItem $FirefoxRoot -Directory -ErrorAction SilentlyContinue |
     Sort-Object LastWriteTimeUtc -Descending |
     Select-Object -First 20 |
@@ -160,12 +157,8 @@ function Get-InstalledBrowserCandidates {
   $result = New-Object System.Collections.Generic.List[string]
   $seen = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
 
-  # Anonymous first: no dependency on a local browser session.
   Add-UniqueCandidate -List $result -Seen $seen -Candidate "none"
 
-  # Firefox is intentionally early: yt-dlp can read its cookie DB directly and it often
-  # avoids Chromium's locked-cookie/keyring edge cases on Windows. Try named and explicit
-  # Firefox profile paths because the signed-in YouTube session may not be the default.
   if ($env:APPDATA) {
     Add-FirefoxProfiles -List $result -Seen $seen -FirefoxRoot (Join-Path $env:APPDATA "Mozilla\Firefox\Profiles")
   }
@@ -178,7 +171,6 @@ function Get-InstalledBrowserCandidates {
     Add-ChromiumProfiles -List $result -Seen $seen -BrowserName "vivaldi" -UserDataRoot (Join-Path $env:LOCALAPPDATA "Vivaldi\User Data")
   }
 
-  # Preserve deterministic fallbacks even when profile discovery is unavailable.
   foreach ($candidate in @(
     "firefox",
     "firefox:default-release",
@@ -220,6 +212,13 @@ foreach ($binary in @($ytDlp, $ffmpeg, $ffprobe, $node)) {
   if (-not (Test-Path $binary)) { throw "Packaged media dependency is missing: $binary" }
 }
 
+$providerHome = Join-Path $engineDir "pot-provider\server"
+$providerScript = Join-Path $providerHome "build\generate_once.js"
+if (Test-Path $providerScript) {
+  $env:SUBUTAI_POT_SERVER_HOME = $providerHome
+  Write-Host "Using packaged YouTube PO-token provider runtime."
+}
+
 if (-not $OutputRoot) {
   $OutputRoot = Join-Path ([System.IO.Path]::GetTempPath()) "SubutaiOwnerYouTubeAcceptance"
 }
@@ -234,6 +233,7 @@ $browserCandidates = if ($Browser -and $Browser -ne "auto") {
 
 $playerProfiles = @(
   @{ Name = "default"; Arguments = @() },
+  @{ Name = "mweb-pot"; Arguments = @("--extractor-args", "youtube:player_client=mweb") },
   @{ Name = "android_vr"; Arguments = @("--extractor-args", "youtube:player_client=android_vr") },
   @{ Name = "web_embedded"; Arguments = @("--extractor-args", "youtube:player_client=web_embedded") },
   @{ Name = "web_safari"; Arguments = @("--extractor-args", "youtube:player_client=web_safari") }
