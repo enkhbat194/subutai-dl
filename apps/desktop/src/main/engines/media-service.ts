@@ -12,6 +12,14 @@ import { DEFAULT_TRANSFER_SETTINGS, resolveProxyUrl, ytDlpSpeed } from '../netwo
 
 export type MediaTaskState = 'waiting' | 'active' | 'paused' | 'complete' | 'error' | 'removed';
 
+type BrowserCookieSource = 'chrome' | 'edge' | 'firefox';
+
+const BROWSER_COOKIE_SOURCES: readonly BrowserCookieSource[] = ['chrome', 'edge', 'firefox'];
+
+interface DiagnosticError extends Error {
+  diagnostic?: string;
+}
+
 export interface MediaTaskStatus {
   id: string;
   status: MediaTaskState;
@@ -39,6 +47,7 @@ interface MediaTask {
   process: ChildProcess | null;
   status: MediaTaskStatus;
   stderr: string[];
+  browserCookieSourceIndex: number;
 }
 
 interface MediaServiceHealth {
@@ -72,6 +81,23 @@ function minimumPositive(...values: number[]): number {
   return positive.length > 0 ? Math.min(...positive) : 0;
 }
 
+function isYouTubeUrl(value: string): boolean {
+  try {
+    const host = new URL(value).hostname.toLowerCase();
+    return host === 'youtu.be'
+      || host === 'youtube.com'
+      || host.endsWith('.youtube.com')
+      || host === 'youtube-nocookie.com'
+      || host.endsWith('.youtube-nocookie.com');
+  } catch {
+    return false;
+  }
+}
+
+function looksLikeYouTubeAuthChallenge(value: string): boolean {
+  return /sign in to confirm|not a bot|authentication[^\n]*cookies|cookies[^\n]*authentication|youtube cookies|cookies-from-browser/i.test(value);
+}
+
 export class MediaService {
   private readonly tasks = new Map<string, MediaTask>();
   private ytDlpVersion = '';
@@ -98,7 +124,7 @@ export class MediaService {
     this.appendRequestArguments(args, headers, sourcePageUrl);
     args.push(url);
 
-    const payload = await this.captureJson(args);
+    const payload = await this.captureJsonWithBrowserFallback(args, url);
     const entries = Array.isArray(payload.entries) ? payload.entries : [];
     const result: MediaProbeResult = {
       title: typeof payload.title === 'string' && payload.title.trim() ? payload.title : 'Media',
@@ -138,6 +164,7 @@ export class MediaService {
         phase: 'resolving',
       },
       stderr: [],
+      browserCookieSourceIndex: -1,
     };
     if (input.filename) task.filename = input.filename;
     if (input.headers) task.headers = { ...input.headers };
@@ -166,6 +193,7 @@ export class MediaService {
   async resume(id: string): Promise<void> {
     const task = this.requireTask(id);
     if (task.status.status !== 'paused' && task.status.status !== 'error') return;
+    if (task.status.status === 'error') task.browserCookieSourceIndex = -1;
     task.status.status = 'waiting';
     delete task.status.error;
     task.stderr = [];
@@ -258,6 +286,18 @@ export class MediaService {
         task.status.etaSeconds = 0;
         if (task.status.totalBytes > 0) task.status.downloadedBytes = task.status.totalBytes;
       } else {
+        const diagnostic = task.stderr.join('\n');
+        if (this.shouldRetryWithBrowserCookies(task, diagnostic)) {
+          task.browserCookieSourceIndex += 1;
+          task.status.status = 'waiting';
+          task.status.phase = 'resolving';
+          task.status.speedBytesPerSecond = 0;
+          task.status.etaSeconds = null;
+          delete task.status.error;
+          task.stderr = [];
+          void this.startTask(task);
+          return;
+        }
         const detail = this.preferredError(task.stderr);
         task.status.status = 'error';
         task.status.speedBytesPerSecond = 0;
@@ -320,6 +360,7 @@ export class MediaService {
     if (options.embedMetadata !== false) args.push('--embed-metadata');
     if (options.embedThumbnail) args.push('--embed-thumbnail');
 
+    this.appendBrowserCookies(args, task.browserCookieSourceIndex);
     this.appendRequestArguments(args, task.headers, task.sourcePageUrl);
     args.push(task.url);
     return args;
@@ -355,6 +396,11 @@ export class MediaService {
     }
   }
 
+  private appendBrowserCookies(args: string[], sourceIndex: number): void {
+    const source = BROWSER_COOKIE_SOURCES[sourceIndex];
+    if (source) args.push('--cookies-from-browser', source);
+  }
+
   private appendRequestArguments(args: string[], headers?: DownloadRequestHeaders, sourcePageUrl?: string): void {
     if (sourcePageUrl) args.push('--referer', sourcePageUrl);
     if (!headers) return;
@@ -371,6 +417,12 @@ export class MediaService {
         if (header) args.push('--add-header', header);
       }
     }
+  }
+
+  private shouldRetryWithBrowserCookies(task: MediaTask, diagnostic: string): boolean {
+    if (!isYouTubeUrl(task.url)) return false;
+    if (task.browserCookieSourceIndex >= BROWSER_COOKIE_SOURCES.length - 1) return false;
+    return task.browserCookieSourceIndex >= 0 || looksLikeYouTubeAuthChallenge(diagnostic);
   }
 
   private consumeOutputLine(task: MediaTask, line: string): void {
@@ -394,6 +446,24 @@ export class MediaService {
     task.status.status = 'active';
   }
 
+  private async captureJsonWithBrowserFallback(args: string[], url: string): Promise<Record<string, unknown>> {
+    try {
+      return await this.captureJson(args);
+    } catch (error) {
+      if (!isYouTubeUrl(url) || !looksLikeYouTubeAuthChallenge(this.diagnosticFromError(error))) throw error;
+      let lastError: unknown = error;
+      const baseArgs = args.slice(0, -1);
+      for (const source of BROWSER_COOKIE_SOURCES) {
+        try {
+          return await this.captureJson([...baseArgs, '--cookies-from-browser', source, url]);
+        } catch (browserError) {
+          lastError = browserError;
+        }
+      }
+      throw lastError;
+    }
+  }
+
   private async captureJson(args: string[]): Promise<Record<string, unknown>> {
     const executable = this.resolveYtDlp();
     return new Promise((resolvePromise, reject) => {
@@ -408,7 +478,9 @@ export class MediaService {
       child.once('exit', (code) => {
         if (code !== 0) {
           const detail = this.preferredError(stderr.split(/\r?\n/));
-          reject(new Error(this.publicError(detail || `Media probe exited with code ${code ?? 'unknown'}`)));
+          const failure = new Error(this.publicError(detail || `Media probe exited with code ${code ?? 'unknown'}`)) as DiagnosticError;
+          failure.diagnostic = stderr || detail;
+          reject(failure);
           return;
         }
         try {
@@ -418,6 +490,12 @@ export class MediaService {
         }
       });
     });
+  }
+
+  private diagnosticFromError(error: unknown): string {
+    if (!(error instanceof Error)) return String(error ?? '');
+    const diagnostic = (error as DiagnosticError).diagnostic;
+    return diagnostic || error.message;
   }
 
   private resolveYtDlp(): string {
@@ -482,7 +560,7 @@ export class MediaService {
       .replaceAll(/ffmpeg(?:\.exe)?/gi, 'Subutai Media')
       .replaceAll(/node(?:\.exe)?/gi, 'Subutai JavaScript Runtime');
     if (/sign in to confirm|not a bot|cookies-from-browser/i.test(normalized)) {
-      return 'YouTube энэ видеонд нэвтрэлт шаардаж байна. Browser integration-оор дахин оролдох эсвэл өөр public видео туршина уу.';
+      return 'YouTube энэ видеонд нэвтрэлт шаардаж байна. Subutai Chrome, Edge, Firefox session-оос автоматаар оролдсон ч амжилтгүй бол browser-доо YouTube-д нэвтэрч дахин оролдоно уу.';
     }
     if (/javascript runtime|js runtime|challenge solver/i.test(normalized)) {
       return 'YouTube боловсруулах JavaScript хөдөлгүүр эхэлсэнгүй. Subutai-г дахин нээгээд оролдоно уу.';
