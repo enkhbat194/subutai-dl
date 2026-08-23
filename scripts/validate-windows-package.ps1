@@ -64,7 +64,11 @@ if (-not (Test-Path $engineDir)) {
 if (-not (Test-Path $ownerAcceptanceDir)) {
   throw "Packaged owner-acceptance directory was not found: $ownerAcceptanceDir"
 }
-foreach ($acceptanceFile in @("owner-youtube-acceptance.ps1", "Run-Subutai-Owner-Acceptance.cmd")) {
+foreach ($acceptanceFile in @(
+  "owner-youtube-acceptance.ps1",
+  "owner-youtube-fresh-url-retry.ps1",
+  "Run-Subutai-Owner-Acceptance.cmd"
+)) {
   $acceptancePath = Join-Path $ownerAcceptanceDir $acceptanceFile
   if (-not (Test-Path $acceptancePath)) {
     throw "Packaged owner-acceptance file is missing: $acceptancePath"
