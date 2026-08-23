@@ -603,7 +603,7 @@ export class MediaService {
           index += 1;
           continue;
         }
-        browserArgs.push(argument);
+        if (argument !== undefined) browserArgs.push(argument);
       }
       for (const source of discoverBrowserCookieSources()) {
         try {
