@@ -1,7 +1,7 @@
 # Subutai — Authoritative Project Status
 
 Last audited: 2026-08-23  
-Audited `main`: `37b90e878319d6da56a77769439612969e454767` (through PR #58)
+Audited `main`: `9c72431db81d2fa734e8ebf70989676480485d29` (through PR #60)
 
 ## Current conclusion
 
@@ -22,6 +22,7 @@ Normal HTTP downloads through the first-party native engine, large-file interrup
 | #56 | Owner-network YouTube acceptance harness bundled inside Setup/Portable resources and package validation |
 | #57 | Windows owner build gated by a checksum-verified normal HTTP download through the first-party native engine; obsolete aria2c smoke removed from readiness |
 | #58 | Real packaged media service retries Chrome, Edge and Firefox browser sessions automatically after a YouTube authentication challenge |
+| #60 | Owner-network acceptance broadens browser-session discovery to Firefox first, Chromium default/recent profiles, Edge profiles and Brave while preserving strict YouTube PASS semantics |
 
 Earlier merged release engineering remains preserved, including native direct engine, queue/persistence, browser integration, transactional update/rollback, checksum rejection, Authenticode release policy and signed update-manifest policy.
 
@@ -40,30 +41,18 @@ Earlier merged release engineering remains preserved, including native direct en
 | Resilient YouTube player-client defaults are in packaged app | PASS | PR #53 + staging validation |
 | Real app retries local Chrome/Edge/Firefox sessions | PASS | PR #58 + TypeScript/package/launch acceptance |
 | Owner acceptance launcher is inside the Windows package | PASS | PR #56 + package validation |
+| Owner acceptance scans common browser profiles | PASS | PR #60 + Internal Windows MVP run #48 |
 | Real public YouTube on GitHub-hosted Windows | BLOCKED BY HOST NETWORK | YouTube challenges datacenter IP; neutral fallback is not counted as YouTube acceptance |
 | Real owner-network YouTube using packaged tools/browser state | PENDING | Final owner-use acceptance gap |
 | Chrome/Edge/Firefox extension contract | PASS | Build/contract checks; installer registration preserved |
 
 ## Exact recent Windows evidence
 
-Subutai Internal Windows MVP workflow run `32619773928` / run number `47` on PR #58 head `00ab972f8d620aedbfe4f4abd918f948a0085f5c` passed all hosted owner-test gates:
+Subutai Internal Windows MVP workflow run `32622391723` / run number `48` on PR #60 head `a782289560204c544d55ac3799638c6a6fea5186` passed the hosted owner-test workflow after broadening browser-profile fallback. The workflow preserves the existing owner-test gates for packaged media/runtime, TypeScript/browser contracts, first-party direct HTTP transfer, interruption/restart recovery, pause/resume controls, Setup/Portable construction, package validation, Electron launch smoke and prerelease publication.
 
-1. owner-network harness syntax validation;
-2. packaged yt-dlp/FFmpeg/ffprobe/Node staging;
-3. hosted YouTube attempts and neutral fallback media validation when the datacenter IP is challenged;
-4. TypeScript + browser extension contracts, including the new app-side browser-session retry path;
-5. production Rust direct-engine build;
-6. checksum-verified normal HTTP download through `subutai-engine`;
-7. live 64 MiB HTTP interruption with durable partial/journal state;
-8. restart/resume to exact SHA-256 output;
-9. pause/resume transfer control contracts;
-10. Windows Setup and Portable construction;
-11. packaged Electron launch smoke;
-12. internal prerelease asset publication.
+The earlier fully enumerated owner-use path remains validated: real direct transfer, live 64 MiB interruption with durable partial/journal state, restart/resume to exact SHA-256 output, pause/resume contracts, packaged media stack, Setup/Portable build and launch smoke all pass. The hosted runner still cannot establish the final owner-network YouTube condition because YouTube challenges datacenter addresses. This is an external acceptance-environment limitation, not grounds to weaken the gate.
 
-Published internal owner-test tag remains `internal-v0.2.0-rc.2`; run #47 refreshed the Setup/Portable owner-test assets after PR #58.
-
-The hosted runner cannot establish the final owner-network YouTube condition because YouTube challenges the datacenter address. This is an external acceptance-environment limitation, not grounds to weaken the gate.
+Published internal owner-test tag remains `internal-v0.2.0-rc.2` and contains the Windows owner-test packages plus bundled owner-network acceptance assets.
 
 ## Final owner-network acceptance path
 
@@ -72,13 +61,14 @@ The owner acceptance launcher is available both beside the internal prerelease a
 `scripts/owner-youtube-acceptance.ps1` uses the actual packaged binaries from the unpacked/installed application and:
 
 - tries anonymous YouTube extraction first;
-- tries Chrome, Edge and Firefox local browser-cookie state;
+- tries Firefox, Chrome, Edge and Brave local browser-cookie state;
+- tries common Chromium/Edge `Default` and `Profile 1`-`Profile 5` session variants where applicable;
 - tries bounded `default`, `android_vr`, `web_embedded` and `web_safari` player-client profiles;
 - accepts only a real playable YouTube media file validated by packaged `ffprobe`;
 - records the result SHA-256;
 - emits `SUBUTAI_YOUTUBE_OWNER_ACCEPTANCE=PASS` only on a true success.
 
-The packaged application itself now also retries Chrome, Edge and Firefox local browser sessions automatically if an anonymous YouTube probe/download is challenged, while retaining the bounded player-client defaults from `resources/engines/yt-dlp.conf`.
+The packaged application itself also retries Chrome, Edge and Firefox local browser sessions automatically if an anonymous YouTube probe/download is challenged, while retaining the bounded player-client defaults from `resources/engines/yt-dlp.conf`.
 
 The final harness still must pass on a real owner Windows network before the exact completion sentence is permitted.
 
@@ -101,7 +91,7 @@ The following remain required for a signed public release but are not prerequisi
 ## Next correct sequence
 
 1. Keep the current hosted Windows MVP gates passing without weakening direct/recovery/package/launch checks.
-2. Run the bundled `resources\owner-acceptance\Run-Subutai-Owner-Acceptance.cmd` against the packaged/installed rc.2 build on a real Windows owner network, preferably while signed into YouTube in Chrome/Edge/Firefox.
+2. Run the bundled `resources\owner-acceptance\Run-Subutai-Owner-Acceptance.cmd` against the packaged/installed rc.2 build on a real Windows owner network, preferably while signed into YouTube in Firefox/Chrome/Edge/Brave.
 3. If it fails, use the exact browser/profile diagnostics to harden the packaged media path; do not substitute neutral hosted media for YouTube acceptance.
 4. Declare owner readiness only after `SUBUTAI_YOUTUBE_OWNER_ACCEPTANCE=PASS` plus the already-passing direct/recovery/package/launch gates.
 5. Keep production signing and clean-machine public-release promotion as a later release track.
