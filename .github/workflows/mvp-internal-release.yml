@@ -12,6 +12,7 @@ on:
       - "scripts/validate-youtube-pot-package.ps1"
       - "scripts/youtube-media-smoke.ps1"
       - "scripts/owner-youtube-acceptance.ps1"
+      - "scripts/owner-youtube-fresh-url-retry.ps1"
       - "scripts/owner-critical-packaged-acceptance.mjs"
       - "scripts/Run-Subutai-Owner-Acceptance.cmd"
       - "scripts/direct-download-smoke.mjs"
@@ -32,6 +33,7 @@ on:
       - "scripts/validate-youtube-pot-package.ps1"
       - "scripts/youtube-media-smoke.ps1"
       - "scripts/owner-youtube-acceptance.ps1"
+      - "scripts/owner-youtube-fresh-url-retry.ps1"
       - "scripts/owner-critical-packaged-acceptance.mjs"
       - "scripts/Run-Subutai-Owner-Acceptance.cmd"
       - "scripts/direct-download-smoke.mjs"
@@ -102,6 +104,7 @@ jobs:
         run: |
           foreach ($script in @(
             "./scripts/owner-youtube-acceptance.ps1",
+            "./scripts/owner-youtube-fresh-url-retry.ps1",
             "./scripts/stage-youtube-pot-provider.ps1",
             "./scripts/validate-youtube-pot-package.ps1"
           )) {
@@ -214,4 +217,5 @@ jobs:
             apps/desktop/release/Subutai-Portable-*.exe
             apps/desktop/release/SHA256SUMS.txt
             scripts/owner-youtube-acceptance.ps1
+            scripts/owner-youtube-fresh-url-retry.ps1
             scripts/Run-Subutai-Owner-Acceptance.cmd
