@@ -52,6 +52,7 @@ if ($latestText -notmatch "(?m)^sha512:\s*\S+") {
 $unpackedDir = Join-Path $releasePath "win-unpacked"
 $appExecutable = Join-Path $unpackedDir "Subutai Download Manager.exe"
 $engineDir = Join-Path $unpackedDir "resources\engines"
+$ownerAcceptanceDir = Join-Path $unpackedDir "resources\owner-acceptance"
 $updateTrustPath = Join-Path $unpackedDir "resources\update\trust.json"
 
 if (-not (Test-Path $appExecutable)) {
@@ -59,6 +60,15 @@ if (-not (Test-Path $appExecutable)) {
 }
 if (-not (Test-Path $engineDir)) {
   throw "Packaged engine directory was not found: $engineDir"
+}
+if (-not (Test-Path $ownerAcceptanceDir)) {
+  throw "Packaged owner-acceptance directory was not found: $ownerAcceptanceDir"
+}
+foreach ($acceptanceFile in @("owner-youtube-acceptance.ps1", "Run-Subutai-Owner-Acceptance.cmd")) {
+  $acceptancePath = Join-Path $ownerAcceptanceDir $acceptanceFile
+  if (-not (Test-Path $acceptancePath)) {
+    throw "Packaged owner-acceptance file is missing: $acceptancePath"
+  }
 }
 if ($RequireUpdateTrust) {
   if (-not (Test-Path $updateTrustPath)) {
@@ -173,5 +183,6 @@ Write-Host "Setup: $($setupFiles[0].Name)"
 Write-Host "Portable: $($portableFiles[0].Name)"
 Write-Host "Native direct engine: subutai-engine-host.exe"
 Write-Host "Media stack: yt-dlp.exe, ffmpeg.exe, ffprobe.exe, node.exe ($nodeVersion)"
+Write-Host "Owner acceptance: resources\owner-acceptance\Run-Subutai-Owner-Acceptance.cmd"
 Write-Host "Manifest: latest.yml"
 Write-Host "Checksums: SHA256SUMS.txt"

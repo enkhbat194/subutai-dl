@@ -13,6 +13,7 @@ function Resolve-AppRoot {
   $candidates = New-Object System.Collections.Generic.List[string]
   if ($Requested) { $candidates.Add($Requested) }
   if ($env:SUBUTAI_APP_ROOT) { $candidates.Add($env:SUBUTAI_APP_ROOT) }
+  $candidates.Add((Join-Path $PSScriptRoot "..\.."))
   $candidates.Add((Join-Path $PSScriptRoot "..\apps\desktop\release\win-unpacked"))
   if ($env:LOCALAPPDATA) {
     $candidates.Add((Join-Path $env:LOCALAPPDATA "Programs\Subutai Download Manager"))

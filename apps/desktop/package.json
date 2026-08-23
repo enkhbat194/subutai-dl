@@ -82,6 +82,14 @@
         "filter": [
           "**/*"
         ]
+      },
+      {
+        "from": "../../scripts",
+        "to": "owner-acceptance",
+        "filter": [
+          "owner-youtube-acceptance.ps1",
+          "Run-Subutai-Owner-Acceptance.cmd"
+        ]
       }
     ],
     "publish": [
