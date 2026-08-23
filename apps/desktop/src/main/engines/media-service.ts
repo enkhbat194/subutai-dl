@@ -1,6 +1,6 @@
 import { app } from 'electron';
 import { spawn, type ChildProcess } from 'node:child_process';
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import type {
   DownloadRequestHeaders,
@@ -43,6 +43,28 @@ function addFirefoxProfiles(
     } catch {
       // Firefox profile discovery is best-effort; deterministic fallbacks remain below.
     }
+  }
+
+  try {
+    const profilePaths = readdirSync(firefoxRoot, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => {
+        const path = join(firefoxRoot, entry.name);
+        let modified = 0;
+        try {
+          modified = statSync(path).mtimeMs;
+        } catch {
+          // Keep unreadable candidates at the end rather than failing discovery.
+        }
+        return { path, modified };
+      })
+      .sort((left, right) => right.modified - left.modified)
+      .slice(0, 20);
+    for (const profile of profilePaths) {
+      addUniqueBrowserCookieSource(target, seen, `firefox:${profile.path}`);
+    }
+  } catch {
+    // Explicit profile-path discovery is best-effort.
   }
 
   addUniqueBrowserCookieSource(target, seen, 'firefox:default-release');
@@ -126,8 +148,6 @@ function discoverBrowserCookieSources(): readonly BrowserCookieSource[] {
   return result;
 }
 
-const BROWSER_COOKIE_SOURCES = discoverBrowserCookieSources();
-
 interface DiagnosticError extends Error {
   diagnostic?: string;
 }
@@ -160,6 +180,7 @@ interface MediaTask {
   status: MediaTaskStatus;
   stderr: string[];
   browserCookieSourceIndex: number;
+  browserCookieSources: readonly BrowserCookieSource[];
 }
 
 interface MediaServiceHealth {
@@ -277,6 +298,7 @@ export class MediaService {
       },
       stderr: [],
       browserCookieSourceIndex: -1,
+      browserCookieSources: discoverBrowserCookieSources(),
     };
     if (input.filename) task.filename = input.filename;
     if (input.headers) task.headers = { ...input.headers };
@@ -305,7 +327,10 @@ export class MediaService {
   async resume(id: string): Promise<void> {
     const task = this.requireTask(id);
     if (task.status.status !== 'paused' && task.status.status !== 'error') return;
-    if (task.status.status === 'error') task.browserCookieSourceIndex = -1;
+    if (task.status.status === 'error') {
+      task.browserCookieSourceIndex = -1;
+      task.browserCookieSources = discoverBrowserCookieSources();
+    }
     task.status.status = 'waiting';
     delete task.status.error;
     task.stderr = [];
@@ -472,7 +497,7 @@ export class MediaService {
     if (options.embedMetadata !== false) args.push('--embed-metadata');
     if (options.embedThumbnail) args.push('--embed-thumbnail');
 
-    this.appendBrowserCookies(args, task.browserCookieSourceIndex);
+    this.appendBrowserCookies(args, task.browserCookieSources, task.browserCookieSourceIndex);
     this.appendRequestArguments(args, task.headers, task.sourcePageUrl);
     args.push(task.url);
     return args;
@@ -508,8 +533,8 @@ export class MediaService {
     }
   }
 
-  private appendBrowserCookies(args: string[], sourceIndex: number): void {
-    const source = BROWSER_COOKIE_SOURCES[sourceIndex];
+  private appendBrowserCookies(args: string[], sources: readonly BrowserCookieSource[], sourceIndex: number): void {
+    const source = sources[sourceIndex];
     if (source) args.push('--cookies-from-browser', source);
   }
 
@@ -533,7 +558,7 @@ export class MediaService {
 
   private shouldRetryWithBrowserCookies(task: MediaTask, diagnostic: string): boolean {
     if (!isYouTubeUrl(task.url)) return false;
-    if (task.browserCookieSourceIndex >= BROWSER_COOKIE_SOURCES.length - 1) return false;
+    if (task.browserCookieSourceIndex >= task.browserCookieSources.length - 1) return false;
     return task.browserCookieSourceIndex >= 0 || looksLikeYouTubeAuthChallenge(diagnostic);
   }
 
@@ -565,7 +590,7 @@ export class MediaService {
       if (!isYouTubeUrl(url) || !looksLikeYouTubeAuthChallenge(this.diagnosticFromError(error))) throw error;
       let lastError: unknown = error;
       const baseArgs = args.slice(0, -1);
-      for (const source of BROWSER_COOKIE_SOURCES) {
+      for (const source of discoverBrowserCookieSources()) {
         try {
           return await this.captureJson([...baseArgs, '--cookies-from-browser', source, url]);
         } catch (browserError) {
