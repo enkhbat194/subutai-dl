@@ -1,59 +1,70 @@
 import { createHash, randomBytes } from 'node:crypto';
+import { existsSync } from 'node:fs';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { createServer as createHttpServer } from 'node:http';
-import { createServer as createNetServer } from 'node:net';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { spawn } from 'node:child_process';
-import { setTimeout as delay } from 'node:timers/promises';
-
-async function getFreePort() {
-  return new Promise((resolve, reject) => {
-    const server = createNetServer();
-    server.once('error', reject);
-    server.listen(0, '127.0.0.1', () => {
-      const address = server.address();
-      if (!address || typeof address === 'string') {
-        server.close();
-        reject(new Error('Could not allocate a local TCP port'));
-        return;
-      }
-      server.close((error) => error ? reject(error) : resolve(address.port));
-    });
-  });
-}
 
 function sha256(buffer) {
   return createHash('sha256').update(buffer).digest('hex');
 }
 
+const nativeEngine = resolve(
+  process.env.SUBUTAI_NATIVE_ENGINE_PATH
+    || join(
+      process.cwd(),
+      'engines',
+      'native',
+      'target',
+      process.env.SUBUTAI_NATIVE_PROFILE || 'debug',
+      process.platform === 'win32' ? 'subutai-engine.exe' : 'subutai-engine',
+    ),
+);
+
+if (!existsSync(nativeEngine)) {
+  throw new Error(
+    `Subutai native engine was not found: ${nativeEngine}. Build it first with cargo build --manifest-path engines/native/Cargo.toml --bin subutai-engine.`,
+  );
+}
+
 const payload = randomBytes(5 * 1024 * 1024 + 137);
 const expectedHash = sha256(payload);
 const downloadDirectory = await mkdtemp(join(tmpdir(), 'subutai-direct-'));
-const rpcPort = await getFreePort();
-const rpcSecret = randomBytes(16).toString('hex');
-let engineProcess = null;
 let httpServer = null;
 
-async function rpc(method, params = []) {
-  const response = await fetch(`http://127.0.0.1:${rpcPort}/jsonrpc`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      jsonrpc: '2.0',
-      id: randomBytes(8).toString('hex'),
-      method,
-      params: [`token:${rpcSecret}`, ...params],
-    }),
+function runNativeDownload(url, destination) {
+  return new Promise((resolvePromise, reject) => {
+    const child = spawn(
+      nativeEngine,
+      ['download', url, destination],
+      { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true },
+    );
+    let stdout = '';
+    let stderr = '';
+    child.stdout?.setEncoding('utf8');
+    child.stderr?.setEncoding('utf8');
+    child.stdout?.on('data', (chunk) => { stdout += chunk; });
+    child.stderr?.on('data', (chunk) => { stderr += chunk; });
+    child.once('error', reject);
+    child.once('exit', (code) => {
+      if (code === 0 && stdout.includes('result=PASS')) {
+        resolvePromise({ stdout, stderr });
+      } else {
+        reject(new Error(`Subutai native direct engine exited with ${String(code)}\n${stderr}\n${stdout}`));
+      }
+    });
   });
-  if (!response.ok) throw new Error(`Subutai direct engine RPC HTTP ${response.status}`);
-  const body = await response.json();
-  if (body.error) throw new Error(`Subutai direct engine RPC ${body.error.code}: ${body.error.message}`);
-  return body.result;
 }
 
 try {
   httpServer = createHttpServer((request, response) => {
+    if (request.url !== '/smoke.bin') {
+      response.writeHead(404);
+      response.end();
+      return;
+    }
+
     response.setHeader('Accept-Ranges', 'bytes');
     response.setHeader('Content-Type', 'application/octet-stream');
     response.setHeader('ETag', `"${expectedHash}"`);
@@ -66,7 +77,7 @@ try {
 
     const range = request.headers.range;
     if (range) {
-      const match = /^bytes=(\d+)-(\d*)$/.exec(range);
+      const match = /^bytes=(\d+)-(\d*)$/u.exec(range);
       if (!match) {
         response.writeHead(416);
         response.end();
@@ -91,81 +102,30 @@ try {
     response.end(payload);
   });
 
-  await new Promise((resolve, reject) => {
+  await new Promise((resolvePromise, reject) => {
     httpServer.once('error', reject);
-    httpServer.listen(0, '127.0.0.1', resolve);
+    httpServer.listen(0, '127.0.0.1', resolvePromise);
   });
   const address = httpServer.address();
   if (!address || typeof address === 'string') throw new Error('Subutai smoke server did not start');
 
-  engineProcess = spawn('aria2c', [
-    '--enable-rpc=true',
-    '--rpc-listen-all=false',
-    `--rpc-listen-port=${rpcPort}`,
-    `--rpc-secret=${rpcSecret}`,
-    '--summary-interval=0',
-    '--console-log-level=warn',
-    '--file-allocation=none',
-    '--download-result=hide',
-  ], { stdio: ['ignore', 'pipe', 'pipe'] });
-
-  let processError = '';
-  engineProcess.once('error', (error) => { processError = error.message; });
-  engineProcess.stderr.on('data', (chunk) => {
-    const message = chunk.toString().trim();
-    if (message) process.stderr.write(`[Subutai direct engine] ${message}\n`);
-  });
-
-  for (let attempt = 0; attempt < 50; attempt += 1) {
-    if (processError) throw new Error(processError);
-    try {
-      await rpc('aria2.getVersion');
-      break;
-    } catch {
-      if (attempt === 49) throw new Error('Subutai direct engine did not become ready');
-      await delay(100);
-    }
-  }
-
-  const gid = await rpc('aria2.addUri', [[`http://127.0.0.1:${address.port}/smoke.bin`], {
-    dir: downloadDirectory,
-    out: 'smoke.bin',
-    split: '4',
-    'max-connection-per-server': '4',
-    'min-split-size': '1M',
-    continue: 'true',
-  }]);
-
-  let finalStatus = null;
-  for (let attempt = 0; attempt < 200; attempt += 1) {
-    finalStatus = await rpc('aria2.tellStatus', [gid, [
-      'status',
-      'totalLength',
-      'completedLength',
-      'downloadSpeed',
-      'connections',
-      'errorMessage',
-    ]]);
-    if (finalStatus.status === 'complete') break;
-    if (finalStatus.status === 'error') throw new Error(finalStatus.errorMessage || 'Subutai direct download failed');
-    await delay(50);
-  }
-
-  if (!finalStatus || finalStatus.status !== 'complete') throw new Error('Subutai direct download timed out');
-  const downloaded = await readFile(join(downloadDirectory, 'smoke.bin'));
+  const destination = join(downloadDirectory, 'smoke.bin');
+  const url = `http://127.0.0.1:${address.port}/smoke.bin`;
+  const result = await runNativeDownload(url, destination);
+  const downloaded = await readFile(destination);
   const actualHash = sha256(downloaded);
   if (actualHash !== expectedHash) throw new Error(`Checksum mismatch: ${actualHash} != ${expectedHash}`);
+  if (!result.stdout.includes(`downloaded_bytes=${downloaded.length}`)) {
+    throw new Error(`Native direct engine did not report the expected byte count.\n${result.stdout}`);
+  }
 
   console.log(JSON.stringify({
     result: 'PASS',
+    engine: 'subutai-native',
     bytes: downloaded.length,
     sha256: actualHash,
-    status: finalStatus.status,
   }, null, 2));
 } finally {
-  if (engineProcess && !engineProcess.killed) {
-    try { await rpc('aria2.shutdown'); } catch { engineProcess.kill(); }
-  }
-  if (httpServer) await new Promise((resolve) => httpServer.close(resolve));
+  if (httpServer) await new Promise((resolvePromise) => httpServer.close(resolvePromise));
   await rm(downloadDirectory, { recursive: true, force: true });
 }
