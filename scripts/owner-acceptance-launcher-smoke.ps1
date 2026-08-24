@@ -15,6 +15,7 @@ try {
 
   $primaryScript = Join-Path $tempRoot "owner-youtube-acceptance.ps1"
   $retryScript = Join-Path $tempRoot "owner-youtube-fresh-url-retry.ps1"
+  $uaRetryScript = Join-Path $tempRoot "owner-youtube-browser-ua-retry.ps1"
   @'
 if ($env:SUBUTAI_PRIMARY_MARKER) {
   Add-Content -LiteralPath $env:SUBUTAI_PRIMARY_MARKER -Value "primary"
@@ -27,6 +28,12 @@ if ($env:SUBUTAI_RETRY_MARKER) {
 }
 exit [int]$env:SUBUTAI_RETRY_EXIT
 '@ | Set-Content -LiteralPath $retryScript -Encoding UTF8
+  @'
+if ($env:SUBUTAI_UA_RETRY_MARKER) {
+  Add-Content -LiteralPath $env:SUBUTAI_UA_RETRY_MARKER -Value "ua-retry"
+}
+exit [int]$env:SUBUTAI_UA_RETRY_EXIT
+'@ | Set-Content -LiteralPath $uaRetryScript -Encoding UTF8
 
   $fakeExe = Join-Path $tempRoot "fake-subutai.exe"
   $fakeSource = @'
@@ -50,23 +57,28 @@ public static class Program {
       [Parameter(Mandatory = $true)][int]$PackagedExit,
       [Parameter(Mandatory = $true)][int]$PrimaryExit,
       [Parameter(Mandatory = $true)][int]$RetryExit,
+      [Parameter(Mandatory = $true)][int]$UaRetryExit,
       [Parameter(Mandatory = $true)][int]$ExpectedExit,
       [Parameter(Mandatory = $true)][bool]$ExpectPrimary,
-      [Parameter(Mandatory = $true)][bool]$ExpectRetry
+      [Parameter(Mandatory = $true)][bool]$ExpectRetry,
+      [Parameter(Mandatory = $true)][bool]$ExpectUaRetry
     )
 
     $packagedMarker = Join-Path $tempRoot "$Name-packaged.marker"
     $primaryMarker = Join-Path $tempRoot "$Name-primary.marker"
     $retryMarker = Join-Path $tempRoot "$Name-retry.marker"
-    Remove-Item $packagedMarker, $primaryMarker, $retryMarker -Force -ErrorAction SilentlyContinue
+    $uaRetryMarker = Join-Path $tempRoot "$Name-ua-retry.marker"
+    Remove-Item $packagedMarker, $primaryMarker, $retryMarker, $uaRetryMarker -Force -ErrorAction SilentlyContinue
 
     $env:SUBUTAI_OWNER_ACCEPTANCE_EXE = $fakeExe
     $env:SUBUTAI_FAKE_PACKAGED_EXIT = [string]$PackagedExit
     $env:SUBUTAI_PRIMARY_EXIT = [string]$PrimaryExit
     $env:SUBUTAI_RETRY_EXIT = [string]$RetryExit
+    $env:SUBUTAI_UA_RETRY_EXIT = [string]$UaRetryExit
     $env:SUBUTAI_PACKAGED_MARKER = $packagedMarker
     $env:SUBUTAI_PRIMARY_MARKER = $primaryMarker
     $env:SUBUTAI_RETRY_MARKER = $retryMarker
+    $env:SUBUTAI_UA_RETRY_MARKER = $uaRetryMarker
 
     & $env:ComSpec /d /c ('"' + $launcherCopy + '"')
     $exitCode = $LASTEXITCODE
@@ -82,13 +94,17 @@ public static class Program {
     if ((Test-Path $retryMarker) -ne $ExpectRetry) {
       throw "$Name retry-script execution mismatch. Expected=$ExpectRetry."
     }
-    Write-Host "$Name passed. exit=$exitCode primary=$ExpectPrimary retry=$ExpectRetry"
+    if ((Test-Path $uaRetryMarker) -ne $ExpectUaRetry) {
+      throw "$Name UA-retry-script execution mismatch. Expected=$ExpectUaRetry."
+    }
+    Write-Host "$Name passed. exit=$exitCode primary=$ExpectPrimary retry=$ExpectRetry uaRetry=$ExpectUaRetry"
   }
 
-  Invoke-LauncherCase -Name "packaged-pass" -PackagedExit 0 -PrimaryExit 9 -RetryExit 9 -ExpectedExit 0 -ExpectPrimary $false -ExpectRetry $false
-  Invoke-LauncherCase -Name "primary-fallback-pass" -PackagedExit 7 -PrimaryExit 0 -RetryExit 9 -ExpectedExit 0 -ExpectPrimary $true -ExpectRetry $false
-  Invoke-LauncherCase -Name "retry-fallback-pass" -PackagedExit 7 -PrimaryExit 8 -RetryExit 0 -ExpectedExit 0 -ExpectPrimary $true -ExpectRetry $true
-  Invoke-LauncherCase -Name "all-fail" -PackagedExit 7 -PrimaryExit 8 -RetryExit 9 -ExpectedExit 9 -ExpectPrimary $true -ExpectRetry $true
+  Invoke-LauncherCase -Name "packaged-pass" -PackagedExit 0 -PrimaryExit 9 -RetryExit 9 -UaRetryExit 9 -ExpectedExit 0 -ExpectPrimary $false -ExpectRetry $false -ExpectUaRetry $false
+  Invoke-LauncherCase -Name "primary-fallback-pass" -PackagedExit 7 -PrimaryExit 0 -RetryExit 9 -UaRetryExit 9 -ExpectedExit 0 -ExpectPrimary $true -ExpectRetry $false -ExpectUaRetry $false
+  Invoke-LauncherCase -Name "retry-fallback-pass" -PackagedExit 7 -PrimaryExit 8 -RetryExit 0 -UaRetryExit 9 -ExpectedExit 0 -ExpectPrimary $true -ExpectRetry $true -ExpectUaRetry $false
+  Invoke-LauncherCase -Name "ua-retry-fallback-pass" -PackagedExit 7 -PrimaryExit 8 -RetryExit 9 -UaRetryExit 0 -ExpectedExit 0 -ExpectPrimary $true -ExpectRetry $true -ExpectUaRetry $true
+  Invoke-LauncherCase -Name "all-fail" -PackagedExit 7 -PrimaryExit 8 -RetryExit 9 -UaRetryExit 10 -ExpectedExit 10 -ExpectPrimary $true -ExpectRetry $true -ExpectUaRetry $true
 
   Write-Host "Owner acceptance CMD launcher control-flow smoke passed."
   $smokePassed = $true
@@ -97,9 +113,11 @@ public static class Program {
   Remove-Item Env:SUBUTAI_FAKE_PACKAGED_EXIT -ErrorAction SilentlyContinue
   Remove-Item Env:SUBUTAI_PRIMARY_EXIT -ErrorAction SilentlyContinue
   Remove-Item Env:SUBUTAI_RETRY_EXIT -ErrorAction SilentlyContinue
+  Remove-Item Env:SUBUTAI_UA_RETRY_EXIT -ErrorAction SilentlyContinue
   Remove-Item Env:SUBUTAI_PACKAGED_MARKER -ErrorAction SilentlyContinue
   Remove-Item Env:SUBUTAI_PRIMARY_MARKER -ErrorAction SilentlyContinue
   Remove-Item Env:SUBUTAI_RETRY_MARKER -ErrorAction SilentlyContinue
+  Remove-Item Env:SUBUTAI_UA_RETRY_MARKER -ErrorAction SilentlyContinue
   Remove-Item $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
   if ($smokePassed) {
     $global:LASTEXITCODE = 0
