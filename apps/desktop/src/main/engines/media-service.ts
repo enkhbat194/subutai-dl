@@ -14,6 +14,9 @@ export type MediaTaskState = 'waiting' | 'active' | 'paused' | 'complete' | 'err
 
 type BrowserCookieSource = string;
 
+const SUBUTAI_YOUTUBE_PO_TOKEN_HEADER = 'x-subutai-youtube-po-token';
+const SUBUTAI_YOUTUBE_VISITOR_DATA_HEADER = 'x-subutai-youtube-visitor-data';
+
 function addUniqueBrowserCookieSource(target: BrowserCookieSource[], seen: Set<string>, source: string): void {
   if (!source) return;
   const key = source.toLowerCase();
@@ -209,6 +212,14 @@ function sanitizeHeader(name: string, value: string): string | null {
   return `${normalizedName}:${normalizedValue}`;
 }
 
+function sanitizeYouTubeContextValue(value: string | undefined): string {
+  if (!value) return '';
+  const normalized = value.trim();
+  if (normalized.length < 8 || normalized.length > 4096) return '';
+  if (/[\r\n;,]/.test(normalized)) return '';
+  return normalized;
+}
+
 function minimumPositive(...values: number[]): number {
   const positive = values.filter((value) => value > 0);
   return positive.length > 0 ? Math.min(...positive) : 0;
@@ -254,6 +265,7 @@ export class MediaService {
     ];
     this.appendJavaScriptRuntime(args);
     this.appendTransferArguments(args, 0);
+    this.appendCapturedYouTubeContext(args, headers, url);
     this.appendRequestArguments(args, headers, sourcePageUrl);
     args.push(url);
 
@@ -497,6 +509,9 @@ export class MediaService {
     if (options.embedMetadata !== false) args.push('--embed-metadata');
     if (options.embedThumbnail) args.push('--embed-thumbnail');
 
+    if (task.browserCookieSourceIndex < 0) {
+      this.appendCapturedYouTubeContext(args, task.headers, task.url);
+    }
     this.appendBrowserCookies(args, task.browserCookieSources, task.browserCookieSourceIndex);
     this.appendRequestArguments(args, task.headers, task.sourcePageUrl, task.browserCookieSourceIndex < 0);
     args.push(task.url);
@@ -538,6 +553,28 @@ export class MediaService {
     if (source) args.push('--cookies-from-browser', source);
   }
 
+  private appendCapturedYouTubeContext(
+    args: string[],
+    headers: DownloadRequestHeaders | undefined,
+    url: string,
+  ): void {
+    if (!headers || !isYouTubeUrl(url)) return;
+    let poToken = '';
+    let visitorData = '';
+    for (const [name, value] of Object.entries(headers)) {
+      const lower = name.toLowerCase();
+      if (lower === SUBUTAI_YOUTUBE_PO_TOKEN_HEADER) poToken = sanitizeYouTubeContextValue(value);
+      if (lower === SUBUTAI_YOUTUBE_VISITOR_DATA_HEADER) visitorData = sanitizeYouTubeContextValue(value);
+    }
+    if (!poToken) return;
+    const extractorParts = [
+      'player_client=mweb',
+      `po_token=mweb.gvs+${poToken}`,
+    ];
+    if (visitorData) extractorParts.push(`visitor_data=${visitorData}`);
+    args.push('--extractor-args', `youtube:${extractorParts.join(';')}`);
+  }
+
   private appendRequestArguments(
     args: string[],
     headers?: DownloadRequestHeaders,
@@ -548,6 +585,9 @@ export class MediaService {
     if (!headers) return;
     for (const [name, value] of Object.entries(headers)) {
       const lower = name.toLowerCase();
+      if (lower === SUBUTAI_YOUTUBE_PO_TOKEN_HEADER || lower === SUBUTAI_YOUTUBE_VISITOR_DATA_HEADER) {
+        continue;
+      }
       if (lower === 'referer' || lower === 'referrer') {
         args.push('--referer', value);
       } else if (lower === 'user-agent') {
@@ -600,6 +640,10 @@ export class MediaService {
         const argument = baseArgs[index];
         const next = baseArgs[index + 1];
         if (argument === '--add-header' && /^Cookie:/i.test(next ?? '')) {
+          index += 1;
+          continue;
+        }
+        if (argument === '--extractor-args' && /po_token=mweb\.gvs\+/i.test(next ?? '')) {
           index += 1;
           continue;
         }
