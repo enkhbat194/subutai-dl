@@ -3,6 +3,14 @@ const HOST_NAME = 'com.subutai.download_manager';
 const REQUEST_TTL_MS = 30_000;
 const MAX_RECENT_REQUESTS = 500;
 const recentRequests = new Map();
+const YOUTUBE_CONTEXT_HEADERS = new Set([
+  'origin',
+  'x-goog-authuser',
+  'x-goog-visitor-id',
+  'x-origin',
+  'x-youtube-client-name',
+  'x-youtube-client-version',
+]);
 
 function browserSource() {
   if (api.runtime.getURL('').startsWith('moz-extension:')) return 'firefox';
@@ -51,6 +59,37 @@ function rememberRequest(details) {
   pruneRecentRequests();
 }
 
+function isYouTubeContextUrl(value) {
+  try {
+    const host = new URL(value).hostname.toLowerCase();
+    return host === 'youtube.com'
+      || host.endsWith('.youtube.com')
+      || host === 'youtube-nocookie.com'
+      || host.endsWith('.youtube-nocookie.com')
+      || host === 'youtubei.googleapis.com';
+  } catch {
+    return false;
+  }
+}
+
+function mergeYouTubeContextHeaders(headers, target, tabId) {
+  if (tabId < 0 || !isYouTubeContextUrl(target.toString())) return;
+  const candidates = [...recentRequests.values()]
+    .filter((entry) => entry.tabId === tabId && isYouTubeContextUrl(entry.url))
+    .sort((a, b) => b.time - a.time)
+    .slice(0, 12);
+
+  const present = new Set(Object.keys(headers).map((name) => name.toLowerCase()));
+  for (const entry of candidates) {
+    for (const [name, value] of Object.entries(entry.headers)) {
+      const lower = name.toLowerCase();
+      if (!YOUTUBE_CONTEXT_HEADERS.has(lower) || present.has(lower) || typeof value !== 'string') continue;
+      headers[name] = value;
+      present.add(lower);
+    }
+  }
+}
+
 try {
   api.webRequest.onBeforeSendHeaders.addListener(
     rememberRequest,
@@ -90,7 +129,9 @@ async function collectHeaders(url, tabId, sourcePageUrl, extraHeaders = {}) {
       .sort((a, b) => b.time - a.time)[0];
   }
 
-  const headers = { ...(remembered?.headers ?? {}), ...extraHeaders };
+  const headers = { ...(remembered?.headers ?? {}) };
+  mergeYouTubeContextHeaders(headers, target, tabId);
+  Object.assign(headers, extraHeaders);
   try {
     const cookies = await api.cookies.getAll({ url });
     if (cookies.length > 0) headers.Cookie = cookies.map((cookie) => `${cookie.name}=${cookie.value}`).join('; ');
