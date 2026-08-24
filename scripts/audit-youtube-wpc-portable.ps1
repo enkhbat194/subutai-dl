@@ -169,3 +169,7 @@ if str(_subutai_vendor) not in sys.path:
 } finally {
   Remove-Item $auditPluginRoot -Recurse -Force -ErrorAction SilentlyContinue
 }
+
+# The YouTube probe is intentionally allowed to fail on a hosted runner after provider
+# discovery. Do not leak that native process exit code as this script's success code.
+$global:LASTEXITCODE = 0
