@@ -52,6 +52,7 @@
           "owner-youtube-acceptance.ps1",
           "owner-youtube-fresh-url-retry.ps1",
           "owner-youtube-browser-ua-retry.ps1",
+          "owner-youtube-wpc-retry.ps1",
           "owner-critical-packaged-acceptance.mjs",
           "Run-Subutai-Owner-Acceptance.cmd"
         ]
