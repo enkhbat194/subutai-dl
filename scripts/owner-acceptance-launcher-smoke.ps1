@@ -3,6 +3,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$smokePassed = $false
 
 $launcher = (Resolve-Path $LauncherPath).Path
 $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("SubutaiOwnerLauncherSmoke-" + [Guid]::NewGuid().ToString("N"))
@@ -90,6 +91,7 @@ public static class Program {
   Invoke-LauncherCase -Name "all-fail" -PackagedExit 7 -PrimaryExit 8 -RetryExit 9 -ExpectedExit 9 -ExpectPrimary $true -ExpectRetry $true
 
   Write-Host "Owner acceptance CMD launcher control-flow smoke passed."
+  $smokePassed = $true
 } finally {
   Remove-Item Env:SUBUTAI_OWNER_ACCEPTANCE_EXE -ErrorAction SilentlyContinue
   Remove-Item Env:SUBUTAI_FAKE_PACKAGED_EXIT -ErrorAction SilentlyContinue
@@ -99,4 +101,7 @@ public static class Program {
   Remove-Item Env:SUBUTAI_PRIMARY_MARKER -ErrorAction SilentlyContinue
   Remove-Item Env:SUBUTAI_RETRY_MARKER -ErrorAction SilentlyContinue
   Remove-Item $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
+  if ($smokePassed) {
+    $global:LASTEXITCODE = 0
+  }
 }
