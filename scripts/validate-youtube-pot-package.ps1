@@ -37,8 +37,11 @@ if ($provenance -notmatch "version=1\.3\.1" -or
 }
 
 $config = Get-Content $configPath -Raw
-if ($config -notmatch "player_client=mweb,default,android_vr,web_embedded,web_safari") {
-  throw "Packaged yt-dlp config is missing the mweb PO-token client path."
+if ($config -notmatch "player_client=default,web_embedded,android_vr,web_safari") {
+  throw "Packaged yt-dlp config is missing the stable-client-first YouTube path."
+}
+if ($config -match "player_client=mweb,default") {
+  throw "Packaged yt-dlp config must not force mweb ahead of current stable clients."
 }
 if ($config -notmatch "youtubepot-bgutilscript:server_home=%SUBUTAI_POT_SERVER_HOME%") {
   throw "Packaged yt-dlp config is missing the local PO-token script provider binding."
@@ -54,3 +57,4 @@ if ($LASTEXITCODE -ne 0 -or ([string]$versionOutput).Trim() -ne "1.3.1") {
 Write-Host "Packaged YouTube PO-token provider validation passed."
 Write-Host "Provider: bgutil-ytdlp-pot-provider 1.3.1"
 Write-Host "Commit: 7608dd51ee813b48cf9a6d68c6e42cb197ce10e0"
+Write-Host "Default YouTube clients: default,web_embedded,android_vr,web_safari; mweb remains an explicit fallback."
