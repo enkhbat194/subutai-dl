@@ -1,0 +1,56 @@
+name: Subutai YouTube WPC Portable Audit
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "scripts/audit-youtube-wpc-portable.ps1"
+      - "scripts/install-temporary-media-tools.ps1"
+      - ".github/workflows/youtube-wpc-portable-audit.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit-wpc-portable-provider:
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Setup Python for build-time dependency resolution
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Parse WPC portable audit script
+        shell: powershell
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path ./scripts/audit-youtube-wpc-portable.ps1),
+            [ref]$tokens,
+            [ref]$errors
+          ) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Error $_.Message }
+            throw "audit-youtube-wpc-portable.ps1 contains PowerShell parse errors."
+          }
+
+      - name: Stage current packaged media tools
+        shell: powershell
+        run: ./scripts/install-temporary-media-tools.ps1
+
+      - name: Prove WPC can load inside standalone packaged yt-dlp
+        shell: powershell
+        run: ./scripts/audit-youtube-wpc-portable.ps1
