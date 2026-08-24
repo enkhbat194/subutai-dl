@@ -14,6 +14,7 @@ on:
       - "scripts/owner-youtube-acceptance.ps1"
       - "scripts/owner-youtube-fresh-url-retry.ps1"
       - "scripts/owner-critical-packaged-acceptance.mjs"
+      - "scripts/owner-acceptance-launcher-smoke.ps1"
       - "scripts/Run-Subutai-Owner-Acceptance.cmd"
       - "scripts/direct-download-smoke.mjs"
       - "scripts/restart-recovery-harness.mjs"
@@ -35,6 +36,7 @@ on:
       - "scripts/owner-youtube-acceptance.ps1"
       - "scripts/owner-youtube-fresh-url-retry.ps1"
       - "scripts/owner-critical-packaged-acceptance.mjs"
+      - "scripts/owner-acceptance-launcher-smoke.ps1"
       - "scripts/Run-Subutai-Owner-Acceptance.cmd"
       - "scripts/direct-download-smoke.mjs"
       - "scripts/restart-recovery-harness.mjs"
@@ -99,12 +101,13 @@ jobs:
           }
           "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
-      - name: Validate owner-network acceptance harness syntax
+      - name: Validate owner-network acceptance harness syntax and launcher control flow
         shell: powershell
         run: |
           foreach ($script in @(
             "./scripts/owner-youtube-acceptance.ps1",
             "./scripts/owner-youtube-fresh-url-retry.ps1",
+            "./scripts/owner-acceptance-launcher-smoke.ps1",
             "./scripts/stage-youtube-pot-provider.ps1",
             "./scripts/validate-youtube-pot-package.ps1"
           )) {
@@ -125,6 +128,8 @@ jobs:
           if (-not (Test-Path ./scripts/Run-Subutai-Owner-Acceptance.cmd)) {
             throw "Run-Subutai-Owner-Acceptance.cmd is missing."
           }
+          ./scripts/owner-acceptance-launcher-smoke.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Install locked dependencies
         shell: powershell
