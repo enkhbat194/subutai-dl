@@ -11,38 +11,42 @@ if exist "%SCRIPT_DIR%..\..\Subutai Download Manager.exe" set "PACKAGED_EXE=%SCR
 if not defined PACKAGED_EXE if exist "%LOCALAPPDATA%\Programs\Subutai Download Manager\Subutai Download Manager.exe" set "PACKAGED_EXE=%LOCALAPPDATA%\Programs\Subutai Download Manager\Subutai Download Manager.exe"
 if not defined PACKAGED_EXE for %%F in ("%SCRIPT_DIR%Subutai-Portable-*.exe") do if exist "%%~fF" if not defined PACKAGED_EXE set "PACKAGED_EXE=%%~fF"
 
-if defined PACKAGED_EXE (
-  echo Running owner acceptance through packaged Subutai application:
-  echo   %PACKAGED_EXE%
-  "%PACKAGED_EXE%" --subutai-owner-youtube-acceptance
-  set "EXIT_CODE=%ERRORLEVEL%"
-  if "%EXIT_CODE%"=="0" goto :passed
-  echo.
-  echo Packaged application acceptance did not pass. Falling back to direct packaged scripts for diagnostics...
-)
+if not defined PACKAGED_EXE goto :direct_primary
 
-if not exist "%PS_SCRIPT%" (
-  echo Subutai owner acceptance script is missing: %PS_SCRIPT%
-  exit /b 2
-)
+echo Running owner acceptance through packaged Subutai application:
+echo   %PACKAGED_EXE%
+"%PACKAGED_EXE%" --subutai-owner-youtube-acceptance
+if errorlevel 1 goto :packaged_failed
+goto :passed
 
+:packaged_failed
+echo.
+echo Packaged application acceptance did not pass. Falling back to direct packaged scripts for diagnostics...
+
+:direct_primary
+if not exist "%PS_SCRIPT%" goto :missing_primary
 powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%PS_SCRIPT%" %*
+if errorlevel 1 goto :try_retry
+goto :passed
+
+:try_retry
 set "EXIT_CODE=%ERRORLEVEL%"
+if not exist "%RETRY_SCRIPT%" goto :failed
+echo.
+echo Primary YouTube acceptance did not pass. Trying bounded fresh media URL retry routes...
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%RETRY_SCRIPT%" %*
+set "EXIT_CODE=%ERRORLEVEL%"
+if not "%EXIT_CODE%"=="0" goto :failed
+goto :passed
 
-if "%EXIT_CODE%"=="0" goto :passed
+:missing_primary
+echo Subutai owner acceptance script is missing: %PS_SCRIPT%
+exit /b 2
 
-if exist "%RETRY_SCRIPT%" (
-  echo.
-  echo Primary YouTube acceptance did not pass. Trying bounded fresh media URL retry routes...
-  powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%RETRY_SCRIPT%" %*
-  set "EXIT_CODE=%ERRORLEVEL%"
-)
-
-if not "%EXIT_CODE%"=="0" (
-  echo.
-  echo Subutai owner-network YouTube acceptance did not pass.
-  exit /b %EXIT_CODE%
-)
+:failed
+echo.
+echo Subutai owner-network YouTube acceptance did not pass.
+exit /b %EXIT_CODE%
 
 :passed
 echo.
