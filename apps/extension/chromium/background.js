@@ -4,10 +4,8 @@ const REQUEST_TTL_MS = 30_000;
 const MAX_RECENT_REQUESTS = 500;
 const recentRequests = new Map();
 const YOUTUBE_CONTEXT_HEADERS = new Set([
-  'authorization',
   'origin',
   'x-goog-authuser',
-  'x-goog-pageid',
   'x-goog-visitor-id',
   'x-origin',
   'x-youtube-client-name',
