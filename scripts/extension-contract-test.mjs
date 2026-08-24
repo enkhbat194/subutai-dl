@@ -17,6 +17,8 @@ const builtFirefox = JSON.parse(await readFile(join(distRoot, 'firefox', 'manife
 const buildInfo = JSON.parse(await readFile(join(distRoot, 'BUILD_INFO.json'), 'utf8'));
 const extensionPackage = JSON.parse(await readFile(join(extensionRoot, 'package.json'), 'utf8'));
 const background = await readFile(join(chromiumRoot, 'background.js'), 'utf8');
+const backgroundEntry = await readFile(join(chromiumRoot, 'background-entry.js'), 'utf8');
+const youtubePoContext = await readFile(join(chromiumRoot, 'youtube-po-context.js'), 'utf8');
 const expectedManifestVersion = browserManifestVersionForRelease(extensionPackage.version);
 
 assert.equal(chromium.manifest_version, 3);
@@ -26,9 +28,13 @@ for (const permission of ['nativeMessaging', 'downloads', 'contextMenus', 'cooki
   assert.ok(firefox.permissions.includes(permission), `Firefox permission missing: ${permission}`);
 }
 assert.deepEqual(chromium.host_permissions, ['<all_urls>']);
+assert.equal(chromium.background.service_worker, 'background-entry.js');
+assert.deepEqual(firefox.background.scripts, ['youtube-po-context.js', 'background.js']);
 assert.equal(firefox.browser_specific_settings.gecko.id, 'subutai-download@subutai.local');
 assert.equal(builtChromium.version, expectedManifestVersion, 'Built Chromium manifest version must match the release version mapping.');
 assert.equal(builtFirefox.version, expectedManifestVersion, 'Built Firefox manifest version must match the release version mapping.');
+assert.equal(builtChromium.background.service_worker, 'background-entry.js');
+assert.deepEqual(builtFirefox.background.scripts, ['youtube-po-context.js', 'background.js']);
 assert.equal(buildInfo.version, extensionPackage.version, 'Extension BUILD_INFO release version must match the workspace package.');
 assert.equal(buildInfo.manifestVersion, expectedManifestVersion, 'Extension BUILD_INFO manifest version must match built manifests.');
 
@@ -52,7 +58,27 @@ for (const requiredFragment of [
 ]) {
   assert.ok(background.includes(requiredFragment), `Background integration missing: ${requiredFragment}`);
 }
+for (const requiredFragment of [
+  "import './youtube-po-context.js'",
+  "import './background.js'",
+]) {
+  assert.ok(backgroundEntry.includes(requiredFragment), `Chromium background entry missing: ${requiredFragment}`);
+}
+for (const requiredFragment of [
+  'api.webRequest.onBeforeRequest.addListener'.replace('api.', 'subutaiBrowserApi.'),
+  "'requestBody'",
+  'serviceIntegrityDimensions',
+  'visitorData',
+  'X-Subutai-YouTube-Po-Token',
+  'X-Subutai-YouTube-Visitor-Data',
+  'subutaiAugmentNativePayload',
+  "hostName === 'com.subutai.download_manager'",
+]) {
+  assert.ok(youtubePoContext.includes(requiredFragment), `YouTube live-context integration missing: ${requiredFragment}`);
+}
 assert.ok(!background.includes('eval('));
 assert.ok(!background.includes('new Function('));
 assert.ok(!background.includes('http://localhost'));
+assert.ok(!youtubePoContext.includes('eval('));
+assert.ok(!youtubePoContext.includes('new Function('));
 console.log(`Browser integration contract passed for release ${extensionPackage.version}, manifest ${expectedManifestVersion}, Chromium ${extensionId} and Firefox.`);
