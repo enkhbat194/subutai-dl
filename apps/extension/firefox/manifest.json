@@ -15,7 +15,7 @@
     "<all_urls>"
   ],
   "background": {
-    "scripts": ["background.js"]
+    "scripts": ["youtube-po-context.js", "background.js"]
   },
   "action": {
     "default_title": "Subutai",

@@ -8,7 +8,14 @@ const extensionRoot = join(root, 'apps', 'extension');
 const chromiumSource = join(extensionRoot, 'chromium');
 const firefoxSource = join(extensionRoot, 'firefox');
 const output = join(extensionRoot, 'dist');
-const sharedFiles = ['background.js', 'popup.html', 'popup.css', 'popup.js'];
+const sharedFiles = [
+  'background.js',
+  'background-entry.js',
+  'youtube-po-context.js',
+  'popup.html',
+  'popup.css',
+  'popup.js',
+];
 
 const extensionPackage = JSON.parse(await readFile(join(extensionRoot, 'package.json'), 'utf8'));
 const releaseVersion = extensionPackage.version;
