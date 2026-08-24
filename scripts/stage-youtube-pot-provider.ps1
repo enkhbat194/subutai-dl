@@ -91,8 +91,12 @@ try {
     "source=https://github.com/Brainicism/bgutil-ytdlp-pot-provider"
   ) | Set-Content -Path (Join-Path $runtimeRoot "SUBUTAI-PROVENANCE.txt") -Encoding ascii
 
+  # Keep the provider packaged and available, but do not force mweb as the global first
+  # client. Current yt-dlp guidance (2026-08) recommends default/web_embedded for browser
+  # cookie sessions while the bgutil+mweb path can intermittently return 403. Explicit
+  # owner/media retry code still exercises mweb with the packaged provider as a fallback.
   $portableConfig = @(
-    "--extractor-args youtube:player_client=mweb,default,android_vr,web_embedded,web_safari",
+    "--extractor-args youtube:player_client=default,web_embedded,android_vr,web_safari",
     "--extractor-args youtubepot-bgutilscript:server_home=%SUBUTAI_POT_SERVER_HOME%"
   ) -join "`r`n"
   [System.IO.File]::WriteAllText(
@@ -115,9 +119,9 @@ try {
   }
 
   $configText = Get-Content $configPath -Raw
-  if ($configText -notmatch "player_client=mweb,default,android_vr,web_embedded,web_safari" -or
+  if ($configText -notmatch "player_client=default,web_embedded,android_vr,web_safari" -or
       $configText -notmatch "youtubepot-bgutilscript:server_home=%SUBUTAI_POT_SERVER_HOME%") {
-    throw "Subutai yt-dlp configuration does not enable the pinned PO-token provider."
+    throw "Subutai yt-dlp configuration does not preserve the stable-client-first path and pinned PO-token provider binding."
   }
 
   Write-Host "Pinned YouTube PO-token provider $providerVersion ($providerCommit) staged for Subutai."
