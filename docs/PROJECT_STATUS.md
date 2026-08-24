@@ -1,13 +1,13 @@
 # Subutai — Authoritative Project Status
 
 Last audited: 2026-08-24  
-Audited `main`: `63fae36a84aa6a9c3a5121d839c90cc948161e67` (through PR #82)
+Audited `main`: `0879be81ea799cc82ebc39a3df8d0f4622fc52f4` (through PR #93)
 
 ## Current conclusion
 
 Subutai has a working unsigned **`0.2.0-rc.2` owner-test Windows baseline** with real Setup and Portable artifacts. It is **not yet declared owner-ready** because a real owner-network YouTube download through the packaged application/tools has not produced `SUBUTAI_YOUTUBE_OWNER_ACCEPTANCE=PASS` evidence.
 
-Normal HTTP downloads through the first-party native engine, packaged desktop-host HTTP downloads, explicit large-file pause/resume, controller/app restart recovery, packaging, launch, browser interception/integration and the packaged media runtime are passing. The owner-network launcher now executes the packaged application first and its Windows CMD exit-code/fallback control flow is regression-tested. Production signing/public-release gates remain separate from owner-test readiness.
+Normal HTTP downloads through the first-party native engine, packaged desktop-host HTTP downloads, explicit large-file pause/resume, controller/app restart recovery, packaging, launch, browser interception/integration and the packaged media runtime are passing. The owner-network launcher executes the packaged application first and its Windows CMD exit-code/fallback control flow is regression-tested. Production signing/public-release gates remain separate from owner-test readiness.
 
 ## Merged owner-test baseline
 
@@ -28,6 +28,11 @@ Normal HTTP downloads through the first-party native engine, packaged desktop-ho
 | #79 | Windows packaging and readiness gates strengthened around the owner acceptance assets |
 | #80/#81 | Packaged application exposes the owner YouTube acceptance command and the launcher now tries the packaged app first before direct diagnostic scripts |
 | #82 | Fixed Windows CMD stale `%ERRORLEVEL%` handling in the owner launcher; added deterministic packaged-pass, primary-fallback, retry-fallback and all-fail launcher regression coverage |
+| #84/#85 | Preferred current stable YouTube clients and pinned the merged homepage-challenge PO-token provider fix |
+| #86/#87 | Added isolated embedded-client routes and kept the normal packaged app on a compatible default/web_embedded client pair |
+| #88/#90 | Added cookie-backed creator/Safari fallbacks plus isolated Safari HLS owner routes |
+| #92 | Added bounded explicit recently-used Firefox/Chrome/Edge/Brave profile discovery before bare-browser cookie fallback |
+| #93 | Added isolated no-cookie `web_embedded` and `tv` owner routes on current main; full Windows MVP run #88 stayed green |
 
 Earlier merged release engineering remains preserved, including native direct engine, queue/persistence, browser integration, transactional update/rollback, checksum rejection, Authenticode release policy and signed update-manifest policy.
 
@@ -35,21 +40,23 @@ Earlier merged release engineering remains preserved, including native direct en
 
 | Critical path | Status | Evidence |
 |---|---:|---|
-| Windows app launches | PASS | Packaged Electron launch smoke, Internal Windows MVP run #79 |
-| Normal HTTP/direct engine | PASS | Checksum-verified real download through `subutai-engine`, run #79 |
-| Packaged desktop host normal HTTP | PASS | Actual packaged `subutai-engine-host.exe`, run #79 |
+| Windows app launches | PASS | Packaged Electron launch smoke, Internal Windows MVP run #88 |
+| Normal HTTP/direct engine | PASS | Checksum-verified real download through `subutai-engine`, run #88 |
+| Packaged desktop host normal HTTP | PASS | Actual packaged `subutai-engine-host.exe`, run #88 |
 | Large-file interruption/resume | PASS | 64 MiB ranged transfer, durable partial state, exact SHA-256 completion |
-| Explicit packaged-host pause/resume | PASS | 64 MiB package acceptance via desktop IPC, run #79 |
-| Unfinished download survives app/controller restart | PASS | Packaged-host restart path plus two-phase restart recovery harness, run #79 |
-| Pause/resume control contracts | PASS | `pnpm test:transfer`, run #79 |
+| Explicit packaged-host pause/resume | PASS | 64 MiB package acceptance via desktop IPC, run #88 |
+| Unfinished download survives app/controller restart | PASS | Packaged-host restart path plus two-phase restart recovery harness, run #88 |
+| Pause/resume control contracts | PASS | `pnpm test:transfer`, run #88 |
 | Setup build exists | PASS | `Subutai-Setup-0.2.0-rc.2-x64.exe` |
 | Portable build exists | PASS | `Subutai-Portable-0.2.0-rc.2-x64.exe` |
-| Packaged yt-dlp/FFmpeg/Node media stack | PASS | Real neutral media download + ffprobe validation, run #79 |
-| Packaged YouTube PO-token provider | PASS | `bgutil-ytdlp-pot-provider` 1.3.1 package validation, run #79 |
-| Resilient YouTube player-client defaults | PASS | default + mweb PO-token + android_vr + web_embedded + web_safari attempts |
+| Packaged yt-dlp/FFmpeg/Node media stack | PASS | Real neutral media download + ffprobe validation, run #88 |
+| Packaged YouTube PO-token provider | PASS | `bgutil-ytdlp-pot-provider` 1.3.1 package validation, run #88 |
+| Resilient YouTube player-client defaults | PASS | default + mweb PO-token + embedded/Safari/Android VR owner routes |
+| Explicit recently-used browser profiles | PASS | PR #92 packaged owner-acceptance path; full run #87 |
+| Isolated no-cookie web_embedded/tv routes | PASS | PR #93 harness syntax/package acceptance; full run #88 |
 | Real app retries local Chromium-family and Firefox browser profiles | PASS | Packaged media implementation and package/launch acceptance |
-| Owner acceptance launcher inside Windows package | PASS | Package validation, run #79 |
-| Owner launcher packaged-app-first control flow | PASS | PR #82 deterministic Windows CMD smoke in run #79 |
+| Owner acceptance launcher inside Windows package | PASS | Package validation, run #88 |
+| Owner launcher packaged-app-first control flow | PASS | Deterministic Windows CMD smoke, run #88 |
 | Browser-cookie fallback avoids stale Cookie/header precedence conflicts | PASS | Fresh browser jar takes precedence while useful headers are retained |
 | Chrome/Edge/Firefox extension contract | PASS | Build/contract checks; installer registration preserved |
 | Real public YouTube on GitHub-hosted Windows | BLOCKED BY HOST NETWORK | YouTube challenges datacenter IP; neutral fallback is not counted as YouTube acceptance |
@@ -57,14 +64,14 @@ Earlier merged release engineering remains preserved, including native direct en
 
 ## Exact recent Windows evidence
 
-Subutai Internal Windows MVP workflow run `32682195251` / run number `79` on PR #82 head `e43c0774e529fffc2ec975ce38ba423879c4b7ef` passed the strengthened hosted owner-test path end-to-end.
+Subutai Internal Windows MVP workflow run `32725999361` / run number `88` on PR #93 head `24d070a15a49ed5940f4abb8322d869678fd14bc` passed the strengthened hosted owner-test path end-to-end.
 
 The run passed:
 
-- owner-acceptance PowerShell/Node syntax validation;
-- deterministic Windows CMD launcher control-flow regression cases;
-- packaged media/runtime staging with yt-dlp `2026.08.19`, FFmpeg/ffprobe and Node `22.23.2`;
-- pinned `bgutil-ytdlp-pot-provider` `1.3.1` staging and package validation;
+- owner-acceptance PowerShell/Node syntax validation and Windows CMD launcher control-flow regression cases;
+- packaged media/runtime staging with yt-dlp, FFmpeg/ffprobe and Node;
+- pinned `bgutil-ytdlp-pot-provider` staging and package validation;
+- packaged media-stack smoke with a public YouTube attempt while preserving strict owner-network PASS semantics;
 - TypeScript/browser extension contracts;
 - checksum-verified native HTTP download;
 - live 64 MiB interruption/restart recovery;
@@ -74,24 +81,24 @@ The run passed:
 - packaged Electron launch smoke;
 - internal prerelease publication.
 
-The native direct smoke downloaded `5,243,017` bytes and verified SHA-256 `4bc7cd930235cf958669301899dfefad8d2462ef752e8b109f55274e3177de7f`. The packaged desktop-host acceptance reported `SUBUTAI_OWNER_CRITICAL_DIRECT_ACCEPTANCE=PASS` after normal HTTP, pause/resume after 8 MiB, restart recovery after 8 MiB and exact completion of a 64 MiB payload.
-
-Package validation confirmed the actual app launched and reached `Launch smoke completed successfully`, and confirmed these release artifacts:
+The owner package still contains:
 
 - `Subutai-Setup-0.2.0-rc.2-x64.exe`
 - `Subutai-Portable-0.2.0-rc.2-x64.exe`
 - `SHA256SUMS.txt`
 - bundled `resources\owner-acceptance\Run-Subutai-Owner-Acceptance.cmd`
 
-The internal tag `internal-v0.2.0-rc.2` was republished from PR #82 head with the Setup, Portable, checksums and owner-network acceptance assets.
+The internal prerelease continues to be republished from successful owner-test heads so the current Setup/Portable package carries the latest merged media acceptance tooling after each green run.
 
 ## YouTube acceptance boundary
 
-Run #79 attempted three public YouTube videos through the packaged stack using `default`, `mweb` with the packaged PO-token provider, `android_vr`, `web_embedded` and `web_safari` profiles. GitHub-hosted Windows remained challenged by YouTube's datacenter/network controls. The workflow therefore validated a neutral media file and emitted:
+Hosted Windows acceptance exercises the packaged stack and public YouTube routes, but GitHub-hosted datacenter IPs can be challenged by YouTube's network controls. When that occurs, the workflow validates the packaged media stack against neutral media and emits:
 
 `SUBUTAI_YOUTUBE_OWNER_ACCEPTANCE=PENDING_HOSTED_RUNNER_CHALLENGE`
 
 That fallback proves the packaged yt-dlp/FFmpeg/Node/provider media stack is functional, but it intentionally does **not** satisfy the real YouTube owner-readiness requirement.
+
+The owner fallback harness now includes isolated current-client routes, Safari HLS attempts, browser-cookie routes, bounded explicit recently-used browser profiles and no-cookie `web_embedded`/`tv` routes. A successful route still must produce playable media validated by packaged `ffprobe` before PASS can be emitted.
 
 ## Final owner-network acceptance path
 
@@ -104,8 +111,9 @@ The current launcher:
 1. prefers the real packaged/installed Subutai application and invokes `--subutai-owner-youtube-acceptance`;
 2. if packaged-app acceptance fails, runs the direct packaged owner acceptance script for diagnostics;
 3. if that fails, runs the bounded fresh-media-URL retry script;
-4. propagates the true final exit status without stale CMD block expansion;
-5. reports success only when an actual acceptance path succeeds.
+4. the retry script prioritizes explicit recently-used local browser profiles, then bare-browser fallbacks, and also tries isolated no-cookie clients;
+5. propagates the true final exit status without stale CMD block expansion;
+6. reports success only when an actual playable YouTube acceptance path succeeds.
 
 The harness and packaged media service use the actual packaged binaries, local browser sessions/profiles, resilient player-client fallbacks and the packaged PO-token provider. A true real-network success must produce a playable YouTube media file validated by packaged `ffprobe`, record its SHA-256 and emit `SUBUTAI_YOUTUBE_OWNER_ACCEPTANCE=PASS`.
 
@@ -129,8 +137,8 @@ The following remain required for a signed public release but are not prerequisi
 
 ## Next correct sequence
 
-1. Keep the run-#79-class hosted Windows gates passing without weakening direct/recovery/package/launch checks.
+1. Keep the run-#88-class hosted Windows gates passing without weakening direct/recovery/package/launch checks.
 2. Run the bundled packaged-app-first owner acceptance launcher on a real Windows owner network.
-3. If real YouTube still fails, use the exact packaged-app/browser-profile diagnostics to harden the media path; do not substitute neutral hosted media for YouTube acceptance.
+3. If real YouTube still fails, use the exact route/profile diagnostics to harden the media path; do not substitute neutral hosted media for YouTube acceptance.
 4. Declare owner readiness only after `SUBUTAI_YOUTUBE_OWNER_ACCEPTANCE=PASS` plus the already-passing direct/recovery/package/launch gates.
 5. Keep production signing and clean-machine public-release promotion as a later release track.
