@@ -129,7 +129,6 @@ jobs:
             throw "Run-Subutai-Owner-Acceptance.cmd is missing."
           }
           ./scripts/owner-acceptance-launcher-smoke.ps1
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Install locked dependencies
         shell: powershell
