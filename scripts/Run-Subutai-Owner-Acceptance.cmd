@@ -4,6 +4,7 @@ set "SCRIPT_DIR=%~dp0"
 set "PS_SCRIPT=%SCRIPT_DIR%owner-youtube-acceptance.ps1"
 set "RETRY_SCRIPT=%SCRIPT_DIR%owner-youtube-fresh-url-retry.ps1"
 set "UA_RETRY_SCRIPT=%SCRIPT_DIR%owner-youtube-browser-ua-retry.ps1"
+set "WPC_RETRY_SCRIPT=%SCRIPT_DIR%owner-youtube-wpc-retry.ps1"
 set "PACKAGED_EXE="
 
 rem Test/diagnostic override. Normal owner use leaves this unset.
@@ -43,10 +44,18 @@ set "EXIT_CODE=%ERRORLEVEL%"
 if "%EXIT_CODE%"=="0" goto :passed
 
 :try_ua_retry
-if not exist "%UA_RETRY_SCRIPT%" goto :failed
+if not exist "%UA_RETRY_SCRIPT%" goto :try_wpc_retry
 echo.
 echo Fresh media URL routes did not pass. Trying browser cookies with matching browser User-Agent...
 powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%UA_RETRY_SCRIPT%" %*
+set "EXIT_CODE=%ERRORLEVEL%"
+if "%EXIT_CODE%"=="0" goto :passed
+
+:try_wpc_retry
+if not exist "%WPC_RETRY_SCRIPT%" goto :failed
+echo.
+echo Browser cookie routes did not pass. Trying packaged browser-minted WPC PO-token fallback...
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%WPC_RETRY_SCRIPT%" %*
 set "EXIT_CODE=%ERRORLEVEL%"
 if not "%EXIT_CODE%"=="0" goto :failed
 goto :passed

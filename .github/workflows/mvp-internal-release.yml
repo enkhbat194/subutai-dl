@@ -9,10 +9,13 @@ on:
       - "packages/**"
       - "scripts/install-temporary-media-tools.ps1"
       - "scripts/stage-youtube-pot-provider.ps1"
+      - "scripts/stage-youtube-wpc-provider.ps1"
       - "scripts/validate-youtube-pot-package.ps1"
       - "scripts/youtube-media-smoke.ps1"
       - "scripts/owner-youtube-acceptance.ps1"
       - "scripts/owner-youtube-fresh-url-retry.ps1"
+      - "scripts/owner-youtube-browser-ua-retry.ps1"
+      - "scripts/owner-youtube-wpc-retry.ps1"
       - "scripts/owner-critical-packaged-acceptance.mjs"
       - "scripts/owner-acceptance-launcher-smoke.ps1"
       - "scripts/Run-Subutai-Owner-Acceptance.cmd"
@@ -25,16 +28,20 @@ on:
   push:
     branches:
       - "agent/rc2-live-owner-acceptance"
+      - "agent/package-wpc-owner-fallback"
     paths:
       - "apps/**"
       - "engines/native/**"
       - "packages/**"
       - "scripts/install-temporary-media-tools.ps1"
       - "scripts/stage-youtube-pot-provider.ps1"
+      - "scripts/stage-youtube-wpc-provider.ps1"
       - "scripts/validate-youtube-pot-package.ps1"
       - "scripts/youtube-media-smoke.ps1"
       - "scripts/owner-youtube-acceptance.ps1"
       - "scripts/owner-youtube-fresh-url-retry.ps1"
+      - "scripts/owner-youtube-browser-ua-retry.ps1"
+      - "scripts/owner-youtube-wpc-retry.ps1"
       - "scripts/owner-critical-packaged-acceptance.mjs"
       - "scripts/owner-acceptance-launcher-smoke.ps1"
       - "scripts/Run-Subutai-Owner-Acceptance.cmd"
@@ -64,6 +71,11 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Setup Python for pinned portable WPC dependency resolution
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -107,8 +119,11 @@ jobs:
           foreach ($script in @(
             "./scripts/owner-youtube-acceptance.ps1",
             "./scripts/owner-youtube-fresh-url-retry.ps1",
+            "./scripts/owner-youtube-browser-ua-retry.ps1",
+            "./scripts/owner-youtube-wpc-retry.ps1",
             "./scripts/owner-acceptance-launcher-smoke.ps1",
             "./scripts/stage-youtube-pot-provider.ps1",
+            "./scripts/stage-youtube-wpc-provider.ps1",
             "./scripts/validate-youtube-pot-package.ps1"
           )) {
             $tokens = $null
@@ -141,6 +156,10 @@ jobs:
       - name: Stage pinned YouTube PO-token provider
         shell: powershell
         run: ./scripts/stage-youtube-pot-provider.ps1
+
+      - name: Stage browser-minted WPC YouTube PO-token provider
+        shell: powershell
+        run: ./scripts/stage-youtube-wpc-provider.ps1
 
       - name: Prove packaged media stack and attempt public YouTube
         shell: powershell
@@ -181,6 +200,27 @@ jobs:
         shell: powershell
         run: ./scripts/validate-youtube-pot-package.ps1
 
+      - name: Validate packaged browser-minted WPC provider payload
+        shell: powershell
+        run: |
+          $root = (Resolve-Path ./apps/desktop/release/win-unpacked/resources/engines/yt-dlp-plugins/subutai-wpc).Path
+          foreach ($relative in @(
+            "yt_dlp_plugins\extractor\getpot_wpc.py",
+            "vendor\nodriver",
+            "vendor\websockets",
+            "vendor\mss",
+            "vendor\deprecated",
+            "vendor\wrapt",
+            "subutai-wpc-manifest.json"
+          )) {
+            $path = Join-Path $root $relative
+            if (-not (Test-Path $path)) { throw "Packaged WPC component is missing: $path" }
+          }
+          $manifest = Get-Content (Join-Path $root "subutai-wpc-manifest.json") -Raw | ConvertFrom-Json
+          if ($manifest.providerVersion -ne "1.1.2" -or $manifest.nodriverVersion -ne "0.50.3") {
+            throw "Packaged WPC provider manifest is not the audited dependency set."
+          }
+
       - name: Prove packaged desktop host direct pause resume and restart recovery
         shell: powershell
         env:
@@ -210,7 +250,7 @@ jobs:
 
             This candidate replaces the crowded prototype dashboard with a focused one-link flow and routes recognised YouTube/media URLs automatically.
 
-            Publication requires a checksum-verified normal HTTP download through the first-party native engine, a live 64 MiB interruption/restart recovery run, transfer pause/resume contracts, and an additional packaged `subutai-engine-host.exe` acceptance that performs normal HTTP, explicit pause/resume, controller shutdown/restart, durable recovery-state verification and exact SHA-256 completion using the same binaries shipped in the Windows package. It also requires the packaged yt-dlp/FFmpeg/Node media stack, the pinned YouTube PO-token provider runtime, TypeScript checks, Windows Setup/Portable construction and packaged Electron launch smoke. The workflow attempts a public YouTube download; GitHub-hosted datacenter IPs can still be challenged by YouTube, so owner-network YouTube acceptance remains a separate physical-owner gate when that occurs.
+            Publication requires a checksum-verified normal HTTP download through the first-party native engine, a live 64 MiB interruption/restart recovery run, transfer pause/resume contracts, and an additional packaged `subutai-engine-host.exe` acceptance that performs normal HTTP, explicit pause/resume, controller shutdown/restart, durable recovery-state verification and exact SHA-256 completion using the same binaries shipped in the Windows package. It also requires the packaged yt-dlp/FFmpeg/Node media stack, both the pinned local PO-token provider and audited browser-minted WPC provider payload, TypeScript checks, Windows Setup/Portable construction and packaged Electron launch smoke. The workflow attempts a public YouTube download; GitHub-hosted datacenter IPs can still be challenged by YouTube, so owner-network YouTube acceptance remains a separate physical-owner gate when that occurs.
 
             Start with `Subutai-Portable-${{ steps.version.outputs.version }}-x64.exe`. The owner-network YouTube acceptance launcher and critical direct acceptance harness are bundled under `resources\owner-acceptance` inside the Windows package. Windows SmartScreen may warn because this owner-test build is unsigned.
           prerelease: true
@@ -222,4 +262,6 @@ jobs:
             apps/desktop/release/SHA256SUMS.txt
             scripts/owner-youtube-acceptance.ps1
             scripts/owner-youtube-fresh-url-retry.ps1
+            scripts/owner-youtube-browser-ua-retry.ps1
+            scripts/owner-youtube-wpc-retry.ps1
             scripts/Run-Subutai-Owner-Acceptance.cmd
