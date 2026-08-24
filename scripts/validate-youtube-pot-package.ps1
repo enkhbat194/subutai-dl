@@ -31,7 +31,8 @@ foreach ($path in $required) {
 
 $provenance = Get-Content (Join-Path $providerRoot "SUBUTAI-PROVENANCE.txt") -Raw
 if ($provenance -notmatch "version=1\.3\.1" -or
-    $provenance -notmatch "commit=7608dd51ee813b48cf9a6d68c6e42cb197ce10e0" -or
+    $provenance -notmatch "commit=495a47f7e9d442addc7b7f03c2751001558bb983" -or
+    $provenance -notmatch "upstream-fix=PR-243-homepage-challenge-ytcfg" -or
     $provenance -notmatch "license=GPL-3\.0-only") {
   throw "Packaged YouTube PO-token provider provenance is incomplete or unexpected."
 }
@@ -55,6 +56,6 @@ if ($LASTEXITCODE -ne 0 -or ([string]$versionOutput).Trim() -ne "1.3.1") {
 }
 
 Write-Host "Packaged YouTube PO-token provider validation passed."
-Write-Host "Provider: bgutil-ytdlp-pot-provider 1.3.1"
-Write-Host "Commit: 7608dd51ee813b48cf9a6d68c6e42cb197ce10e0"
+Write-Host "Provider runtime: bgutil-ytdlp-pot-provider 1.3.1"
+Write-Host "Pinned upstream commit: 495a47f7e9d442addc7b7f03c2751001558bb983 (merged PR #243 homepage challenge + ytcfg fix)"
 Write-Host "Default YouTube clients: default,web_embedded,android_vr,web_safari; mweb remains an explicit fallback."
