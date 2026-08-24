@@ -108,13 +108,17 @@ New-Item -ItemType Directory -Force -Path $OutputRoot | Out-Null
 # Keep single-client cookie routes ahead of mixed-client fallbacks. Current yt-dlp
 # YouTube failures can bind a token/format to one client and then select a different
 # client's media URL, producing an otherwise misleading HTTP 403. web_embedded and
-# tv_embedded therefore remain isolated. Current 2026 yt-dlp guidance also identifies
-# web_creator as a cookie-backed PO-token-provider route and web_safari as a cookie-capable
-# route. web_safari currently exposes HLS formats whose GoogleVideo requests do not require
-# a GVS PO token, so try an HLS-only route before its generic HTTPS/DASH-capable route.
+# tv_embedded therefore remain isolated. Also exercise no-cookie web_embedded and tv
+# routes because current yt-dlp guidance identifies them as clients that do not require
+# a GVS PO token in their supported cases. Current 2026 guidance identifies web_creator
+# as a cookie-backed PO-token-provider route and web_safari as a cookie-capable route.
+# web_safari currently exposes HLS formats whose GoogleVideo requests do not require a
+# GVS PO token, so try an HLS-only route before its generic HTTPS/DASH-capable route.
 $routes = @(
   @{ Name = 'default'; Client = ''; NeedsCookies = $false },
   @{ Name = 'mweb-pot'; Client = 'mweb'; NeedsCookies = $false },
+  @{ Name = 'web-embedded'; Client = 'web_embedded'; NeedsCookies = $false },
+  @{ Name = 'tv'; Client = 'tv'; NeedsCookies = $false },
   @{ Name = 'cookie-web-embedded'; Client = 'web_embedded'; NeedsCookies = $true },
   @{ Name = 'cookie-tv-embedded'; Client = 'tv_embedded'; NeedsCookies = $true },
   @{ Name = 'cookie-web-creator'; Client = 'web_creator'; NeedsCookies = $true },
