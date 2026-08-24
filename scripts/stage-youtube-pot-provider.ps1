@@ -92,15 +92,18 @@ try {
     "source=https://github.com/Brainicism/bgutil-ytdlp-pot-provider"
   ) | Set-Content -Path (Join-Path $runtimeRoot "SUBUTAI-PROVENANCE.txt") -Encoding ascii
 
-  # Keep the provider packaged and available, but do not force mweb as the global first
-  # client. Current yt-dlp guidance (2026-08) recommends default/web_embedded for browser
-  # cookie sessions while the bgutil+mweb path can intermittently return 403. Explicit
-  # owner/media retry code still exercises mweb with the packaged provider as a fallback.
+  # Keep the provider packaged and available without making the normal application path
+  # combine client families that can bind a PO token/format to one client and then select
+  # a different client's GoogleVideo URL. The normal packaged path therefore stays on
+  # default + web_embedded, the current browser-cookie-compatible pair. Isolated mweb,
+  # web_embedded, tv_embedded, web_safari and android_vr routes remain explicit bounded
+  # fallbacks in the owner acceptance/retry harness instead of contaminating the global
+  # extractor configuration.
   # The pinned upstream commit includes PR #243, which pairs the homepage ytAtN challenge
   # with that page's ytcfg/EVENT_ID before falling back to /att/get. This directly targets
   # the intermittent valid-token/googlevideo-403 regression seen with stock provider 1.3.1.
   $portableConfig = @(
-    "--extractor-args youtube:player_client=default,web_embedded,android_vr,web_safari",
+    "--extractor-args youtube:player_client=default,web_embedded",
     "--extractor-args youtubepot-bgutilscript:server_home=%SUBUTAI_POT_SERVER_HOME%"
   ) -join "`r`n"
   [System.IO.File]::WriteAllText(
@@ -123,9 +126,12 @@ try {
   }
 
   $configText = Get-Content $configPath -Raw
-  if ($configText -notmatch "player_client=default,web_embedded,android_vr,web_safari" -or
+  if ($configText -notmatch "player_client=default,web_embedded(?:\r?\n|$)" -or
       $configText -notmatch "youtubepot-bgutilscript:server_home=%SUBUTAI_POT_SERVER_HOME%") {
-    throw "Subutai yt-dlp configuration does not preserve the stable-client-first path and pinned PO-token provider binding."
+    throw "Subutai yt-dlp configuration does not preserve the compatible default/web_embedded path and pinned PO-token provider binding."
+  }
+  if ($configText -match "player_client=default,web_embedded,") {
+    throw "Subutai yt-dlp global configuration must not append cross-client YouTube fallbacks after web_embedded."
   }
 
   Write-Host "Pinned YouTube PO-token provider $providerVersion ($providerCommit) staged for Subutai."

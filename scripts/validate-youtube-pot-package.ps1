@@ -38,8 +38,11 @@ if ($provenance -notmatch "version=1\.3\.1" -or
 }
 
 $config = Get-Content $configPath -Raw
-if ($config -notmatch "player_client=default,web_embedded,android_vr,web_safari") {
-  throw "Packaged yt-dlp config is missing the stable-client-first YouTube path."
+if ($config -notmatch "player_client=default,web_embedded(?:\r?\n|$)") {
+  throw "Packaged yt-dlp config is missing the compatible default/web_embedded YouTube path."
+}
+if ($config -match "player_client=default,web_embedded,") {
+  throw "Packaged yt-dlp global config must not combine android_vr/web_safari or other fallback clients after web_embedded."
 }
 if ($config -match "player_client=mweb,default") {
   throw "Packaged yt-dlp config must not force mweb ahead of current stable clients."
@@ -58,4 +61,4 @@ if ($LASTEXITCODE -ne 0 -or ([string]$versionOutput).Trim() -ne "1.3.1") {
 Write-Host "Packaged YouTube PO-token provider validation passed."
 Write-Host "Provider runtime: bgutil-ytdlp-pot-provider 1.3.1"
 Write-Host "Pinned upstream commit: 495a47f7e9d442addc7b7f03c2751001558bb983 (merged PR #243 homepage challenge + ytcfg fix)"
-Write-Host "Default YouTube clients: default,web_embedded,android_vr,web_safari; mweb remains an explicit fallback."
+Write-Host "Default YouTube clients: default,web_embedded only; isolated mweb/web_embedded/tv_embedded/web_safari/android_vr remain bounded owner fallbacks."
