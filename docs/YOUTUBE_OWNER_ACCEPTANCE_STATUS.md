@@ -1,6 +1,6 @@
 # Subutai YouTube owner acceptance status
 
-Last audited: 2026-08-25 after PR #99 (`9a66efe998ff93ebd06cb788d1366c86d98ea800`).
+Last audited: 2026-08-25 after PR #101 (`4ab65ad5da003b2f6a9ee793cc3041cff4e984ca`).
 
 ## Readiness boundary
 
@@ -33,7 +33,7 @@ The current `0.2.0-rc.2` owner-test package has real Setup and Portable executab
 
 These gates must remain green while YouTube compatibility work continues.
 
-## YouTube hardening through PR #99
+## YouTube hardening through PR #101
 
 The packaged YouTube path has been hardened without weakening the real-owner PASS boundary:
 
@@ -42,11 +42,14 @@ The packaged YouTube path has been hardened without weakening the real-owner PAS
 - PRs #84-#85 moved to safer current client defaults and pinned the merged homepage-challenge provider fix;
 - PRs #86-#90 added isolated embedded-client, creator, Safari and Safari-HLS owner routes;
 - PR #92 added bounded recently-used Firefox/Chrome/Edge/Brave profile discovery before bare-browser cookie fallback;
-- PR #93 added isolated no-cookie `web_embedded` and `tv` routes;
+- PR #93 added isolated no-cookie `mweb` + PO-provider, `web_embedded` and `tv` routes;
 - PR #95 restored the normal packaged application to the safe `default,web_embedded` client pair and prevents isolated owner fallback clients leaking into global configuration;
 - PR #96 added a browser-matched User-Agent owner fallback paired with browser cookies;
 - PR #98 added an isolated cookie-backed `tv` client fallback while keeping normal packaged defaults unchanged;
-- PR #99 forwards a bounded allowlist of same-tab non-credential YouTube player/session context headers (`Origin`, `X-Origin`, `X-Goog-AuthUser`, `X-Goog-Visitor-Id`, `X-YouTube-Client-Name`, `X-YouTube-Client-Version`) from the browser extension to the native handoff. Authorization is deliberately not copied and non-YouTube interception behavior is unchanged.
+- PR #99 forwards a bounded allowlist of same-tab non-credential YouTube player/session context headers (`Origin`, `X-Origin`, `X-Goog-AuthUser`, `X-Goog-Visitor-Id`, `X-YouTube-Client-Name`, `X-YouTube-Client-Version`) from the browser extension to the native handoff. Authorization is deliberately not copied and non-YouTube interception behavior is unchanged;
+- PR #101 adds an isolated browser-profile + browser-matched User-Agent `mweb` route that uses the already-packaged PO-token provider, matching current yt-dlp guidance that `mweb` with a PO Token provider is the preferred compatibility path when ordinary clients fail.
+
+The latest yt-dlp PO Token guidance audited on 2026-08-25 still recommends an automatic PO Token provider for the `mweb` client. Subutai now exercises that combination both without cookies in the fresh-URL fallback and with an installed browser profile/User-Agent in the later owner fallback. A second browser-driven provider (`yt-dlp-getpot-wpc`) is documented by yt-dlp as an alternative, but it currently depends on Python/nodriver and an installed Chromium browser; do not add that dependency to the packaged owner build without a separately pinned, checksum-verified Windows packaging path and acceptance coverage.
 
 Hosted CI can still be challenged by YouTube datacenter-IP controls and may emit:
 
