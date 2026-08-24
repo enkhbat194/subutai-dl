@@ -107,11 +107,11 @@ try {
   Get-VerifiedDownload -Url $ytDlpUrl -Destination $ytDlpDownload -ExpectedSha256 $ytDlpSha256
   Copy-Item $ytDlpDownload (Join-Path $EngineDir "yt-dlp.exe") -Force
 
-  # yt-dlp automatically loads yt-dlp.conf next to its bundled executable. Keep the
-  # product media path at least as resilient as the owner acceptance harness by trying
-  # the current bounded YouTube player-client set for real app probes/downloads too.
+  # Keep the normal packaged application on a compatible, bounded client pair. Cross-client
+  # owner fallbacks such as android_vr/web_safari are exercised only by the isolated owner
+  # acceptance harness so tokens/formats cannot be selected for one client and consumed by another.
   $ytDlpPortableConfigPath = Join-Path $EngineDir "yt-dlp.conf"
-  $ytDlpPortableConfig = "--extractor-args youtube:player_client=default,android_vr,web_embedded,web_safari`r`n"
+  $ytDlpPortableConfig = "--extractor-args youtube:player_client=default,web_embedded`r`n"
   [System.IO.File]::WriteAllText(
     $ytDlpPortableConfigPath,
     $ytDlpPortableConfig,
@@ -166,8 +166,11 @@ try {
     throw "Packaged yt-dlp portable configuration is missing: $ytDlpPortableConfigPath"
   }
   $portableConfigText = Get-Content $ytDlpPortableConfigPath -Raw
-  if ($portableConfigText -notmatch 'youtube:player_client=default,android_vr,web_embedded,web_safari') {
-    throw "Packaged yt-dlp portable configuration does not contain the resilient YouTube client set."
+  if ($portableConfigText -notmatch 'youtube:player_client=default,web_embedded') {
+    throw "Packaged yt-dlp portable configuration does not contain the compatible YouTube client pair."
+  }
+  if ($portableConfigText -match 'android_vr|web_safari|mweb|web_creator|tv(?:_embedded)?') {
+    throw "Cross-client owner fallbacks must not enter the global packaged yt-dlp configuration."
   }
 
   if (Test-Path (Join-Path $EngineDir "aria2c.exe")) {
@@ -179,7 +182,7 @@ try {
   Test-ToolVersion -Executable (Join-Path $EngineDir "ffprobe.exe") -Arguments @("-version") -Label "FFprobe"
   Test-ToolVersion -Executable (Join-Path $EngineDir "node.exe") -Arguments @("--version") -Label "Node.js"
 
-  Write-Host "Subutai media tools, resilient YouTube defaults and JavaScript runtime staged and verified."
+  Write-Host "Subutai media tools, compatible YouTube defaults and JavaScript runtime staged and verified."
 } finally {
   Remove-Item $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
 }
