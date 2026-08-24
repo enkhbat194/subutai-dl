@@ -101,6 +101,18 @@ foreach ($engine in $requiredEngines) {
   }
 }
 
+$ytDlpConfigPath = Join-Path $engineDir "yt-dlp.conf"
+if (-not (Test-Path $ytDlpConfigPath)) {
+  throw "Packaged yt-dlp configuration is missing: $ytDlpConfigPath"
+}
+$ytDlpConfig = Get-Content $ytDlpConfigPath -Raw
+if ($ytDlpConfig -notmatch 'youtube:player_client=default,web_embedded') {
+  throw "Packaged yt-dlp configuration must keep the compatible default,web_embedded client pair."
+}
+if ($ytDlpConfig -match 'android_vr|web_safari|mweb|web_creator|tv(?:_embedded)?') {
+  throw "Cross-client owner fallbacks must remain isolated from the global packaged yt-dlp configuration."
+}
+
 $nodeVersion = & (Join-Path $engineDir "node.exe") --version 2>&1 | Select-Object -First 1
 if ($LASTEXITCODE -ne 0 -or -not $nodeVersion -or $nodeVersion -notmatch '^v22\.') {
   throw "Packaged Node.js runtime must be executable Node 22.x; received: $nodeVersion"
@@ -187,6 +199,7 @@ Write-Host "Setup: $($setupFiles[0].Name)"
 Write-Host "Portable: $($portableFiles[0].Name)"
 Write-Host "Native direct engine: subutai-engine-host.exe"
 Write-Host "Media stack: yt-dlp.exe, ffmpeg.exe, ffprobe.exe, node.exe ($nodeVersion)"
+Write-Host "YouTube packaged defaults: default,web_embedded"
 Write-Host "Owner acceptance: resources\owner-acceptance\Run-Subutai-Owner-Acceptance.cmd"
 Write-Host "Manifest: latest.yml"
 Write-Host "Checksums: SHA256SUMS.txt"
