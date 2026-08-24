@@ -5,9 +5,12 @@ set "PS_SCRIPT=%SCRIPT_DIR%owner-youtube-acceptance.ps1"
 set "RETRY_SCRIPT=%SCRIPT_DIR%owner-youtube-fresh-url-retry.ps1"
 set "PACKAGED_EXE="
 
+rem Test/diagnostic override. Normal owner use leaves this unset.
+if defined SUBUTAI_OWNER_ACCEPTANCE_EXE if exist "%SUBUTAI_OWNER_ACCEPTANCE_EXE%" set "PACKAGED_EXE=%SUBUTAI_OWNER_ACCEPTANCE_EXE%"
+
 rem Prefer the real packaged application path so owner acceptance exercises Electron's
 rem resource resolution and packaged media environment before the PowerShell fallback.
-if exist "%SCRIPT_DIR%..\..\Subutai Download Manager.exe" set "PACKAGED_EXE=%SCRIPT_DIR%..\..\Subutai Download Manager.exe"
+if not defined PACKAGED_EXE if exist "%SCRIPT_DIR%..\..\Subutai Download Manager.exe" set "PACKAGED_EXE=%SCRIPT_DIR%..\..\Subutai Download Manager.exe"
 if not defined PACKAGED_EXE if exist "%LOCALAPPDATA%\Programs\Subutai Download Manager\Subutai Download Manager.exe" set "PACKAGED_EXE=%LOCALAPPDATA%\Programs\Subutai Download Manager\Subutai Download Manager.exe"
 if not defined PACKAGED_EXE for %%F in ("%SCRIPT_DIR%Subutai-Portable-*.exe") do if exist "%%~fF" if not defined PACKAGED_EXE set "PACKAGED_EXE=%%~fF"
 
