@@ -5,7 +5,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 $providerVersion = "1.3.1"
-$providerCommit = "7608dd51ee813b48cf9a6d68c6e42cb197ce10e0"
+$providerCommit = "495a47f7e9d442addc7b7f03c2751001558bb983"
 $providerRepository = "https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git"
 
 $tempBase = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { [System.IO.Path]::GetTempPath() }
@@ -87,6 +87,7 @@ try {
     "bgutil-ytdlp-pot-provider",
     "version=$providerVersion",
     "commit=$providerCommit",
+    "upstream-fix=PR-243-homepage-challenge-ytcfg",
     "license=GPL-3.0-only",
     "source=https://github.com/Brainicism/bgutil-ytdlp-pot-provider"
   ) | Set-Content -Path (Join-Path $runtimeRoot "SUBUTAI-PROVENANCE.txt") -Encoding ascii
@@ -95,6 +96,9 @@ try {
   # client. Current yt-dlp guidance (2026-08) recommends default/web_embedded for browser
   # cookie sessions while the bgutil+mweb path can intermittently return 403. Explicit
   # owner/media retry code still exercises mweb with the packaged provider as a fallback.
+  # The pinned upstream commit includes PR #243, which pairs the homepage ytAtN challenge
+  # with that page's ytcfg/EVENT_ID before falling back to /att/get. This directly targets
+  # the intermittent valid-token/googlevideo-403 regression seen with stock provider 1.3.1.
   $portableConfig = @(
     "--extractor-args youtube:player_client=default,web_embedded,android_vr,web_safari",
     "--extractor-args youtubepot-bgutilscript:server_home=%SUBUTAI_POT_SERVER_HOME%"
