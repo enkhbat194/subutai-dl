@@ -172,6 +172,7 @@ New-Item -ItemType Directory -Force -Path $OutputRoot | Out-Null
 $routes = @(
   @{ Name = 'default-web-embedded'; Client = 'default,web_embedded'; Format = 'worstvideo*+worstaudio/worst' },
   @{ Name = 'web-creator'; Client = 'web_creator'; Format = 'worstvideo*+worstaudio/worst' },
+  @{ Name = 'tv-cookie'; Client = 'tv'; Format = 'worstvideo*+worstaudio/worst' },
   @{ Name = 'tv-embedded'; Client = 'tv_embedded'; Format = 'worstvideo*+worstaudio/worst' },
   @{ Name = 'web-safari-hls'; Client = 'web_safari'; Format = 'best[protocol^=m3u8]' }
 )
