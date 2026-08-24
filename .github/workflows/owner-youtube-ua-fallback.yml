@@ -1,0 +1,54 @@
+name: Subutai Owner YouTube UA Fallback
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "scripts/owner-youtube-browser-ua-retry.ps1"
+      - "scripts/Run-Subutai-Owner-Acceptance.cmd"
+      - "scripts/owner-acceptance-launcher-smoke.ps1"
+      - "apps/desktop/package.json"
+      - ".github/workflows/owner-youtube-ua-fallback.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-owner-fallback:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Parse browser-matched User-Agent fallback
+        shell: powershell
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path ./scripts/owner-youtube-browser-ua-retry.ps1),
+            [ref]$tokens,
+            [ref]$errors
+          ) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Error $_.Message }
+            throw "owner-youtube-browser-ua-retry.ps1 contains PowerShell parse errors."
+          }
+
+      - name: Prove launcher reaches the UA fallback only after earlier routes fail
+        shell: powershell
+        run: ./scripts/owner-acceptance-launcher-smoke.ps1
+
+      - name: Prove desktop package includes the UA fallback
+        shell: powershell
+        run: |
+          $package = Get-Content ./apps/desktop/package.json -Raw | ConvertFrom-Json
+          $ownerResource = @($package.build.extraResources | Where-Object { $_.to -eq 'owner-acceptance' })
+          if ($ownerResource.Count -ne 1) { throw "Owner acceptance extraResource is missing or ambiguous." }
+          if (@($ownerResource[0].filter) -notcontains 'owner-youtube-browser-ua-retry.ps1') {
+            throw "Browser-matched UA fallback is not included in the Windows package."
+          }
