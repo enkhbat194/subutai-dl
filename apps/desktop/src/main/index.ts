@@ -1,4 +1,5 @@
 import { app, BrowserWindow } from 'electron';
+import { spawn } from 'node:child_process';
 import { appendFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { isNativeMessagingInvocation, runNativeMessagingHost } from './browser/native-messaging';
@@ -22,6 +23,7 @@ import {
 } from './system/update-transaction';
 
 const isLaunchSmokeTest = process.argv.includes('--subutai-smoke-test');
+const isOwnerYouTubeAcceptance = process.argv.includes('--subutai-owner-youtube-acceptance');
 const smokeLogPath = process.env.SUBUTAI_SMOKE_LOG?.trim() ?? '';
 let healthFailureExit = false;
 
@@ -46,6 +48,58 @@ function configurePackagedMediaEnvironment(): void {
     process.env.SUBUTAI_POT_SERVER_HOME = providerHome;
     writeSmokeLog('Packaged YouTube token provider runtime configured.');
   }
+}
+
+function runPowerShellAcceptance(scriptPath: string, appRoot: string): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(
+      'powershell.exe',
+      [
+        '-NoLogo',
+        '-NoProfile',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-File',
+        scriptPath,
+        '-AppRoot',
+        appRoot,
+      ],
+      {
+        stdio: 'inherit',
+        windowsHide: false,
+        env: process.env,
+      },
+    );
+    child.once('error', reject);
+    child.once('exit', (code) => resolve(Number(code ?? 1)));
+  });
+}
+
+async function runPackagedOwnerYouTubeAcceptance(): Promise<void> {
+  await app.whenReady();
+  configurePackagedMediaEnvironment();
+
+  const appRoot = join(process.resourcesPath, '..');
+  const acceptanceRoot = join(process.resourcesPath, 'owner-acceptance');
+  const primaryScript = join(acceptanceRoot, 'owner-youtube-acceptance.ps1');
+  const retryScript = join(acceptanceRoot, 'owner-youtube-fresh-url-retry.ps1');
+
+  if (!existsSync(primaryScript)) {
+    throw new Error(`Packaged owner YouTube acceptance script is missing: ${primaryScript}`);
+  }
+
+  let exitCode = await runPowerShellAcceptance(primaryScript, appRoot);
+  if (exitCode !== 0 && existsSync(retryScript)) {
+    console.log('Primary owner YouTube acceptance did not pass. Trying bounded fresh-media-URL retry routes.');
+    exitCode = await runPowerShellAcceptance(retryScript, appRoot);
+  }
+
+  if (exitCode === 0) {
+    console.log('SUBUTAI_YOUTUBE_OWNER_ACCEPTANCE=PASS');
+  } else {
+    console.error(`Subutai owner-network YouTube acceptance did not pass (exit ${exitCode}).`);
+  }
+  app.exit(exitCode);
 }
 
 async function loadDesktopRuntimes(): Promise<void> {
@@ -145,6 +199,11 @@ app.on('before-quit', () => {
 
 if (isNativeMessagingInvocation(process.argv)) {
   void runNativeMessagingHost().finally(() => app.exit(Number(process.exitCode ?? 0)));
+} else if (isOwnerYouTubeAcceptance) {
+  void runPackagedOwnerYouTubeAcceptance().catch((error: unknown) => {
+    console.error('Packaged owner YouTube acceptance failed to start.', error);
+    app.exit(2);
+  });
 } else {
   const hasSingleInstanceLock = app.requestSingleInstanceLock();
   if (!hasSingleInstanceLock) {
