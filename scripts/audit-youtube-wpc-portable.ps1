@@ -26,6 +26,7 @@ $wheelhouse = Join-Path $tempRoot "wheelhouse"
 $target = Join-Path $tempRoot "target"
 $auditPluginRoot = Join-Path $engineRoot "yt-dlp-plugins\wpc-portable-audit"
 $auditPluginPackage = Join-Path $auditPluginRoot "yt_dlp_plugins"
+$auditVendorRoot = Join-Path $auditPluginRoot "vendor"
 $evidencePath = Join-Path $tempRoot "wpc-portable-audit.json"
 
 function Invoke-Checked {
@@ -43,14 +44,11 @@ function Expand-Wheel {
 try {
   Remove-Item $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
   Remove-Item $auditPluginRoot -Recurse -Force -ErrorAction SilentlyContinue
-  New-Item -ItemType Directory -Force -Path $wheelhouse, $target, $auditPluginPackage | Out-Null
+  New-Item -ItemType Directory -Force -Path $wheelhouse, $target, $auditPluginPackage, $auditVendorRoot | Out-Null
 
-  # The official Windows yt-dlp standalone executable currently embeds CPython 3.10.
-  # Resolve wheels for that ABI instead of the build runner's Python. The first audit
-  # proved that resolving against runner Python 3.12 selects cp312 native wheels and
-  # therefore cannot be imported by the packaged executable. websockets 17 requires
-  # Python 3.11+, so 16.1.1 is the newest compatible branch and also matches the
-  # websockets generation already shipped by current yt-dlp Windows builds.
+  # The official Windows yt-dlp standalone executable embeds CPython 3.10. Resolve
+  # native wheels for that ABI, not the runner's Python 3.12. websockets 16.1.1 is
+  # the newest Python-3.10-compatible release and satisfies nodriver's >=14 bound.
   $requirements = @(
     "yt-dlp-getpot-wpc==$wpcVersion",
     "nodriver==$nodriverVersion",
@@ -105,14 +103,31 @@ try {
 
   $upstreamPlugin = Join-Path $target "yt_dlp_plugins"
   Copy-Item (Join-Path $upstreamPlugin "*") $auditPluginPackage -Recurse -Force
-
   foreach ($dependency in @('nodriver','websockets','mss','deprecated','wrapt')) {
     $sourceDir = Join-Path $target $dependency
     $sourceFile = Join-Path $target "$dependency.py"
-    if (Test-Path $sourceDir) { Copy-Item $sourceDir $auditPluginPackage -Recurse -Force }
-    elseif (Test-Path $sourceFile) { Copy-Item $sourceFile $auditPluginPackage -Force }
+    if (Test-Path $sourceDir) { Copy-Item $sourceDir $auditVendorRoot -Recurse -Force }
+    elseif (Test-Path $sourceFile) { Copy-Item $sourceFile $auditVendorRoot -Force }
     else { throw "WPC audit dependency payload is missing: $dependency" }
   }
+
+  # yt-dlp deliberately isolates plugin discovery and does not expose sibling modules
+  # as normal Python imports. Inject the filesystem vendor root before the provider's
+  # first `import nodriver`. Keeping native cp310 .pyd files on disk (not in a zip)
+  # also lets CPython load websockets/wrapt extension modules normally.
+  $providerPath = Join-Path $auditPluginPackage "extractor\getpot_wpc.py"
+  if (-not (Test-Path $providerPath)) { throw "WPC provider source is missing after staging." }
+  $providerSource = Get-Content $providerPath -Raw
+  if ($providerSource -notmatch '(?m)^import nodriver\s*$') { throw "WPC provider import layout changed; refusing an unverified audit patch." }
+  $vendorBootstrap = @'
+import sys
+from pathlib import Path
+_subutai_vendor = Path(__file__).resolve().parents[2] / "vendor"
+if str(_subutai_vendor) not in sys.path:
+    sys.path.insert(0, str(_subutai_vendor))
+'@
+  $providerSource = $providerSource -replace '(?m)^import nodriver\s*$', ($vendorBootstrap + "`nimport nodriver")
+  [System.IO.File]::WriteAllText($providerPath, $providerSource, (New-Object System.Text.UTF8Encoding($false)))
 
   $stdout = Join-Path $tempRoot "yt-dlp.stdout.log"
   $stderr = Join-Path $tempRoot "yt-dlp.stderr.log"
@@ -134,6 +149,7 @@ try {
     wpcVersion = $wpcVersion
     nodriverVersion = $nodriverVersion
     targetPythonAbi = "cp310-win_amd64"
+    packagingLayout = "external-plugin-with-filesystem-vendor-bootstrap"
     wheels = @($wheels | ForEach-Object { [pscustomobject]@{ name = $_.Name; sha256 = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() } })
     resolvedDistributions = $metadata
     probeExitCode = $probeExitCode
@@ -145,7 +161,7 @@ try {
   $evidence | ConvertTo-Json -Depth 7 | Set-Content -Path $evidencePath -Encoding UTF8
 
   if ($diagnostics.Count -gt 0) { $diagnostics | ForEach-Object { Write-Host $_ } }
-  if ($importFailure) { throw "Standalone yt-dlp failed importing a CPython 3.10 WPC dependency. Evidence: $evidencePath" }
+  if ($importFailure) { throw "Standalone yt-dlp failed importing the filesystem-vendored WPC dependency set. Evidence: $evidencePath" }
   if (-not $providerLoaded) { throw "Standalone yt-dlp did not report WPC 1.1.2 as an external PO-token provider. Evidence: $evidencePath" }
 
   Write-Host "WPC portable dependency audit passed: standalone yt-dlp loaded wpc-$wpcVersion with nodriver-$nodriverVersion."
