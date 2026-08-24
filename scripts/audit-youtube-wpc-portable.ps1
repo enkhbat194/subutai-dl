@@ -8,64 +8,77 @@ $ErrorActionPreference = "Stop"
 
 $wpcVersion = "1.1.2"
 $nodriverVersion = "0.50.3"
-$expectedTopLevelPackages = @(
-  "deprecated",
-  "mss",
-  "nodriver",
-  "websockets",
-  "wrapt",
-  "yt_dlp_plugins"
-)
+$runtimeVersions = [ordered]@{
+  "mss" = "10.2.0"
+  "websockets" = "17.0.1"
+  "deprecated" = "1.3.1"
+  "wrapt" = "2.3.0"
+}
+$expectedTopLevelPackages = @("deprecated", "mss", "nodriver", "websockets", "wrapt", "yt_dlp_plugins")
 
 $engineRoot = (Resolve-Path $EngineDir).Path
 $ytDlp = Join-Path $engineRoot "yt-dlp.exe"
-if (-not (Test-Path $ytDlp)) {
-  throw "Stage the pinned Subutai media tools first; missing $ytDlp"
-}
+if (-not (Test-Path $ytDlp)) { throw "Stage the pinned Subutai media tools first; missing $ytDlp" }
 
 $tempBase = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { [System.IO.Path]::GetTempPath() }
 $tempRoot = Join-Path $tempBase "SubutaiWpcPortableAudit"
+$wheelhouse = Join-Path $tempRoot "wheelhouse"
 $target = Join-Path $tempRoot "target"
 $auditPluginRoot = Join-Path $engineRoot "yt-dlp-plugins\wpc-portable-audit"
 $auditPluginPackage = Join-Path $auditPluginRoot "yt_dlp_plugins"
 $evidencePath = Join-Path $tempRoot "wpc-portable-audit.json"
 
 function Invoke-Checked {
-  param(
-    [Parameter(Mandatory = $true)][string]$Executable,
-    [Parameter(Mandatory = $true)][string[]]$Arguments,
-    [Parameter(Mandatory = $true)][string]$FailureMessage
-  )
+  param([string]$Executable, [string[]]$Arguments, [string]$FailureMessage)
   & $Executable @Arguments
-  if ($LASTEXITCODE -ne 0) {
-    throw "$FailureMessage (exit $LASTEXITCODE)."
-  }
+  if ($LASTEXITCODE -ne 0) { throw "$FailureMessage (exit $LASTEXITCODE)." }
+}
+
+function Expand-Wheel {
+  param([string]$Wheel, [string]$Destination)
+  Add-Type -AssemblyName System.IO.Compression.FileSystem
+  [System.IO.Compression.ZipFile]::ExtractToDirectory($Wheel, $Destination)
 }
 
 try {
   Remove-Item $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
   Remove-Item $auditPluginRoot -Recurse -Force -ErrorAction SilentlyContinue
-  New-Item -ItemType Directory -Force -Path $target, $auditPluginPackage | Out-Null
+  New-Item -ItemType Directory -Force -Path $wheelhouse, $target, $auditPluginPackage | Out-Null
 
-  # This is an engineering audit, not release staging. Resolve the exact WPC/nodriver
-  # pair into a throw-away target so we can prove whether the standalone yt-dlp
-  # interpreter can import the browser provider without adding a second Python runtime.
-  Invoke-Checked -Executable $Python -Arguments @(
-    "-m", "pip", "install",
+  # The official Windows yt-dlp standalone executable currently embeds CPython 3.10.
+  # Resolve wheels for that ABI instead of the build runner's Python. The first audit
+  # proved that resolving against runner Python 3.12 selects cp312 native wheels and
+  # therefore cannot be imported by the packaged executable.
+  $requirements = @(
+    "yt-dlp-getpot-wpc==$wpcVersion",
+    "nodriver==$nodriverVersion",
+    "mss==$($runtimeVersions.mss)",
+    "websockets==$($runtimeVersions.websockets)",
+    "deprecated==$($runtimeVersions.deprecated)",
+    "wrapt==$($runtimeVersions.wrapt)"
+  )
+  $downloadArgs = @(
+    "-m", "pip", "download",
     "--disable-pip-version-check",
     "--no-input",
-    "--no-cache-dir",
-    "--target", $target,
-    "yt-dlp-getpot-wpc==$wpcVersion",
-    "nodriver==$nodriverVersion"
-  ) -FailureMessage "Unable to resolve the pinned WPC audit dependency set"
+    "--only-binary=:all:",
+    "--platform", "win_amd64",
+    "--python-version", "310",
+    "--implementation", "cp",
+    "--abi", "cp310",
+    "--dest", $wheelhouse
+  ) + $requirements
+  Invoke-Checked -Executable $Python -Arguments $downloadArgs -FailureMessage "Unable to resolve the pinned CPython 3.10 WPC dependency set"
+
+  $wheels = @(Get-ChildItem $wheelhouse -File -Filter "*.whl" | Sort-Object Name)
+  if ($wheels.Count -lt 6) { throw "Pinned WPC audit resolved an incomplete wheel set." }
+  foreach ($wheel in $wheels) { Expand-Wheel -Wheel $wheel.FullName -Destination $target }
 
   $metadata = Get-ChildItem $target -Directory -Filter "*.dist-info" |
     Sort-Object Name |
     ForEach-Object {
       $metadataFile = Join-Path $_.FullName "METADATA"
-      $name = ""
-      $version = ""
+      $name = ""; $version = ""
       if (Test-Path $metadataFile) {
         foreach ($line in (Get-Content $metadataFile)) {
           if (-not $name -and $line -match '^Name:\s*(.+)$') { $name = $Matches[1].Trim() }
@@ -78,75 +91,62 @@ try {
 
   $wpc = @($metadata | Where-Object { $_.name -eq 'yt-dlp-getpot-wpc' })
   $nodriver = @($metadata | Where-Object { $_.name -eq 'nodriver' })
-  if ($wpc.Count -ne 1 -or $wpc[0].version -ne $wpcVersion) {
-    throw "Resolved WPC version does not match the pinned audit version $wpcVersion."
-  }
-  if ($nodriver.Count -ne 1 -or $nodriver[0].version -ne $nodriverVersion) {
-    throw "Resolved nodriver version does not match the pinned audit version $nodriverVersion."
-  }
+  if ($wpc.Count -ne 1 -or $wpc[0].version -ne $wpcVersion) { throw "Resolved WPC version is not $wpcVersion." }
+  if ($nodriver.Count -ne 1 -or $nodriver[0].version -ne $nodriverVersion) { throw "Resolved nodriver version is not $nodriverVersion." }
 
-  $topLevel = Get-ChildItem $target -Force |
-    Where-Object { $_.Name -notmatch '\.(dist-info|pth)$' -and $_.Name -ne '__pycache__' }
+  $topLevel = Get-ChildItem $target -Force | Where-Object { $_.Name -notmatch '\.(dist-info|data|pth)$' -and $_.Name -ne '__pycache__' }
   foreach ($required in $expectedTopLevelPackages) {
     if (-not ($topLevel.Name -contains $required -or $topLevel.Name -contains "$required.py")) {
-      throw "Resolved WPC audit target is missing expected runtime package: $required"
+      throw "Resolved CPython 3.10 WPC target is missing: $required"
     }
   }
 
   $upstreamPlugin = Join-Path $target "yt_dlp_plugins"
-  if (-not (Test-Path $upstreamPlugin)) {
-    throw "WPC wheel did not expose yt_dlp_plugins."
-  }
   Copy-Item (Join-Path $upstreamPlugin "*") $auditPluginPackage -Recurse -Force
 
-  # yt-dlp's portable plugin loader adds each yt_dlp_plugins directory to its plugin
-  # search path. Put the pure-Python dependency modules beside the extractor package
-  # in that same directory for this audit, then verify imports using the actual
-  # standalone yt-dlp.exe that Subutai packages.
+  # yt-dlp adds each external yt_dlp_plugins directory to plugin import search. Place
+  # the WPC runtime dependencies in that same import root for this throw-away audit.
   foreach ($dependency in @('nodriver','websockets','mss','deprecated','wrapt')) {
     $sourceDir = Join-Path $target $dependency
     $sourceFile = Join-Path $target "$dependency.py"
-    if (Test-Path $sourceDir) {
-      Copy-Item $sourceDir $auditPluginPackage -Recurse -Force
-    } elseif (Test-Path $sourceFile) {
-      Copy-Item $sourceFile $auditPluginPackage -Force
-    } else {
-      throw "WPC audit dependency payload is missing: $dependency"
-    }
+    if (Test-Path $sourceDir) { Copy-Item $sourceDir $auditPluginPackage -Recurse -Force }
+    elseif (Test-Path $sourceFile) { Copy-Item $sourceFile $auditPluginPackage -Force }
+    else { throw "WPC audit dependency payload is missing: $dependency" }
   }
 
   $stdout = Join-Path $tempRoot "yt-dlp.stdout.log"
   $stderr = Join-Path $tempRoot "yt-dlp.stderr.log"
-  $previousErrorAction = $ErrorActionPreference
+  $previous = $ErrorActionPreference
   try {
     $ErrorActionPreference = "Continue"
-    & $ytDlp --verbose --simulate --skip-download --no-playlist --extractor-args "youtube:player_client=mweb" $Url 1> $stdout 2> $stderr
+    & $ytDlp --verbose --simulate --skip-download --no-playlist --socket-timeout 15 --extractor-args "youtube:player_client=mweb" $Url 1> $stdout 2> $stderr
     $probeExitCode = $LASTEXITCODE
-  } finally {
-    $ErrorActionPreference = $previousErrorAction
-  }
+  } finally { $ErrorActionPreference = $previous }
 
-  $combined = ((Get-Content $stdout -Raw -ErrorAction SilentlyContinue) + "`n" + (Get-Content $stderr -Raw -ErrorAction SilentlyContinue))
+  $stdoutText = [string](Get-Content $stdout -Raw -ErrorAction SilentlyContinue)
+  $stderrText = [string](Get-Content $stderr -Raw -ErrorAction SilentlyContinue)
+  $combined = $stdoutText + "`n" + $stderrText
   $providerLoaded = $combined -match '(?im)PO Token Providers:.*\bwpc-1\.1\.2\b' -or $combined -match '(?im)\bwpc-1\.1\.2\s*\(external\)'
-  $importFailure = $combined -match '(?im)(ModuleNotFoundError|ImportError).*?(nodriver|websockets|mss|deprecated|wrapt)'
+  $importFailure = $combined -match '(?im)(ModuleNotFoundError|ImportError|DLL load failed).*?(nodriver|websockets|mss|deprecated|wrapt)'
+  $diagnostics = @($combined -split "`r?`n" | Where-Object { $_ -match '(?i)(Python |Plugin|PO Token|ImportError|ModuleNotFoundError|DLL load|wpc|nodriver)' } | Select-Object -Last 30)
 
   $evidence = [pscustomobject]@{
     wpcVersion = $wpcVersion
     nodriverVersion = $nodriverVersion
+    targetPythonAbi = "cp310-win_amd64"
+    wheels = @($wheels | ForEach-Object { [pscustomobject]@{ name = $_.Name; sha256 = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() } })
     resolvedDistributions = $metadata
     probeExitCode = $probeExitCode
     providerLoaded = $providerLoaded
     dependencyImportFailure = $importFailure
-    note = "Probe exit may be nonzero on hosted/datacenter networks; this audit passes only on portable provider discovery/import, not on YouTube owner acceptance."
+    diagnostics = $diagnostics
+    note = "Probe exit may be nonzero on hosted/datacenter networks; pass means portable provider discovery/import only, never owner YouTube acceptance."
   }
-  $evidence | ConvertTo-Json -Depth 6 | Set-Content -Path $evidencePath -Encoding UTF8
+  $evidence | ConvertTo-Json -Depth 7 | Set-Content -Path $evidencePath -Encoding UTF8
 
-  if ($importFailure) {
-    throw "Standalone yt-dlp discovered the audit path but failed importing a WPC dependency. Evidence: $evidencePath"
-  }
-  if (-not $providerLoaded) {
-    throw "Standalone yt-dlp did not report WPC 1.1.2 as an external PO-token provider. Evidence: $evidencePath"
-  }
+  if ($diagnostics.Count -gt 0) { $diagnostics | ForEach-Object { Write-Host $_ } }
+  if ($importFailure) { throw "Standalone yt-dlp failed importing a CPython 3.10 WPC dependency. Evidence: $evidencePath" }
+  if (-not $providerLoaded) { throw "Standalone yt-dlp did not report WPC 1.1.2 as an external PO-token provider. Evidence: $evidencePath" }
 
   Write-Host "WPC portable dependency audit passed: standalone yt-dlp loaded wpc-$wpcVersion with nodriver-$nodriverVersion."
   Write-Host "This proves packaging feasibility only; it does not satisfy SUBUTAI_YOUTUBE_OWNER_ACCEPTANCE=PASS."
