@@ -110,15 +110,18 @@ New-Item -ItemType Directory -Force -Path $OutputRoot | Out-Null
 # client's media URL, producing an otherwise misleading HTTP 403. web_embedded and
 # tv_embedded therefore remain isolated. Current 2026 yt-dlp guidance also identifies
 # web_creator as a cookie-backed PO-token-provider route and web_safari as a cookie-capable
-# route, so exercise each in isolation before the mixed default/web_embedded fallback.
+# route. web_safari currently exposes HLS formats whose GoogleVideo requests do not require
+# a GVS PO token, so try an HLS-only route before its generic HTTPS/DASH-capable route.
 $routes = @(
   @{ Name = 'default'; Client = ''; NeedsCookies = $false },
   @{ Name = 'mweb-pot'; Client = 'mweb'; NeedsCookies = $false },
   @{ Name = 'cookie-web-embedded'; Client = 'web_embedded'; NeedsCookies = $true },
   @{ Name = 'cookie-tv-embedded'; Client = 'tv_embedded'; NeedsCookies = $true },
   @{ Name = 'cookie-web-creator'; Client = 'web_creator'; NeedsCookies = $true },
+  @{ Name = 'cookie-web-safari-hls'; Client = 'web_safari'; NeedsCookies = $true; Format = 'best[protocol^=m3u8]' },
   @{ Name = 'cookie-web-safari'; Client = 'web_safari'; NeedsCookies = $true },
   @{ Name = 'cookie-default-web-embedded'; Client = 'default,web_embedded'; NeedsCookies = $true },
+  @{ Name = 'web-safari-hls'; Client = 'web_safari'; NeedsCookies = $false; Format = 'best[protocol^=m3u8]' },
   @{ Name = 'web-safari'; Client = 'web_safari'; NeedsCookies = $false },
   @{ Name = 'android-vr'; Client = 'android_vr'; NeedsCookies = $false }
 )
@@ -133,6 +136,7 @@ foreach ($browser in (Get-BrowserCandidates -Requested $Browser)) {
     $routeDir = Join-Path $OutputRoot (("{0:D2}-{1}-{2}" -f $routeNumber, $browser, $route.Name) -replace '[^A-Za-z0-9._-]', '_')
     New-Item -ItemType Directory -Force -Path $routeDir | Out-Null
     $template = Join-Path $routeDir 'subutai-owner-youtube.%(ext)s'
+    $selectedFormat = if ($route.ContainsKey('Format') -and $route.Format) { [string]$route.Format } else { 'worstvideo*+worstaudio/worst' }
 
     for ($attempt = 1; $attempt -le $AttemptsPerRoute; $attempt++) {
       $stdout = Join-Path $routeDir ("attempt-{0:D2}.stdout.log" -f $attempt)
@@ -149,7 +153,7 @@ foreach ($browser in (Get-BrowserCandidates -Requested $Browser)) {
         '--retry-sleep', 'fragment:linear=1:5:1',
         '--js-runtimes', "node:$node",
         '--ffmpeg-location', $engineDir,
-        '--format', 'worstvideo*+worstaudio/worst',
+        '--format', $selectedFormat,
         '--merge-output-format', 'mp4',
         '--output', $template
       )
@@ -157,7 +161,7 @@ foreach ($browser in (Get-BrowserCandidates -Requested $Browser)) {
       if ($browser -ne 'none') { $args += @('--cookies-from-browser', $browser) }
       $args += $Url
 
-      Write-Host "Trying fresh-URL owner acceptance; route=$($route.Name) browser=$browser attempt=$attempt/$AttemptsPerRoute"
+      Write-Host "Trying fresh-URL owner acceptance; route=$($route.Name) browser=$browser attempt=$attempt/$AttemptsPerRoute format=$selectedFormat"
       $exitCode = Invoke-YtDlp -Executable $ytDlp -Arguments $args -StdoutPath $stdout -StderrPath $stderr
       $diagnostic = Read-Diagnostic -Path $stderr
       $media = Get-ChildItem $routeDir -File -ErrorAction SilentlyContinue |
@@ -171,6 +175,7 @@ foreach ($browser in (Get-BrowserCandidates -Requested $Browser)) {
         route = $route.Name
         browser = $browser
         attempt = $attempt
+        format = $selectedFormat
         exitCode = $exitCode
         playableMedia = $playable
         stderr = $stderr
