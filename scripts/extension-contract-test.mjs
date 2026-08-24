@@ -46,7 +46,6 @@ for (const requiredFragment of [
   'api.cookies.getAll',
   'api.webRequest.onBeforeSendHeaders.addListener',
   'YOUTUBE_CONTEXT_HEADERS',
-  "'authorization'",
   "'x-goog-visitor-id'",
   "'x-youtube-client-version'",
   'mergeYouTubeContextHeaders(headers, target, tabId)',
