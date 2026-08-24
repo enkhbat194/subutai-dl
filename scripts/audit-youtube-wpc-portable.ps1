@@ -10,7 +10,7 @@ $wpcVersion = "1.1.2"
 $nodriverVersion = "0.50.3"
 $runtimeVersions = [ordered]@{
   "mss" = "10.2.0"
-  "websockets" = "17.0.1"
+  "websockets" = "16.1.1"
   "deprecated" = "1.3.1"
   "wrapt" = "2.3.0"
 }
@@ -48,7 +48,9 @@ try {
   # The official Windows yt-dlp standalone executable currently embeds CPython 3.10.
   # Resolve wheels for that ABI instead of the build runner's Python. The first audit
   # proved that resolving against runner Python 3.12 selects cp312 native wheels and
-  # therefore cannot be imported by the packaged executable.
+  # therefore cannot be imported by the packaged executable. websockets 17 requires
+  # Python 3.11+, so 16.1.1 is the newest compatible branch and also matches the
+  # websockets generation already shipped by current yt-dlp Windows builds.
   $requirements = @(
     "yt-dlp-getpot-wpc==$wpcVersion",
     "nodriver==$nodriverVersion",
@@ -104,8 +106,6 @@ try {
   $upstreamPlugin = Join-Path $target "yt_dlp_plugins"
   Copy-Item (Join-Path $upstreamPlugin "*") $auditPluginPackage -Recurse -Force
 
-  # yt-dlp adds each external yt_dlp_plugins directory to plugin import search. Place
-  # the WPC runtime dependencies in that same import root for this throw-away audit.
   foreach ($dependency in @('nodriver','websockets','mss','deprecated','wrapt')) {
     $sourceDir = Join-Path $target $dependency
     $sourceFile = Join-Path $target "$dependency.py"
