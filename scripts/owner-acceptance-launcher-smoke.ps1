@@ -33,10 +33,11 @@ using System;
 using System.IO;
 public static class Program {
   public static int Main(string[] args) {
-    var marker = Environment.GetEnvironmentVariable("SUBUTAI_PACKAGED_MARKER");
+    string marker = Environment.GetEnvironmentVariable("SUBUTAI_PACKAGED_MARKER");
     if (!string.IsNullOrWhiteSpace(marker)) File.AppendAllText(marker, "packaged" + Environment.NewLine);
-    var raw = Environment.GetEnvironmentVariable("SUBUTAI_FAKE_PACKAGED_EXIT");
-    return int.TryParse(raw, out var code) ? code : 0;
+    string raw = Environment.GetEnvironmentVariable("SUBUTAI_FAKE_PACKAGED_EXIT");
+    int code;
+    return int.TryParse(raw, out code) ? code : 0;
   }
 }
 '@
