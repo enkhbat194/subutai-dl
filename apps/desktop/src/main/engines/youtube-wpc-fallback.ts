@@ -53,6 +53,9 @@ export function resolveYouTubeWpcBrowserPath(): string | null {
     addCandidate(candidates, join(root, 'Chromium', 'Application', 'chrome.exe'));
     addCandidate(candidates, join(root, 'Microsoft', 'Edge', 'Application', 'msedge.exe'));
     addCandidate(candidates, join(root, 'BraveSoftware', 'Brave-Browser', 'Application', 'brave.exe'));
+    addCandidate(candidates, join(root, 'Vivaldi', 'Application', 'vivaldi.exe'));
+    addCandidate(candidates, join(root, 'Programs', 'Opera', 'opera.exe'));
+    addCandidate(candidates, join(root, 'Programs', 'Opera GX', 'opera.exe'));
   }
 
   const pathEntries = (process.env.PATH ?? '').split(delimiter).map((entry) => entry.trim()).filter(Boolean);
@@ -61,6 +64,8 @@ export function resolveYouTubeWpcBrowserPath(): string | null {
     addCandidate(candidates, join(entry, 'chromium.exe'));
     addCandidate(candidates, join(entry, 'msedge.exe'));
     addCandidate(candidates, join(entry, 'brave.exe'));
+    addCandidate(candidates, join(entry, 'vivaldi.exe'));
+    addCandidate(candidates, join(entry, 'opera.exe'));
   }
 
   for (const candidate of candidates) {
