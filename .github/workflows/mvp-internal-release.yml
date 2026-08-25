@@ -15,6 +15,7 @@ on:
       - "scripts/owner-youtube-acceptance.ps1"
       - "scripts/owner-youtube-fresh-url-retry.ps1"
       - "scripts/owner-youtube-browser-ua-retry.ps1"
+      - "scripts/owner-youtube-impersonation-retry.ps1"
       - "scripts/owner-youtube-wpc-retry.ps1"
       - "scripts/owner-critical-packaged-acceptance.mjs"
       - "scripts/owner-acceptance-launcher-smoke.ps1"
@@ -41,6 +42,7 @@ on:
       - "scripts/owner-youtube-acceptance.ps1"
       - "scripts/owner-youtube-fresh-url-retry.ps1"
       - "scripts/owner-youtube-browser-ua-retry.ps1"
+      - "scripts/owner-youtube-impersonation-retry.ps1"
       - "scripts/owner-youtube-wpc-retry.ps1"
       - "scripts/owner-critical-packaged-acceptance.mjs"
       - "scripts/owner-acceptance-launcher-smoke.ps1"
@@ -120,6 +122,7 @@ jobs:
             "./scripts/owner-youtube-acceptance.ps1",
             "./scripts/owner-youtube-fresh-url-retry.ps1",
             "./scripts/owner-youtube-browser-ua-retry.ps1",
+            "./scripts/owner-youtube-impersonation-retry.ps1",
             "./scripts/owner-youtube-wpc-retry.ps1",
             "./scripts/owner-acceptance-launcher-smoke.ps1",
             "./scripts/stage-youtube-pot-provider.ps1",
@@ -263,5 +266,6 @@ jobs:
             scripts/owner-youtube-acceptance.ps1
             scripts/owner-youtube-fresh-url-retry.ps1
             scripts/owner-youtube-browser-ua-retry.ps1
+            scripts/owner-youtube-impersonation-retry.ps1
             scripts/owner-youtube-wpc-retry.ps1
             scripts/Run-Subutai-Owner-Acceptance.cmd
