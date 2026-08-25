@@ -165,7 +165,7 @@ foreach ($attempt in $attempts) {
     Select-Object -First 1
   if ($exitCode -eq 0 -and $media -and (Test-PlayableMedia -Path $media.FullName -Ffprobe $ffprobe)) {
     Write-Host "SUBUTAI_YOUTUBE_OWNER_ACCEPTANCE=PASS"
-    Write-Host "SUBUTAI_YOUTUBE_OWNER_ROUTE=impersonation:$impersonateTarget:$($attempt.Name)"
+    Write-Host "SUBUTAI_YOUTUBE_OWNER_ROUTE=impersonation:${impersonateTarget}:$($attempt.Name)"
     Write-Host "Playable media: $($media.Name), $($media.Length) bytes"
     exit 0
   }
