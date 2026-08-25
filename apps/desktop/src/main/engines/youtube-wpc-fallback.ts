@@ -35,11 +35,11 @@ export function hasPackagedWpcProvider(ytDlpPath: string): boolean {
 
 function addCandidate(target: string[], value: string | undefined): void {
   const candidate = value?.trim().replace(/^"|"$/g, '');
-  if (!candidate || target.includes(candidate)) return;
+  if (!candidate || target.some((current) => current.toLowerCase() === candidate.toLowerCase())) return;
   target.push(candidate);
 }
 
-export function resolveYouTubeWpcBrowserPath(): string | null {
+export function resolveYouTubeWpcBrowserPaths(): readonly string[] {
   const candidates: string[] = [];
   addCandidate(candidates, process.env.SUBUTAI_WPC_BROWSER_PATH);
 
@@ -68,18 +68,22 @@ export function resolveYouTubeWpcBrowserPath(): string | null {
     addCandidate(candidates, join(entry, 'opera.exe'));
   }
 
-  for (const candidate of candidates) {
-    if (existsSync(candidate)) return candidate;
-  }
-  return null;
+  return candidates.filter((candidate) => existsSync(candidate));
 }
 
-export function appendYouTubeWpcRoute(args: string[], url: string): void {
+export function resolveYouTubeWpcBrowserPath(): string | null {
+  return resolveYouTubeWpcBrowserPaths()[0] ?? null;
+}
+
+export function appendYouTubeWpcRoute(args: string[], url: string, browserPath?: string | null): void {
   if (!isYouTubeUrl(url)) return;
-  args.push('--extractor-args', 'youtube:player_client=mweb');
-  const browserPath = resolveYouTubeWpcBrowserPath();
-  if (browserPath) {
-    args.push('--extractor-args', `youtubepot-wpc:browser_path=${browserPath}`);
+  // mweb remains yt-dlp's recommended PO-token client. web_safari is included as a
+  // bounded secondary web client because its HLS route can remain playable when GVS
+  // enforcement differs, while the packaged WPC provider supports both client families.
+  args.push('--extractor-args', 'youtube:player_client=mweb,web_safari');
+  const selectedBrowserPath = browserPath === undefined ? resolveYouTubeWpcBrowserPath() : browserPath;
+  if (selectedBrowserPath) {
+    args.push('--extractor-args', `youtubepot-wpc:browser_path=${selectedBrowserPath}`);
   }
 }
 
