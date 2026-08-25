@@ -50,9 +50,17 @@ export function resolveYouTubeWpcBrowserPaths(): readonly string[] {
   for (const root of [programFiles, programFilesX86, localAppData]) {
     if (!root) continue;
     addCandidate(candidates, join(root, 'Google', 'Chrome', 'Application', 'chrome.exe'));
+    addCandidate(candidates, join(root, 'Google', 'Chrome Beta', 'Application', 'chrome.exe'));
+    addCandidate(candidates, join(root, 'Google', 'Chrome Dev', 'Application', 'chrome.exe'));
+    addCandidate(candidates, join(root, 'Google', 'Chrome SxS', 'Application', 'chrome.exe'));
     addCandidate(candidates, join(root, 'Chromium', 'Application', 'chrome.exe'));
     addCandidate(candidates, join(root, 'Microsoft', 'Edge', 'Application', 'msedge.exe'));
+    addCandidate(candidates, join(root, 'Microsoft', 'Edge Beta', 'Application', 'msedge.exe'));
+    addCandidate(candidates, join(root, 'Microsoft', 'Edge Dev', 'Application', 'msedge.exe'));
+    addCandidate(candidates, join(root, 'Microsoft', 'Edge SxS', 'Application', 'msedge.exe'));
     addCandidate(candidates, join(root, 'BraveSoftware', 'Brave-Browser', 'Application', 'brave.exe'));
+    addCandidate(candidates, join(root, 'BraveSoftware', 'Brave-Browser-Beta', 'Application', 'brave.exe'));
+    addCandidate(candidates, join(root, 'BraveSoftware', 'Brave-Browser-Nightly', 'Application', 'brave.exe'));
     addCandidate(candidates, join(root, 'Vivaldi', 'Application', 'vivaldi.exe'));
     addCandidate(candidates, join(root, 'Programs', 'Opera', 'opera.exe'));
     addCandidate(candidates, join(root, 'Programs', 'Opera GX', 'opera.exe'));
