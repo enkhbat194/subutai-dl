@@ -29,7 +29,13 @@ function Resolve-ChromiumBrowserPath {
   foreach ($registryPath in @(
     "HKCU:\Software\Microsoft\Windows\CurrentVersion\App Paths\chrome.exe",
     "HKLM:\Software\Microsoft\Windows\CurrentVersion\App Paths\chrome.exe",
-    "HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\App Paths\chrome.exe"
+    "HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\App Paths\chrome.exe",
+    "HKCU:\Software\Microsoft\Windows\CurrentVersion\App Paths\msedge.exe",
+    "HKLM:\Software\Microsoft\Windows\CurrentVersion\App Paths\msedge.exe",
+    "HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\App Paths\msedge.exe",
+    "HKCU:\Software\Microsoft\Windows\CurrentVersion\App Paths\brave.exe",
+    "HKLM:\Software\Microsoft\Windows\CurrentVersion\App Paths\brave.exe",
+    "HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\App Paths\brave.exe"
   )) {
     try {
       $value = (Get-ItemProperty -Path $registryPath -ErrorAction Stop).'(default)'
@@ -42,14 +48,20 @@ function Resolve-ChromiumBrowserPath {
   if ($env:PROGRAMFILES) {
     $candidates.Add((Join-Path $env:PROGRAMFILES "Google\Chrome\Application\chrome.exe"))
     $candidates.Add((Join-Path $env:PROGRAMFILES "Chromium\Application\chrome.exe"))
+    $candidates.Add((Join-Path $env:PROGRAMFILES "Microsoft\Edge\Application\msedge.exe"))
+    $candidates.Add((Join-Path $env:PROGRAMFILES "BraveSoftware\Brave-Browser\Application\brave.exe"))
   }
   if (${env:PROGRAMFILES(X86)}) {
     $candidates.Add((Join-Path ${env:PROGRAMFILES(X86)} "Google\Chrome\Application\chrome.exe"))
     $candidates.Add((Join-Path ${env:PROGRAMFILES(X86)} "Chromium\Application\chrome.exe"))
+    $candidates.Add((Join-Path ${env:PROGRAMFILES(X86)} "Microsoft\Edge\Application\msedge.exe"))
+    $candidates.Add((Join-Path ${env:PROGRAMFILES(X86)} "BraveSoftware\Brave-Browser\Application\brave.exe"))
   }
   if ($env:LOCALAPPDATA) {
     $candidates.Add((Join-Path $env:LOCALAPPDATA "Google\Chrome\Application\chrome.exe"))
     $candidates.Add((Join-Path $env:LOCALAPPDATA "Chromium\Application\chrome.exe"))
+    $candidates.Add((Join-Path $env:LOCALAPPDATA "Microsoft\Edge\Application\msedge.exe"))
+    $candidates.Add((Join-Path $env:LOCALAPPDATA "BraveSoftware\Brave-Browser\Application\brave.exe"))
   }
 
   foreach ($candidate in $candidates) {
@@ -60,8 +72,9 @@ function Resolve-ChromiumBrowserPath {
     }
   }
 
-  $command = Get-Command chrome.exe -ErrorAction SilentlyContinue | Select-Object -First 1
-  if ($command) {
+  foreach ($commandName in @("chrome.exe", "chromium.exe", "msedge.exe", "brave.exe")) {
+    $command = Get-Command $commandName -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $command) { continue }
     if ($command.Source -and (Test-Path $command.Source -PathType Leaf)) { return $command.Source }
     if ($command.Path -and (Test-Path $command.Path -PathType Leaf)) { return $command.Path }
   }
@@ -109,9 +122,9 @@ if (Test-Path (Join-Path $providerHome "build\generate_once.js")) { $env:SUBUTAI
 
 $browserPath = Resolve-ChromiumBrowserPath
 if ($browserPath) {
-  Write-Host "Using Chromium browser for WPC token minting: $browserPath"
+  Write-Host "Using Chromium-family browser for WPC token minting: $browserPath"
 } else {
-  Write-Warning "Chrome/Chromium was not resolved explicitly. WPC will use its own browser discovery. Set SUBUTAI_WPC_BROWSER_PATH to override."
+  Write-Warning "Chrome/Chromium/Edge/Brave was not resolved explicitly. WPC will use its own browser discovery. Set SUBUTAI_WPC_BROWSER_PATH to override."
 }
 
 if (-not $OutputRoot) { $OutputRoot = Join-Path ([System.IO.Path]::GetTempPath()) "SubutaiOwnerYouTubeWpcRetry" }

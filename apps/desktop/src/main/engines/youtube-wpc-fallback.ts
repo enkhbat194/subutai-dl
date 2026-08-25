@@ -51,12 +51,16 @@ export function resolveYouTubeWpcBrowserPath(): string | null {
     if (!root) continue;
     addCandidate(candidates, join(root, 'Google', 'Chrome', 'Application', 'chrome.exe'));
     addCandidate(candidates, join(root, 'Chromium', 'Application', 'chrome.exe'));
+    addCandidate(candidates, join(root, 'Microsoft', 'Edge', 'Application', 'msedge.exe'));
+    addCandidate(candidates, join(root, 'BraveSoftware', 'Brave-Browser', 'Application', 'brave.exe'));
   }
 
   const pathEntries = (process.env.PATH ?? '').split(delimiter).map((entry) => entry.trim()).filter(Boolean);
   for (const entry of pathEntries) {
     addCandidate(candidates, join(entry, 'chrome.exe'));
     addCandidate(candidates, join(entry, 'chromium.exe'));
+    addCandidate(candidates, join(entry, 'msedge.exe'));
+    addCandidate(candidates, join(entry, 'brave.exe'));
   }
 
   for (const candidate of candidates) {
