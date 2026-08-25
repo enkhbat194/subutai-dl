@@ -1,0 +1,66 @@
+name: Subutai Owner YouTube Impersonation Fallback
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "scripts/owner-youtube-impersonation-retry.ps1"
+      - "scripts/Run-Subutai-Owner-Acceptance.cmd"
+      - "apps/desktop/package.json"
+      - ".github/workflows/owner-youtube-impersonation-fallback.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-owner-impersonation-fallback:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Parse packaged impersonation owner retry
+        shell: powershell
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path ./scripts/owner-youtube-impersonation-retry.ps1),
+            [ref]$tokens,
+            [ref]$errors
+          ) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Error $_.Message }
+            throw "owner-youtube-impersonation-retry.ps1 contains PowerShell parse errors."
+          }
+
+      - name: Prove launcher chains impersonation after UA and before WPC
+        shell: powershell
+        run: |
+          $launcher = Get-Content ./scripts/Run-Subutai-Owner-Acceptance.cmd -Raw
+          $ua = $launcher.IndexOf(':try_ua_retry')
+          $impersonation = $launcher.IndexOf(':try_impersonation_retry')
+          $wpc = $launcher.IndexOf(':try_wpc_retry')
+          if ($ua -lt 0 -or $impersonation -lt 0 -or $wpc -lt 0) {
+            throw "Owner launcher is missing a required fallback stage."
+          }
+          if (-not ($ua -lt $impersonation -and $impersonation -lt $wpc)) {
+            throw "Owner impersonation fallback is not ordered between UA and WPC routes."
+          }
+          if ($launcher -notmatch 'owner-youtube-impersonation-retry\.ps1') {
+            throw "Owner launcher does not invoke the impersonation retry script."
+          }
+
+      - name: Prove desktop package includes impersonation fallback
+        shell: powershell
+        run: |
+          $package = Get-Content ./apps/desktop/package.json -Raw | ConvertFrom-Json
+          $ownerResource = @($package.build.extraResources | Where-Object { $_.to -eq 'owner-acceptance' })
+          if ($ownerResource.Count -ne 1) { throw "Owner acceptance extraResource is missing or ambiguous." }
+          if (@($ownerResource[0].filter) -notcontains 'owner-youtube-impersonation-retry.ps1') {
+            throw "Impersonation fallback is not included in the Windows package."
+          }
