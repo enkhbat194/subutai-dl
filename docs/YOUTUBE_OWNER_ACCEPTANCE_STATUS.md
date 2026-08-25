@@ -1,10 +1,10 @@
 # Subutai YouTube owner acceptance status
 
-Last audited: 2026-08-25 after PR #120 (`d03a2eba4c506334392a77ed7091dc1a678bdb8e`).
+Last audited: 2026-08-25 after PR #124 (`442ee1211c011dbcd27f54dc69c9253a054abac3`).
 
 ## Readiness boundary
 
-Subutai is **not yet owner-ready**. The only remaining owner-use release blocker is a real YouTube media download through the packaged Windows media stack on a non-datacenter owner network. Neutral media, metadata-only probes, hosted CI success, or code completion do not satisfy this gate.
+Subutai is **not yet owner-ready**. The only remaining owner-use release blocker is a real YouTube media download through the packaged Windows media stack on a non-datacenter owner network. Neutral media, metadata-only probes, hosted CI success, provider capability audits, or code completion do not satisfy this gate.
 
 Required terminal evidence remains:
 
@@ -16,7 +16,7 @@ from the packaged `resources\owner-acceptance\Run-Subutai-Owner-Acceptance.cmd` 
 
 ## Critical paths already proved
 
-The current `0.2.0-rc.2` owner-test package has real Setup and Portable executables. Internal Windows MVP run #108 on PR #120 head `88f03e02b7f52afa44a4e18321deffbc35b4191b` passed the full hosted owner-test path and republished the prerelease assets against that exact head:
+The current `0.2.0-rc.2` owner-test package has real Setup and Portable executables. The run-#108-class Internal Windows MVP acceptance path has proved the following and these gates must remain green while YouTube compatibility work continues:
 
 - owner-acceptance launcher syntax/control-flow validation;
 - packaged yt-dlp/FFmpeg/ffprobe/Node staging;
@@ -32,9 +32,9 @@ The current `0.2.0-rc.2` owner-test package has real Setup and Portable executab
 - packaged Electron launch smoke;
 - internal prerelease publication.
 
-These gates must remain green while YouTube compatibility work continues.
+The direct-download engine, large-file pause/resume, restart recovery, browser interception contracts, Setup/Portable packaging, launch smoke, updater gates and packaged media tools are therefore not the current release blocker.
 
-## YouTube hardening through PR #120
+## YouTube hardening through PR #124
 
 The packaged YouTube path has been hardened without weakening the real-owner PASS boundary:
 
@@ -51,15 +51,13 @@ The packaged YouTube path has been hardened without weakening the real-owner PAS
 - PR #101 adds an isolated browser-profile + browser-matched User-Agent `mweb` route that uses the packaged PO-token provider;
 - PR #103 adds live browser YouTube PO-context capture and isolated reuse of transient `poToken` / `visitorData` context;
 - PR #105 proved that the browser-minted `yt-dlp-getpot-wpc` provider can be loaded inside the standalone packaged yt-dlp runtime with a pinned Windows dependency set;
-- PR #106 packages that WPC path for owner use: `yt-dlp-getpot-wpc` 1.1.2, `nodriver` 0.50.3 and its pinned runtime dependencies are staged into the Windows package, validated in CI, and invoked as the final isolated owner retry after packaged-app, primary, fresh-media-URL and browser-cookie/matched-UA routes;
+- PR #106 packages that WPC path for owner use and invokes it as the final isolated owner retry after packaged-app, primary, fresh-media-URL and browser-cookie/matched-UA routes;
 - PR #110 promotes the bounded WPC retry into the ordinary packaged `MediaService` only after YouTube authentication/challenge failures and after browser-cookie sources are exhausted;
-- PR #111 resolves Chrome/Chromium explicitly for the strict owner WPC acceptance route while retaining provider self-discovery as fallback;
-- PR #112 applies the same browser-path hardening to the ordinary interactive `MediaService` WPC route, checking an explicit `SUBUTAI_WPC_BROWSER_PATH`, standard Windows Chrome/Chromium install roots and PATH before falling back to provider auto-discovery;
-- PR #114 broadens both ordinary WPC browser discovery and strict owner WPC discovery to Microsoft Edge and Brave in addition to Chrome/Chromium;
-- PR #115 makes the strict owner acceptance route try every resolved installed Chrome/Chromium/Edge/Brave executable across the bounded WPC routes, then makes one final provider auto-discovery attempt instead of stopping after the first resolved browser;
-- PR #117 extends ordinary and strict owner WPC discovery to Vivaldi, Opera and Opera GX while preserving explicit override precedence;
-- PR #118 broadens the WPC client retry to `mweb` plus `web_safari`, including bounded HLS variants in strict owner acceptance; this keeps recommended `mweb` first while adding a secondary WebPO client whose enforcement can differ;
-- PR #120 rebases browser-channel discovery on current main and extends explicit WPC browser resolution to Chrome Beta/Dev/Canary, Edge Beta/Dev/Canary and Brave Beta/Nightly while preserving the merged `mweb` / `web_safari` routing.
+- PRs #111-#120 broaden explicit WPC browser discovery from Chrome/Chromium to Edge, Brave, Vivaldi, Opera/Opera GX and stable/alternate Chromium-family release channels, while keeping `mweb` first and adding bounded `web_safari` routes;
+- PR #123 adds an isolated packaged yt-dlp request-impersonation capability audit and proves that the staged standalone runtime exposes usable browser impersonation targets without changing normal media behavior;
+- PR #124 packages a bounded Chrome request-impersonation owner retry, combines it with installed Chromium-family browser sessions, validates only playable media with packaged ffprobe, and chains it after the browser-UA retry and before WPC. The fallback is part of Setup/Portable owner-acceptance resources and cannot turn metadata-only output into PASS.
+
+The current official yt-dlp PO-token guidance still recommends a PO-token provider for the `mweb` client. Manual PO-token extraction is not a durable production solution because tokens may be video-bound and need automatic generation. Subutai therefore keeps both featured provider classes available: BgUtils-backed generation and browser-minted WPC, with browser/session context and request impersonation as bounded compatibility fallbacks.
 
 Hosted CI can still be challenged by YouTube datacenter-IP controls and may emit:
 
@@ -71,18 +69,25 @@ That is not owner-ready evidence.
 
 ## Current engineering interpretation
 
-The direct-download engine, large-file pause/resume, restart recovery, browser interception contracts, Setup/Portable packaging, launch smoke, updater gates, packaged yt-dlp/FFmpeg/Node stack, local PO-token provider, browser-minted WPC provider, owner acceptance launcher, browser session context forwarding, live PO-context capture, ordinary MediaService WPC retry chain and broad Chromium-family browser-path resolution are not current release blockers.
+The remaining blocker is obtaining one playable real YouTube result through the packaged application or packaged owner-acceptance path on an owner Windows network and recording the strict PASS marker.
 
-The remaining blocker is obtaining one playable real YouTube result through the packaged application or packaged owner-acceptance path on an owner network and recording the strict PASS marker.
+The owner acceptance chain now has independent bounded paths for:
 
-The current upstream `yt-dlp-getpot-wpc` interface exposes a custom `browser_path` option but does not document an existing-user-profile option. Subutai therefore keeps WPC browser-path discovery bounded and does not inject unsupported profile flags into the provider. If the current WPC route still fails on owner Windows, the next alternative engineering path is an isolated feasibility audit of a second current PO-token implementation (for example a RustyPipe/BotGuard-based provider) before any production integration. That alternative must prove standalone Windows packaging, licensing, deterministic cleanup, playable-media output and compatibility with yt-dlp's built-in provider framework before it can enter the normal retry chain.
+1. packaged-app execution;
+2. primary yt-dlp/provider execution;
+3. fresh media URL retries;
+4. browser cookies plus browser-matched User-Agent;
+5. packaged Chrome request impersonation, with and without Chromium-family browser sessions;
+6. browser-minted WPC PO-token retries across discovered Chromium-family browsers and supported clients.
 
-Do not regress working direct-download behavior in pursuit of YouTube compatibility. Any further YouTube fallback must stay bounded, isolated, observable in diagnostics and unable to turn metadata-only, DRM-only or neutral-media results into PASS.
+These routes are intentionally isolated and observable. Do not regress working direct-download behavior in pursuit of YouTube compatibility. Any future fallback must remain bounded, must clean up deterministically, and must validate a real playable media file before it can satisfy owner PASS.
+
+The separate Rust BgUtil provider feasibility work in PR #122 showed that a second provider implementation can load and operate, but GitHub-hosted datacenter IPs were still challenged before playable output. PR #123/#124 now provide a lower-risk packaged request-impersonation path on main, so the Rust provider remains research-only unless owner-network evidence shows it solves a failure the merged provider/impersonation/WPC chain cannot.
 
 ## Next action
 
-1. Keep the run-#108-class hosted Windows gates green.
-2. Run the current packaged application on a real owner Windows network, preferably through browser interception first so live session context can be reused.
-3. Run the packaged owner-acceptance launcher; its WPC fallback now cycles stable and alternate release channels across Chrome/Chromium/Edge/Brave/Vivaldi/Opera before provider auto-discovery, with bounded `mweb` and `web_safari` routes.
-4. If either path produces playable media and `SUBUTAI_YOUTUBE_OWNER_ACCEPTANCE=PASS`, re-run the full critical acceptance boundary before declaring Subutai ready.
-5. If it still fails, use emitted route/profile/PO-context/WPC/browser-path diagnostics to choose the next isolated engineering fallback. The preferred next research branch is a packaged RustyPipe/BotGuard feasibility audit, not a relaxation of the PASS boundary.
+1. Keep the run-#108-class hosted Windows gates green on the current main head.
+2. Run the current Setup or Portable package on a real owner Windows network, preferably through browser interception first so live session context can be reused.
+3. Run `resources\owner-acceptance\Run-Subutai-Owner-Acceptance.cmd`; it now includes the packaged request-impersonation route before WPC.
+4. If either path produces playable media and `SUBUTAI_YOUTUBE_OWNER_ACCEPTANCE=PASS`, re-run the complete critical acceptance boundary before declaring Subutai ready.
+5. If the real owner-network path still fails, use emitted route/profile/PO-context/impersonation/WPC diagnostics to choose the next isolated engineering fallback. Do not relax the PASS boundary.
