@@ -22,6 +22,52 @@ function Resolve-AppRoot {
   throw "Subutai app root was not found. Build win-unpacked, install Subutai, or pass -AppRoot."
 }
 
+function Resolve-ChromiumBrowserPath {
+  $candidates = New-Object System.Collections.Generic.List[string]
+  if ($env:SUBUTAI_WPC_BROWSER_PATH) { $candidates.Add($env:SUBUTAI_WPC_BROWSER_PATH) }
+
+  foreach ($registryPath in @(
+    "HKCU:\Software\Microsoft\Windows\CurrentVersion\App Paths\chrome.exe",
+    "HKLM:\Software\Microsoft\Windows\CurrentVersion\App Paths\chrome.exe",
+    "HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\App Paths\chrome.exe"
+  )) {
+    try {
+      $value = (Get-ItemProperty -Path $registryPath -ErrorAction Stop).'(default)'
+      if ($value) { $candidates.Add([string]$value) }
+    } catch {
+      # Registry discovery is best-effort; common filesystem locations are checked below.
+    }
+  }
+
+  if ($env:PROGRAMFILES) {
+    $candidates.Add((Join-Path $env:PROGRAMFILES "Google\Chrome\Application\chrome.exe"))
+    $candidates.Add((Join-Path $env:PROGRAMFILES "Chromium\Application\chrome.exe"))
+  }
+  if (${env:PROGRAMFILES(X86)}) {
+    $candidates.Add((Join-Path ${env:PROGRAMFILES(X86)} "Google\Chrome\Application\chrome.exe"))
+    $candidates.Add((Join-Path ${env:PROGRAMFILES(X86)} "Chromium\Application\chrome.exe"))
+  }
+  if ($env:LOCALAPPDATA) {
+    $candidates.Add((Join-Path $env:LOCALAPPDATA "Google\Chrome\Application\chrome.exe"))
+    $candidates.Add((Join-Path $env:LOCALAPPDATA "Chromium\Application\chrome.exe"))
+  }
+
+  foreach ($candidate in $candidates) {
+    if (-not $candidate) { continue }
+    $trimmed = ([string]$candidate).Trim().Trim('"')
+    if (Test-Path $trimmed -PathType Leaf) {
+      try { return (Resolve-Path $trimmed -ErrorAction Stop).Path } catch { return $trimmed }
+    }
+  }
+
+  $command = Get-Command chrome.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+  if ($command) {
+    if ($command.Source -and (Test-Path $command.Source -PathType Leaf)) { return $command.Source }
+    if ($command.Path -and (Test-Path $command.Path -PathType Leaf)) { return $command.Path }
+  }
+  return $null
+}
+
 function Invoke-YtDlp {
   param([string]$Executable, [string[]]$Arguments, [string]$StdoutPath, [string]$StderrPath)
   Remove-Item $StdoutPath, $StderrPath -Force -ErrorAction SilentlyContinue
@@ -61,6 +107,13 @@ foreach ($required in @($ytDlp, $ffprobe, $node, $providerPath, $manifestPath)) 
 $providerHome = Join-Path $engineDir "pot-provider\server"
 if (Test-Path (Join-Path $providerHome "build\generate_once.js")) { $env:SUBUTAI_POT_SERVER_HOME = $providerHome }
 
+$browserPath = Resolve-ChromiumBrowserPath
+if ($browserPath) {
+  Write-Host "Using Chromium browser for WPC token minting: $browserPath"
+} else {
+  Write-Warning "Chrome/Chromium was not resolved explicitly. WPC will use its own browser discovery. Set SUBUTAI_WPC_BROWSER_PATH to override."
+}
+
 if (-not $OutputRoot) { $OutputRoot = Join-Path ([System.IO.Path]::GetTempPath()) "SubutaiOwnerYouTubeWpcRetry" }
 Remove-Item $OutputRoot -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $OutputRoot | Out-Null
@@ -92,9 +145,12 @@ foreach ($route in $routes) {
     "--extractor-args", "youtube:player_client=$($route.Client)",
     "--format", $route.Format,
     "--merge-output-format", "mp4",
-    "--output", $template,
-    $Url
+    "--output", $template
   )
+  if ($browserPath) {
+    $args += @("--extractor-args", "youtubepot-wpc:browser_path=$browserPath")
+  }
+  $args += $Url
 
   Write-Host "Trying packaged browser-minted WPC owner route: $($route.Name)"
   $exitCode = Invoke-YtDlp -Executable $ytDlp -Arguments $args -StdoutPath $stdout -StderrPath $stderr
@@ -111,6 +167,7 @@ foreach ($route in $routes) {
     exitCode = $exitCode
     providerLoaded = $providerLoaded
     playableMedia = $playable
+    browserPath = $browserPath
     stdout = $stdout
     stderr = $stderr
   })
