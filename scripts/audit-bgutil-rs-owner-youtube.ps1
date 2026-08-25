@@ -163,7 +163,7 @@ try {
     Write-Host "Trying isolated Rust BgUtil YouTube candidate: $testUrl"
     $exitCode = Invoke-YtDlpCaptured -Arguments $arguments -StdoutPath $stdoutPath -StderrPath $stderrPath
     if ($exitCode -ne 0) {
-      $diagnostics.Add("$testUrl => exit $exitCode: $(Read-BoundedText $stderrPath)")
+      $diagnostics.Add("$testUrl => exit ${exitCode}: $(Read-BoundedText $stderrPath)")
       continue
     }
 
