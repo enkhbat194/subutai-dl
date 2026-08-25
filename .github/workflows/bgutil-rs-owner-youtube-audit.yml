@@ -1,0 +1,41 @@
+name: Subutai Rust BgUtil YouTube Audit
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "scripts/audit-bgutil-rs-owner-youtube.ps1"
+      - "scripts/install-temporary-media-tools.ps1"
+      - ".github/workflows/bgutil-rs-owner-youtube-audit.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: subutai-bgutil-rs-youtube-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    runs-on: windows-2025
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Stage packaged Subutai media tools
+        shell: powershell
+        run: ./scripts/install-temporary-media-tools.ps1
+
+      - name: Audit isolated Rust BgUtil provider with real YouTube media
+        shell: powershell
+        run: ./scripts/audit-bgutil-rs-owner-youtube.ps1
