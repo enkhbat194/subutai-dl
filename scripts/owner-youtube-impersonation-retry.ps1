@@ -65,19 +65,49 @@ function Add-ChromiumProfiles {
     Where-Object { $_.Name -eq 'Default' -or $_.Name -match '^Profile [0-9]+$' } |
     Sort-Object LastWriteTime -Descending |
     Select-Object -First 2 |
-    ForEach-Object { Add-UniqueCandidate -List $List -Candidate ("{0}:{1}" -f $BrowserName, $_.Name) }
+    ForEach-Object {
+      # yt-dlp accepts a browser profile name or path. The absolute-path candidate is
+      # important for Beta/Dev/Canary/Nightly channels whose user-data roots differ
+      # from the browser's stable default root; keep the profile-name route as a
+      # compatibility fallback for stable installs.
+      Add-UniqueCandidate -List $List -Candidate ("{0}:{1}" -f $BrowserName, $_.FullName)
+      Add-UniqueCandidate -List $List -Candidate ("{0}:{1}" -f $BrowserName, $_.Name)
+    }
   Add-UniqueCandidate -List $List -Candidate $BrowserName
+}
+
+function Add-OperaProfile {
+  param([System.Collections.Generic.List[string]]$List, [string]$ProfileRoot)
+  if (-not $ProfileRoot -or -not (Test-Path $ProfileRoot)) { return }
+  Add-UniqueCandidate -List $List -Candidate ("opera:{0}" -f $ProfileRoot)
+  Add-UniqueCandidate -List $List -Candidate 'opera'
 }
 
 function Get-BrowserCandidates {
   $result = New-Object System.Collections.Generic.List[string]
   if ($env:LOCALAPPDATA) {
     Add-ChromiumProfiles -List $result -BrowserName 'chrome' -UserDataRoot (Join-Path $env:LOCALAPPDATA 'Google\Chrome\User Data')
+    Add-ChromiumProfiles -List $result -BrowserName 'chrome' -UserDataRoot (Join-Path $env:LOCALAPPDATA 'Google\Chrome Beta\User Data')
+    Add-ChromiumProfiles -List $result -BrowserName 'chrome' -UserDataRoot (Join-Path $env:LOCALAPPDATA 'Google\Chrome Dev\User Data')
+    Add-ChromiumProfiles -List $result -BrowserName 'chrome' -UserDataRoot (Join-Path $env:LOCALAPPDATA 'Google\Chrome SxS\User Data')
+
     Add-ChromiumProfiles -List $result -BrowserName 'edge' -UserDataRoot (Join-Path $env:LOCALAPPDATA 'Microsoft\Edge\User Data')
+    Add-ChromiumProfiles -List $result -BrowserName 'edge' -UserDataRoot (Join-Path $env:LOCALAPPDATA 'Microsoft\Edge Beta\User Data')
+    Add-ChromiumProfiles -List $result -BrowserName 'edge' -UserDataRoot (Join-Path $env:LOCALAPPDATA 'Microsoft\Edge Dev\User Data')
+    Add-ChromiumProfiles -List $result -BrowserName 'edge' -UserDataRoot (Join-Path $env:LOCALAPPDATA 'Microsoft\Edge SxS\User Data')
+
     Add-ChromiumProfiles -List $result -BrowserName 'brave' -UserDataRoot (Join-Path $env:LOCALAPPDATA 'BraveSoftware\Brave-Browser\User Data')
+    Add-ChromiumProfiles -List $result -BrowserName 'brave' -UserDataRoot (Join-Path $env:LOCALAPPDATA 'BraveSoftware\Brave-Browser-Beta\User Data')
+    Add-ChromiumProfiles -List $result -BrowserName 'brave' -UserDataRoot (Join-Path $env:LOCALAPPDATA 'BraveSoftware\Brave-Browser-Nightly\User Data')
+
     Add-ChromiumProfiles -List $result -BrowserName 'vivaldi' -UserDataRoot (Join-Path $env:LOCALAPPDATA 'Vivaldi\User Data')
+    Add-ChromiumProfiles -List $result -BrowserName 'chromium' -UserDataRoot (Join-Path $env:LOCALAPPDATA 'Chromium\User Data')
   }
-  foreach ($fallback in @('chrome','edge','brave','vivaldi')) { Add-UniqueCandidate -List $result -Candidate $fallback }
+  if ($env:APPDATA) {
+    Add-OperaProfile -List $result -ProfileRoot (Join-Path $env:APPDATA 'Opera Software\Opera Stable')
+    Add-OperaProfile -List $result -ProfileRoot (Join-Path $env:APPDATA 'Opera Software\Opera GX Stable')
+  }
+  foreach ($fallback in @('chrome','chromium','edge','brave','vivaldi','opera')) { Add-UniqueCandidate -List $result -Candidate $fallback }
   return @($result)
 }
 
