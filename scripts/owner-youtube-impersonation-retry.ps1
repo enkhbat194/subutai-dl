@@ -58,18 +58,53 @@ function Add-UniqueCandidate {
   if ($Candidate -and -not $List.Contains($Candidate)) { $List.Add($Candidate) }
 }
 
+function Get-ChromiumPreferredProfiles {
+  param([string]$UserDataRoot)
+  $result = New-Object System.Collections.Generic.List[string]
+  $localState = Join-Path $UserDataRoot 'Local State'
+  if (-not (Test-Path $localState)) { return @($result) }
+  try {
+    $state = Get-Content $localState -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+    $lastUsed = [string]$state.profile.last_used
+    if ($lastUsed) { Add-UniqueCandidate -List $result -Candidate $lastUsed }
+    foreach ($profile in @($state.profile.last_active_profiles)) {
+      if ($profile) { Add-UniqueCandidate -List $result -Candidate ([string]$profile) }
+    }
+  } catch {
+    Write-Host "Could not read Chromium profile preference from $localState; falling back to filesystem discovery."
+  }
+  return @($result)
+}
+
+function Add-ChromiumProfileCandidate {
+  param(
+    [System.Collections.Generic.List[string]]$List,
+    [string]$BrowserName,
+    [string]$UserDataRoot,
+    [string]$ProfileName
+  )
+  if (-not $ProfileName) { return }
+  $profilePath = Join-Path $UserDataRoot $ProfileName
+  if (-not (Test-Path $profilePath)) { return }
+  Add-UniqueCandidate -List $List -Candidate ("{0}:{1}" -f $BrowserName, $profilePath)
+  Add-UniqueCandidate -List $List -Candidate ("{0}:{1}" -f $BrowserName, $ProfileName)
+}
+
 function Add-ChromiumProfiles {
   param([System.Collections.Generic.List[string]]$List, [string]$BrowserName, [string]$UserDataRoot)
   if (-not $UserDataRoot -or -not (Test-Path $UserDataRoot)) { return }
+
+  # Prefer the profile Chrome/Edge/Brave recorded as last used/active. This avoids
+  # spending the bounded owner retry on a recently touched but unauthenticated profile.
+  foreach ($profileName in (Get-ChromiumPreferredProfiles -UserDataRoot $UserDataRoot)) {
+    Add-ChromiumProfileCandidate -List $List -BrowserName $BrowserName -UserDataRoot $UserDataRoot -ProfileName $profileName
+  }
+
   Get-ChildItem $UserDataRoot -Directory -ErrorAction SilentlyContinue |
     Where-Object { $_.Name -eq 'Default' -or $_.Name -match '^Profile [0-9]+$' } |
     Sort-Object LastWriteTime -Descending |
-    Select-Object -First 2 |
+    Select-Object -First 3 |
     ForEach-Object {
-      # yt-dlp accepts a browser profile name or path. The absolute-path candidate is
-      # important for Beta/Dev/Canary/Nightly channels whose user-data roots differ
-      # from the browser's stable default root; keep the profile-name route as a
-      # compatibility fallback for stable installs.
       Add-UniqueCandidate -List $List -Candidate ("{0}:{1}" -f $BrowserName, $_.FullName)
       Add-UniqueCandidate -List $List -Candidate ("{0}:{1}" -f $BrowserName, $_.Name)
     }
