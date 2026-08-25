@@ -35,7 +35,13 @@ function Resolve-ChromiumBrowserPaths {
     "HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\App Paths\msedge.exe",
     "HKCU:\Software\Microsoft\Windows\CurrentVersion\App Paths\brave.exe",
     "HKLM:\Software\Microsoft\Windows\CurrentVersion\App Paths\brave.exe",
-    "HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\App Paths\brave.exe"
+    "HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\App Paths\brave.exe",
+    "HKCU:\Software\Microsoft\Windows\CurrentVersion\App Paths\vivaldi.exe",
+    "HKLM:\Software\Microsoft\Windows\CurrentVersion\App Paths\vivaldi.exe",
+    "HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\App Paths\vivaldi.exe",
+    "HKCU:\Software\Microsoft\Windows\CurrentVersion\App Paths\opera.exe",
+    "HKLM:\Software\Microsoft\Windows\CurrentVersion\App Paths\opera.exe",
+    "HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\App Paths\opera.exe"
   )) {
     try {
       $value = (Get-ItemProperty -Path $registryPath -ErrorAction Stop).'(default)'
@@ -50,21 +56,26 @@ function Resolve-ChromiumBrowserPaths {
     $candidates.Add((Join-Path $env:PROGRAMFILES "Chromium\Application\chrome.exe"))
     $candidates.Add((Join-Path $env:PROGRAMFILES "Microsoft\Edge\Application\msedge.exe"))
     $candidates.Add((Join-Path $env:PROGRAMFILES "BraveSoftware\Brave-Browser\Application\brave.exe"))
+    $candidates.Add((Join-Path $env:PROGRAMFILES "Vivaldi\Application\vivaldi.exe"))
   }
   if (${env:PROGRAMFILES(X86)}) {
     $candidates.Add((Join-Path ${env:PROGRAMFILES(X86)} "Google\Chrome\Application\chrome.exe"))
     $candidates.Add((Join-Path ${env:PROGRAMFILES(X86)} "Chromium\Application\chrome.exe"))
     $candidates.Add((Join-Path ${env:PROGRAMFILES(X86)} "Microsoft\Edge\Application\msedge.exe"))
     $candidates.Add((Join-Path ${env:PROGRAMFILES(X86)} "BraveSoftware\Brave-Browser\Application\brave.exe"))
+    $candidates.Add((Join-Path ${env:PROGRAMFILES(X86)} "Vivaldi\Application\vivaldi.exe"))
   }
   if ($env:LOCALAPPDATA) {
     $candidates.Add((Join-Path $env:LOCALAPPDATA "Google\Chrome\Application\chrome.exe"))
     $candidates.Add((Join-Path $env:LOCALAPPDATA "Chromium\Application\chrome.exe"))
     $candidates.Add((Join-Path $env:LOCALAPPDATA "Microsoft\Edge\Application\msedge.exe"))
     $candidates.Add((Join-Path $env:LOCALAPPDATA "BraveSoftware\Brave-Browser\Application\brave.exe"))
+    $candidates.Add((Join-Path $env:LOCALAPPDATA "Vivaldi\Application\vivaldi.exe"))
+    $candidates.Add((Join-Path $env:LOCALAPPDATA "Programs\Opera\opera.exe"))
+    $candidates.Add((Join-Path $env:LOCALAPPDATA "Programs\Opera GX\opera.exe"))
   }
 
-  foreach ($commandName in @("chrome.exe", "chromium.exe", "msedge.exe", "brave.exe")) {
+  foreach ($commandName in @("chrome.exe", "chromium.exe", "msedge.exe", "brave.exe", "vivaldi.exe", "opera.exe")) {
     $command = Get-Command $commandName -ErrorAction SilentlyContinue | Select-Object -First 1
     if (-not $command) { continue }
     if ($command.Source) { $candidates.Add([string]$command.Source) }
@@ -127,7 +138,7 @@ if ($browserPaths.Count -gt 0) {
   Write-Host "Resolved Chromium-family browsers for WPC token minting:"
   foreach ($path in $browserPaths) { Write-Host " - $path" }
 } else {
-  Write-Warning "Chrome/Chromium/Edge/Brave was not resolved explicitly. WPC will use its own browser discovery. Set SUBUTAI_WPC_BROWSER_PATH to override."
+  Write-Warning "Chrome/Chromium/Edge/Brave/Vivaldi/Opera was not resolved explicitly. WPC will use its own browser discovery. Set SUBUTAI_WPC_BROWSER_PATH to override."
 }
 
 if (-not $OutputRoot) { $OutputRoot = Join-Path ([System.IO.Path]::GetTempPath()) "SubutaiOwnerYouTubeWpcRetry" }
