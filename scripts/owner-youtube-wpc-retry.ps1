@@ -22,7 +22,7 @@ function Resolve-AppRoot {
   throw "Subutai app root was not found. Build win-unpacked, install Subutai, or pass -AppRoot."
 }
 
-function Resolve-ChromiumBrowserPath {
+function Resolve-ChromiumBrowserPaths {
   $candidates = New-Object System.Collections.Generic.List[string]
   if ($env:SUBUTAI_WPC_BROWSER_PATH) { $candidates.Add($env:SUBUTAI_WPC_BROWSER_PATH) }
 
@@ -64,21 +64,23 @@ function Resolve-ChromiumBrowserPath {
     $candidates.Add((Join-Path $env:LOCALAPPDATA "BraveSoftware\Brave-Browser\Application\brave.exe"))
   }
 
-  foreach ($candidate in $candidates) {
-    if (-not $candidate) { continue }
-    $trimmed = ([string]$candidate).Trim().Trim('"')
-    if (Test-Path $trimmed -PathType Leaf) {
-      try { return (Resolve-Path $trimmed -ErrorAction Stop).Path } catch { return $trimmed }
-    }
-  }
-
   foreach ($commandName in @("chrome.exe", "chromium.exe", "msedge.exe", "brave.exe")) {
     $command = Get-Command $commandName -ErrorAction SilentlyContinue | Select-Object -First 1
     if (-not $command) { continue }
-    if ($command.Source -and (Test-Path $command.Source -PathType Leaf)) { return $command.Source }
-    if ($command.Path -and (Test-Path $command.Path -PathType Leaf)) { return $command.Path }
+    if ($command.Source) { $candidates.Add([string]$command.Source) }
+    elseif ($command.Path) { $candidates.Add([string]$command.Path) }
   }
-  return $null
+
+  $resolved = New-Object System.Collections.Generic.List[string]
+  $seen = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+  foreach ($candidate in $candidates) {
+    if (-not $candidate) { continue }
+    $trimmed = ([string]$candidate).Trim().Trim('"')
+    if (-not (Test-Path $trimmed -PathType Leaf)) { continue }
+    try { $path = (Resolve-Path $trimmed -ErrorAction Stop).Path } catch { $path = $trimmed }
+    if ($seen.Add($path)) { $resolved.Add($path) }
+  }
+  return @($resolved)
 }
 
 function Invoke-YtDlp {
@@ -120,9 +122,10 @@ foreach ($required in @($ytDlp, $ffprobe, $node, $providerPath, $manifestPath)) 
 $providerHome = Join-Path $engineDir "pot-provider\server"
 if (Test-Path (Join-Path $providerHome "build\generate_once.js")) { $env:SUBUTAI_POT_SERVER_HOME = $providerHome }
 
-$browserPath = Resolve-ChromiumBrowserPath
-if ($browserPath) {
-  Write-Host "Using Chromium-family browser for WPC token minting: $browserPath"
+$browserPaths = @(Resolve-ChromiumBrowserPaths)
+if ($browserPaths.Count -gt 0) {
+  Write-Host "Resolved Chromium-family browsers for WPC token minting:"
+  foreach ($path in $browserPaths) { Write-Host " - $path" }
 } else {
   Write-Warning "Chrome/Chromium/Edge/Brave was not resolved explicitly. WPC will use its own browser discovery. Set SUBUTAI_WPC_BROWSER_PATH to override."
 }
@@ -135,64 +138,81 @@ $routes = @(
   @{ Name = "mweb-wpc"; Client = "mweb"; Format = "worstvideo*+worstaudio/worst" },
   @{ Name = "mweb-wpc-hls"; Client = "mweb"; Format = "best[protocol^=m3u8]/worst" }
 )
+
+$browserAttempts = New-Object System.Collections.Generic.List[object]
+$browserNumber = 0
+foreach ($path in $browserPaths) {
+  $browserNumber++
+  $browserAttempts.Add([pscustomobject]@{
+    Name = ("browser-{0:D2}-{1}" -f $browserNumber, [System.IO.Path]::GetFileNameWithoutExtension($path))
+    Path = $path
+  })
+}
+# Provider self-discovery remains a bounded final fallback because it can differ from
+# explicit-path launch behavior on owner machines with managed browser installations.
+$browserAttempts.Add([pscustomobject]@{ Name = "browser-auto"; Path = $null })
+
 $records = New-Object System.Collections.Generic.List[object]
 $routeNumber = 0
-foreach ($route in $routes) {
-  $routeNumber++
-  $routeDir = Join-Path $OutputRoot ("{0:D2}-{1}" -f $routeNumber, $route.Name)
-  New-Item -ItemType Directory -Force -Path $routeDir | Out-Null
-  $stdout = Join-Path $routeDir "youtube.stdout.log"
-  $stderr = Join-Path $routeDir "youtube.stderr.log"
-  $template = Join-Path $routeDir "subutai-owner-youtube.%(ext)s"
-  $args = @(
-    "--verbose",
-    "--no-playlist",
-    "--newline",
-    "--continue",
-    "--part",
-    "--socket-timeout", "45",
-    "--retries", "3",
-    "--fragment-retries", "3",
-    "--js-runtimes", "node:$node",
-    "--ffmpeg-location", $engineDir,
-    "--extractor-args", "youtube:player_client=$($route.Client)",
-    "--format", $route.Format,
-    "--merge-output-format", "mp4",
-    "--output", $template
-  )
-  if ($browserPath) {
-    $args += @("--extractor-args", "youtubepot-wpc:browser_path=$browserPath")
-  }
-  $args += $Url
+foreach ($browserAttempt in $browserAttempts) {
+  foreach ($route in $routes) {
+    $routeNumber++
+    $routeDir = Join-Path $OutputRoot ("{0:D2}-{1}-{2}" -f $routeNumber, $browserAttempt.Name, $route.Name)
+    New-Item -ItemType Directory -Force -Path $routeDir | Out-Null
+    $stdout = Join-Path $routeDir "youtube.stdout.log"
+    $stderr = Join-Path $routeDir "youtube.stderr.log"
+    $template = Join-Path $routeDir "subutai-owner-youtube.%(ext)s"
+    $args = @(
+      "--verbose",
+      "--no-playlist",
+      "--newline",
+      "--continue",
+      "--part",
+      "--socket-timeout", "45",
+      "--retries", "3",
+      "--fragment-retries", "3",
+      "--js-runtimes", "node:$node",
+      "--ffmpeg-location", $engineDir,
+      "--extractor-args", "youtube:player_client=$($route.Client)",
+      "--format", $route.Format,
+      "--merge-output-format", "mp4",
+      "--output", $template
+    )
+    if ($browserAttempt.Path) {
+      $args += @("--extractor-args", "youtubepot-wpc:browser_path=$($browserAttempt.Path)")
+    }
+    $args += $Url
 
-  Write-Host "Trying packaged browser-minted WPC owner route: $($route.Name)"
-  $exitCode = Invoke-YtDlp -Executable $ytDlp -Arguments $args -StdoutPath $stdout -StderrPath $stderr
-  $combined = ([string](Get-Content $stdout -Raw -ErrorAction SilentlyContinue)) + "`n" + ([string](Get-Content $stderr -Raw -ErrorAction SilentlyContinue))
-  $providerLoaded = $combined -match '(?im)PO Token Providers:.*\bwpc-1\.1\.2\b' -or $combined -match '(?im)\bwpc-1\.1\.2\s*\(external\)'
-  $media = Get-ChildItem $routeDir -File -ErrorAction SilentlyContinue |
-    Where-Object { $_.Name -like "subutai-owner-youtube.*" -and $_.Extension -notin @(".part", ".ytdl", ".log", ".json") } |
-    Sort-Object Length -Descending |
-    Select-Object -First 1
-  $playable = $false
-  if ($media) { $playable = Test-PlayableMedia -Path $media.FullName -Ffprobe $ffprobe }
-  $records.Add([pscustomobject]@{
-    route = $route.Name
-    exitCode = $exitCode
-    providerLoaded = $providerLoaded
-    playableMedia = $playable
-    browserPath = $browserPath
-    stdout = $stdout
-    stderr = $stderr
-  })
-  $records | ConvertTo-Json -Depth 5 | Set-Content -Path (Join-Path $OutputRoot "wpc-retry-summary.json") -Encoding UTF8
+    $browserLabel = if ($browserAttempt.Path) { $browserAttempt.Path } else { "provider-auto-discovery" }
+    Write-Host "Trying packaged browser-minted WPC owner route: $($route.Name) with $browserLabel"
+    $exitCode = Invoke-YtDlp -Executable $ytDlp -Arguments $args -StdoutPath $stdout -StderrPath $stderr
+    $combined = ([string](Get-Content $stdout -Raw -ErrorAction SilentlyContinue)) + "`n" + ([string](Get-Content $stderr -Raw -ErrorAction SilentlyContinue))
+    $providerLoaded = $combined -match '(?im)PO Token Providers:.*\bwpc-1\.1\.2\b' -or $combined -match '(?im)\bwpc-1\.1\.2\s*\(external\)'
+    $media = Get-ChildItem $routeDir -File -ErrorAction SilentlyContinue |
+      Where-Object { $_.Name -like "subutai-owner-youtube.*" -and $_.Extension -notin @(".part", ".ytdl", ".log", ".json") } |
+      Sort-Object Length -Descending |
+      Select-Object -First 1
+    $playable = $false
+    if ($media) { $playable = Test-PlayableMedia -Path $media.FullName -Ffprobe $ffprobe }
+    $records.Add([pscustomobject]@{
+      route = $route.Name
+      exitCode = $exitCode
+      providerLoaded = $providerLoaded
+      playableMedia = $playable
+      browserPath = $browserAttempt.Path
+      stdout = $stdout
+      stderr = $stderr
+    })
+    $records | ConvertTo-Json -Depth 5 | Set-Content -Path (Join-Path $OutputRoot "wpc-retry-summary.json") -Encoding UTF8
 
-  if (-not $providerLoaded) {
-    throw "Packaged yt-dlp did not load the browser-minted WPC provider. Evidence: $OutputRoot"
-  }
-  if ($exitCode -eq 0 -and $media -and $playable) {
-    Write-Host "Playable media: $($media.FullName)"
-    Write-Host "SUBUTAI_YOUTUBE_OWNER_ACCEPTANCE=PASS"
-    exit 0
+    if (-not $providerLoaded) {
+      throw "Packaged yt-dlp did not load the browser-minted WPC provider. Evidence: $OutputRoot"
+    }
+    if ($exitCode -eq 0 -and $media -and $playable) {
+      Write-Host "Playable media: $($media.FullName)"
+      Write-Host "SUBUTAI_YOUTUBE_OWNER_ACCEPTANCE=PASS"
+      exit 0
+    }
   }
 }
 
