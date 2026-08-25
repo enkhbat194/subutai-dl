@@ -1,0 +1,35 @@
+name: Subutai YouTube Impersonation Capability Audit
+
+on:
+  pull_request:
+    paths:
+      - "scripts/audit-youtube-impersonation-capability.ps1"
+      - "scripts/install-temporary-media-tools.ps1"
+      - ".github/workflows/youtube-impersonation-capability-audit.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: windows-2025
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Stage packaged Subutai media tools
+        shell: powershell
+        run: ./scripts/install-temporary-media-tools.ps1
+
+      - name: Audit packaged yt-dlp browser impersonation
+        shell: powershell
+        run: ./scripts/audit-youtube-impersonation-capability.ps1
