@@ -111,6 +111,20 @@ function Add-ChromiumProfiles {
   Add-UniqueCandidate -List $List -Candidate $BrowserName
 }
 
+function Add-FirefoxProfiles {
+  param([System.Collections.Generic.List[string]]$List, [string]$ProfilesRoot)
+  if (-not $ProfilesRoot -or -not (Test-Path $ProfilesRoot)) { return }
+
+  Get-ChildItem $ProfilesRoot -Directory -ErrorAction SilentlyContinue |
+    Sort-Object LastWriteTime -Descending |
+    Select-Object -First 5 |
+    ForEach-Object {
+      Add-UniqueCandidate -List $List -Candidate ("firefox:{0}" -f $_.FullName)
+      Add-UniqueCandidate -List $List -Candidate ("firefox:{0}" -f $_.Name)
+    }
+  Add-UniqueCandidate -List $List -Candidate 'firefox'
+}
+
 function Add-OperaProfile {
   param([System.Collections.Generic.List[string]]$List, [string]$ProfileRoot)
   if (-not $ProfileRoot -or -not (Test-Path $ProfileRoot)) { return }
@@ -120,6 +134,9 @@ function Add-OperaProfile {
 
 function Get-BrowserCandidates {
   $result = New-Object System.Collections.Generic.List[string]
+  if ($env:APPDATA) {
+    Add-FirefoxProfiles -List $result -ProfilesRoot (Join-Path $env:APPDATA 'Mozilla\Firefox\Profiles')
+  }
   if ($env:LOCALAPPDATA) {
     Add-ChromiumProfiles -List $result -BrowserName 'chrome' -UserDataRoot (Join-Path $env:LOCALAPPDATA 'Google\Chrome\User Data')
     Add-ChromiumProfiles -List $result -BrowserName 'chrome' -UserDataRoot (Join-Path $env:LOCALAPPDATA 'Google\Chrome Beta\User Data')
@@ -142,7 +159,7 @@ function Get-BrowserCandidates {
     Add-OperaProfile -List $result -ProfileRoot (Join-Path $env:APPDATA 'Opera Software\Opera Stable')
     Add-OperaProfile -List $result -ProfileRoot (Join-Path $env:APPDATA 'Opera Software\Opera GX Stable')
   }
-  foreach ($fallback in @('chrome','chromium','edge','brave','vivaldi','opera')) { Add-UniqueCandidate -List $result -Candidate $fallback }
+  foreach ($fallback in @('firefox','chrome','chromium','edge','brave','vivaldi','opera')) { Add-UniqueCandidate -List $result -Candidate $fallback }
   return @($result)
 }
 
