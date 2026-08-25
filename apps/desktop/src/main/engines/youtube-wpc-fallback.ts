@@ -77,7 +77,10 @@ export function resolveYouTubeWpcBrowserPath(): string | null {
 
 export function appendYouTubeWpcRoute(args: string[], url: string, browserPath?: string | null): void {
   if (!isYouTubeUrl(url)) return;
-  args.push('--extractor-args', 'youtube:player_client=mweb');
+  // mweb remains yt-dlp's recommended PO-token client. web_safari is included as a
+  // bounded secondary web client because its HLS route can remain playable when GVS
+  // enforcement differs, while the packaged WPC provider supports both client families.
+  args.push('--extractor-args', 'youtube:player_client=mweb,web_safari');
   const selectedBrowserPath = browserPath === undefined ? resolveYouTubeWpcBrowserPath() : browserPath;
   if (selectedBrowserPath) {
     args.push('--extractor-args', `youtubepot-wpc:browser_path=${selectedBrowserPath}`);
