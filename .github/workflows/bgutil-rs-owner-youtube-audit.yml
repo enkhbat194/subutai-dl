@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "scripts/audit-bgutil-rs-owner-youtube.ps1"
+      - "scripts/inspect-bgutil-rs-plugin-layout.ps1"
       - "scripts/install-temporary-media-tools.ps1"
       - ".github/workflows/bgutil-rs-owner-youtube-audit.yml"
   workflow_dispatch:
@@ -35,6 +36,10 @@ jobs:
       - name: Stage packaged Subutai media tools
         shell: powershell
         run: ./scripts/install-temporary-media-tools.ps1
+
+      - name: Inspect Rust BgUtil plugin discovery
+        shell: powershell
+        run: ./scripts/inspect-bgutil-rs-plugin-layout.ps1
 
       - name: Audit isolated Rust BgUtil provider with real YouTube media
         shell: powershell
