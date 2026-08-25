@@ -38,7 +38,7 @@ function Get-VerifiedDownload([string]$Url, [string]$Destination, [string]$Sha25
   & $curl -L --fail --silent --show-error --retry 3 --retry-delay 2 --connect-timeout 20 --max-time 240 --output $Destination $Url
   if ($LASTEXITCODE -ne 0) { throw "Download failed for $Url with exit $LASTEXITCODE" }
   $actual = (Get-FileHash $Destination -Algorithm SHA256).Hash.ToLowerInvariant()
-  if ($actual -ne $Sha256.ToLowerInvariant()) { throw "Checksum mismatch for $Url: $actual" }
+  if ($actual -ne $Sha256.ToLowerInvariant()) { throw "Checksum mismatch for ${Url}: $actual" }
 }
 
 function Invoke-YtDlp([string[]]$Arguments, [string]$Stdout, [string]$Stderr) {
