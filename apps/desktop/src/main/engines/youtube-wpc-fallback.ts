@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { basename, dirname, join } from 'node:path';
+import { basename, delimiter, dirname, join } from 'node:path';
 
 const YOUTUBE_AUTH_CHALLENGE = /sign in to confirm|not a bot|authentication[^\n]*cookies|cookies[^\n]*authentication|youtube cookies|cookies-from-browser|http(?: response)? error:? 403|\b403 forbidden\b/i;
 
@@ -33,9 +33,45 @@ export function hasPackagedWpcProvider(ytDlpPath: string): boolean {
   ));
 }
 
+function addCandidate(target: string[], value: string | undefined): void {
+  const candidate = value?.trim().replace(/^"|"$/g, '');
+  if (!candidate || target.includes(candidate)) return;
+  target.push(candidate);
+}
+
+export function resolveYouTubeWpcBrowserPath(): string | null {
+  const candidates: string[] = [];
+  addCandidate(candidates, process.env.SUBUTAI_WPC_BROWSER_PATH);
+
+  const programFiles = process.env.PROGRAMFILES?.trim();
+  const programFilesX86 = process.env['PROGRAMFILES(X86)']?.trim();
+  const localAppData = process.env.LOCALAPPDATA?.trim();
+
+  for (const root of [programFiles, programFilesX86, localAppData]) {
+    if (!root) continue;
+    addCandidate(candidates, join(root, 'Google', 'Chrome', 'Application', 'chrome.exe'));
+    addCandidate(candidates, join(root, 'Chromium', 'Application', 'chrome.exe'));
+  }
+
+  const pathEntries = (process.env.PATH ?? '').split(delimiter).map((entry) => entry.trim()).filter(Boolean);
+  for (const entry of pathEntries) {
+    addCandidate(candidates, join(entry, 'chrome.exe'));
+    addCandidate(candidates, join(entry, 'chromium.exe'));
+  }
+
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
 export function appendYouTubeWpcRoute(args: string[], url: string): void {
   if (!isYouTubeUrl(url)) return;
   args.push('--extractor-args', 'youtube:player_client=mweb');
+  const browserPath = resolveYouTubeWpcBrowserPath();
+  if (browserPath) {
+    args.push('--extractor-args', `youtubepot-wpc:browser_path=${browserPath}`);
+  }
 }
 
 export function shouldAttemptYouTubeWpcFallback(input: {
