@@ -9,6 +9,12 @@ import type {
   TransferSettings,
 } from '@subutai/shared';
 import { DEFAULT_TRANSFER_SETTINGS, resolveProxyUrl, ytDlpSpeed } from '../network/transfer-policy';
+import {
+  appendYouTubeWpcRoute,
+  isYouTubeUrl,
+  looksLikeYouTubeAuthChallenge,
+  shouldAttemptYouTubeWpcFallback,
+} from './youtube-wpc-fallback';
 
 export type MediaTaskState = 'waiting' | 'active' | 'paused' | 'complete' | 'error' | 'removed';
 
@@ -184,6 +190,7 @@ interface MediaTask {
   stderr: string[];
   browserCookieSourceIndex: number;
   browserCookieSources: readonly BrowserCookieSource[];
+  wpcFallbackAttempted: boolean;
 }
 
 interface MediaServiceHealth {
@@ -223,23 +230,6 @@ function sanitizeYouTubeContextValue(value: string | undefined): string {
 function minimumPositive(...values: number[]): number {
   const positive = values.filter((value) => value > 0);
   return positive.length > 0 ? Math.min(...positive) : 0;
-}
-
-function isYouTubeUrl(value: string): boolean {
-  try {
-    const host = new URL(value).hostname.toLowerCase();
-    return host === 'youtu.be'
-      || host === 'youtube.com'
-      || host.endsWith('.youtube.com')
-      || host === 'youtube-nocookie.com'
-      || host.endsWith('.youtube-nocookie.com');
-  } catch {
-    return false;
-  }
-}
-
-function looksLikeYouTubeAuthChallenge(value: string): boolean {
-  return /sign in to confirm|not a bot|authentication[^\n]*cookies|cookies[^\n]*authentication|youtube cookies|cookies-from-browser|http(?: response)? error:? 403|\b403 forbidden\b/i.test(value);
 }
 
 export class MediaService {
@@ -311,6 +301,7 @@ export class MediaService {
       stderr: [],
       browserCookieSourceIndex: -1,
       browserCookieSources: discoverBrowserCookieSources(),
+      wpcFallbackAttempted: false,
     };
     if (input.filename) task.filename = input.filename;
     if (input.headers) task.headers = { ...input.headers };
@@ -342,6 +333,7 @@ export class MediaService {
     if (task.status.status === 'error') {
       task.browserCookieSourceIndex = -1;
       task.browserCookieSources = discoverBrowserCookieSources();
+      task.wpcFallbackAttempted = false;
     }
     task.status.status = 'waiting';
     delete task.status.error;
@@ -447,6 +439,24 @@ export class MediaService {
           void this.startTask(task);
           return;
         }
+        if (shouldAttemptYouTubeWpcFallback({
+          url: task.url,
+          diagnostic,
+          ytDlpPath: ytDlp,
+          attempted: task.wpcFallbackAttempted,
+          browserCookieSourceIndex: task.browserCookieSourceIndex,
+          browserCookieSourceCount: task.browserCookieSources.length,
+        })) {
+          task.wpcFallbackAttempted = true;
+          task.status.status = 'waiting';
+          task.status.phase = 'resolving';
+          task.status.speedBytesPerSecond = 0;
+          task.status.etaSeconds = null;
+          delete task.status.error;
+          task.stderr = [];
+          void this.startTask(task);
+          return;
+        }
         const detail = this.preferredError(task.stderr);
         task.status.status = 'error';
         task.status.speedBytesPerSecond = 0;
@@ -509,11 +519,16 @@ export class MediaService {
     if (options.embedMetadata !== false) args.push('--embed-metadata');
     if (options.embedThumbnail) args.push('--embed-thumbnail');
 
-    if (task.browserCookieSourceIndex < 0) {
-      this.appendCapturedYouTubeContext(args, task.headers, task.url);
+    if (task.wpcFallbackAttempted) {
+      appendYouTubeWpcRoute(args, task.url);
+      if (task.sourcePageUrl) args.push('--referer', task.sourcePageUrl);
+    } else {
+      if (task.browserCookieSourceIndex < 0) {
+        this.appendCapturedYouTubeContext(args, task.headers, task.url);
+      }
+      this.appendBrowserCookies(args, task.browserCookieSources, task.browserCookieSourceIndex);
+      this.appendRequestArguments(args, task.headers, task.sourcePageUrl, task.browserCookieSourceIndex < 0);
     }
-    this.appendBrowserCookies(args, task.browserCookieSources, task.browserCookieSourceIndex);
-    this.appendRequestArguments(args, task.headers, task.sourcePageUrl, task.browserCookieSourceIndex < 0);
     args.push(task.url);
     return args;
   }
@@ -649,11 +664,31 @@ export class MediaService {
         }
         if (argument !== undefined) browserArgs.push(argument);
       }
-      for (const source of discoverBrowserCookieSources()) {
+      const cookieSources = discoverBrowserCookieSources();
+      let browserCookieSourceIndex = -1;
+      for (const source of cookieSources) {
+        browserCookieSourceIndex += 1;
         try {
           return await this.captureJson([...browserArgs, '--cookies-from-browser', source, url]);
         } catch (browserError) {
           lastError = browserError;
+        }
+      }
+      const ytDlpPath = this.resolveYtDlp();
+      if (shouldAttemptYouTubeWpcFallback({
+        url,
+        diagnostic: this.diagnosticFromError(lastError),
+        ytDlpPath,
+        attempted: false,
+        browserCookieSourceIndex,
+        browserCookieSourceCount: cookieSources.length,
+      })) {
+        const wpcArgs = [...browserArgs];
+        appendYouTubeWpcRoute(wpcArgs, url);
+        try {
+          return await this.captureJson([...wpcArgs, url]);
+        } catch (wpcError) {
+          lastError = wpcError;
         }
       }
       throw lastError;
