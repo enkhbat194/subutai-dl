@@ -145,9 +145,15 @@ if (-not $OutputRoot) { $OutputRoot = Join-Path ([System.IO.Path]::GetTempPath()
 Remove-Item $OutputRoot -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $OutputRoot | Out-Null
 
+# mweb is yt-dlp's recommended PO-token route. web_safari is a bounded secondary
+# client whose HLS path can remain playable when GVS enforcement differs. The WPC
+# provider supports both WebPO client families, so trying both improves owner odds
+# without weakening the playable-media + ffprobe PASS requirement.
 $routes = @(
   @{ Name = "mweb-wpc"; Client = "mweb"; Format = "worstvideo*+worstaudio/worst" },
-  @{ Name = "mweb-wpc-hls"; Client = "mweb"; Format = "best[protocol^=m3u8]/worst" }
+  @{ Name = "mweb-wpc-hls"; Client = "mweb"; Format = "best[protocol^=m3u8]/worst" },
+  @{ Name = "web-safari-wpc"; Client = "web_safari"; Format = "worstvideo*+worstaudio/worst" },
+  @{ Name = "web-safari-wpc-hls"; Client = "web_safari"; Format = "best[protocol^=m3u8]/worst" }
 )
 
 $browserAttempts = New-Object System.Collections.Generic.List[object]
